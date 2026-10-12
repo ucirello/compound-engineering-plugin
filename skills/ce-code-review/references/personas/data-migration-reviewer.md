@@ -10,20 +10,20 @@ Think in terms of the deploy window: old code on new schema, new code on old dat
 
 ## Step 0: Schema drift (when a schema dump is in the diff)
 
-Run this **first** when `db/schema.rb` or `db/structure.sql` appears in the diff. Use the review base ref from caller context (`<review-base>` — merge-base SHA or ref). **Never assume `main`.**
+Run this **first** when `db/schema.rb` or `db/structure.sql` appears in the diff. Use caller's verified `<review-base>` and `<reviewed-head>` (local scope uses `@`). All JJ commands below run from the target workspace's absolute root; never use `-R` as a cwd substitute. **Never assume `main`.** Missing remote endpoints mean hunk-only checks and explicit degraded coverage, not comparison to local `@`.
 
 ```bash
-git diff <review-base> --name-only -- db/migrate/
+jj diff --from <review-base> --to <reviewed-head> --name-only db/migrate/
 ```
 
 Then diff each dump file that is actually in the PR diff (one or both may apply):
 
 ```bash
 # When db/schema.rb is in the diff:
-git diff <review-base> -- db/schema.rb
+jj diff --from <review-base> --to <reviewed-head> --git db/schema.rb
 
 # When db/structure.sql is in the diff:
-git diff <review-base> -- db/structure.sql
+jj diff --from <review-base> --to <reviewed-head> --git db/structure.sql
 ```
 
 Cross-reference every change in each in-scope dump against migrations **in this PR's diff**:
@@ -34,13 +34,15 @@ Cross-reference every change in each in-scope dump against migrations **in this 
 
 When drift is present, emit a **P1** finding on the affected dump path (`db/schema.rb` or `db/structure.sql`) with `autofix_class: manual`, concrete unrelated objects listed, and `suggested_fix`:
 
+The suggested regeneration is for a faithful owned scratch copy under workspace-local `.tmp/`, with its isolated database, never the shared review tree or production database. Run Rails from that copy's absolute root after restoring the base dump; these are recommendations, not permission for the reviewer to mutate project files.
+
 ```bash
 # schema.rb:
-git checkout <review-base> -- db/schema.rb
+jj file show -r <review-base> db/schema.rb > <owned-local-scratch-copy>/db/schema.rb
 bin/rails db:migrate
 
 # structure.sql (regenerate after restoring and migrating):
-git checkout <review-base> -- db/structure.sql
+jj file show -r <review-base> db/structure.sql > <owned-local-scratch-copy>/db/structure.sql
 bin/rails db:migrate
 ```
 

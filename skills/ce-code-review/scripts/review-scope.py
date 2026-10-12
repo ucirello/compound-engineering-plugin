@@ -85,20 +85,22 @@ AGENT_SURFACE_PATTERN = re.compile(
 )
 
 
-def git(*args: str) -> subprocess.CompletedProcess[str]:
+def jj(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["git", *args], capture_output=True, text=True, check=False
+        ["jj", *args], capture_output=True, text=True, check=False,
+        cwd=repo_root(),
     )
 
 
 def valid_commit(ref: str | None) -> bool:
     if not ref:
         return False
-    return git("rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}").returncode == 0
+    result = jj("log", "--no-graph", "-r", ref, "-T", 'commit_id ++ "\n"')
+    return result.returncode == 0 and len(result.stdout.splitlines()) == 1
 
 
 def unique_merge_base(base: str, head: str) -> str | None:
-    result = git("merge-base", "--all", base, head)
+    result = jj("log", "--no-graph", "-r", f"heads(::({base}) & ::({head}))", "-T", 'commit_id ++ "\n"')
     candidates = [line for line in result.stdout.splitlines() if line]
     if result.returncode != 0 or len(candidates) != 1:
         return None
@@ -125,15 +127,9 @@ def normalize_docs_root(docs_root: str | None) -> str:
 
 @functools.lru_cache(maxsize=None)
 def repo_root() -> Path:
-    """The repository root, matching how docs_root is resolved everywhere else.
-
-    docs_root is repo-relative (``<repo-root>/<docs_root>``), so the corpus
-    check must resolve against the git toplevel, not the current working
-    directory. ce-code-review can run from a subdirectory (``git diff`` still
-    works there), where ``Path.cwd()`` would join docs_root under the subdir and
-    wrongly report the corpus absent. Fall back to cwd when git can't answer.
-    """
-    result = git("rev-parse", "--show-toplevel")
+    """Absolute JJ workspace root; local cwd outside a JJ repository."""
+    result = subprocess.run(["jj", "workspace", "root"], capture_output=True,
+                            text=True, check=False, cwd=Path.cwd().resolve())
     if result.returncode == 0 and result.stdout.strip():
         return Path(result.stdout.strip()).resolve()
     return Path.cwd().resolve()
@@ -164,10 +160,10 @@ PACKS_RESOLVER_TIMEOUT = 30.0
 
 
 def declared_packs() -> tuple[bool | None, int]:
-    """Whether the local CE config declares Compound Packs, from the config alone.
+    """Whether the local config declares Compound Packs, from the config alone.
 
     Runs the sibling resolver in `--declared-only` mode, which parses the
-    `packs:` list from both CE config layers and shape-checks each entry with no
+    `packs:` list from both config layers and shape-checks each entry with no
     git or cache work. Its `declared` is true when any entry parsed or the block
     is malformed -- a broken declaration is still one the learnings pass must
     surface in Coverage. ``None`` means the helper could not tell (resolver
@@ -294,19 +290,63 @@ def main() -> int:
         print(json.dumps(fail_closed("invalid head endpoint", repo), sort_keys=True))
         return 0
 
-    diff_args = [args.base]
+    diff_args = ["--from", args.base, "--to", "@"]
     if args.head:
         merge_base = unique_merge_base(args.base, args.head)
         if merge_base is None:
             print(json.dumps(fail_closed("merge base unavailable or ambiguous", repo), sort_keys=True))
             return 0
-        diff_args = [merge_base, args.head]
+        diff_args = ["--from", merge_base, "--to", args.head]
 
-    numstat = git("diff", "--numstat", *diff_args)
-    raw = git("diff", "--raw", *diff_args)
-    if numstat.returncode != 0 or raw.returncode != 0:
-        print(json.dumps(fail_closed("git diff failed", repo), sort_keys=True))
+    patch = jj("diff", "--git", *diff_args)
+    if patch.returncode != 0:
+        print(json.dumps(fail_closed("JJ diff failed", repo), sort_keys=True))
         return 0
+
+    # JJ's Git-format patch supplies exact line counts and executable modes.
+    # Quoted/ambiguous paths fail closed instead of silently misclassifying.
+    stats: list[str] = []
+    modes: list[str] = []
+    path = None
+    added = deleted = 0
+    binary = False
+    old_mode = new_mode = "100644"
+    in_hunk = False
+    def finish_file() -> None:
+        if path is not None:
+            stats.append(f"{'-' if binary else added}\t{'-' if binary else deleted}\t{path}")
+            modes.append(f":{old_mode} {new_mode}\t{path}")
+    for line in patch.stdout.splitlines():
+        if line.startswith("diff --git "):
+            finish_file()
+            match = re.fullmatch(r"diff --git a/(.+) b/(.+)", line)
+            if not match or '"' in line:
+                print(json.dumps(fail_closed("ambiguous patch path", repo), sort_keys=True))
+                return 0
+            path = match.group(2)
+            added = deleted = 0
+            binary = False
+            old_mode = new_mode = "100644"
+            in_hunk = False
+        elif line.startswith("@@ "):
+            in_hunk = True
+        elif line.startswith(("Binary files ", "GIT binary patch")):
+            binary = True
+        elif line.startswith(("old mode ", "deleted file mode ")):
+            old_mode = line.rsplit(" ", 1)[1]
+            if line.startswith("deleted"):
+                new_mode = "000000"
+        elif line.startswith(("new mode ", "new file mode ")):
+            new_mode = line.rsplit(" ", 1)[1]
+        elif line.startswith("index ") and re.search(r" 100[0-7]{3}$", line):
+            old_mode = new_mode = line.rsplit(" ", 1)[1]
+        elif in_hunk and line.startswith("+"):
+            added += 1
+        elif in_hunk and line.startswith("-"):
+            deleted += 1
+    finish_file()
+    numstat = subprocess.CompletedProcess([], 0, "\n".join(stats))
+    raw = subprocess.CompletedProcess([], 0, "\n".join(modes))
 
     executable_mode_paths: set[str] = set()
     for line in raw.stdout.splitlines():

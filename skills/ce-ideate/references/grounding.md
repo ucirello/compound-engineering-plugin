@@ -8,11 +8,12 @@ Before generating ideas, gather grounding. The dispatch set depends on the mode 
 
 **Surprise-me grounding depth.** In surprise-me mode, grounding goes deeper than specified mode — apply the 0.2 table's `1 grounding` row, and pass issue themes as first-class input rather than a footnote when issue intelligence runs. Specified mode keeps the shallower scan: the user's named subject anchors what is relevant.
 
-**Pre-resolve the scratch directory.** Generate a `<run-id>` once (8 hex chars) and reuse it for the V15 cache and the Phase 2/4 checkpoints so they share one per-run directory. Scratch lives beneath the effective user's private CE root — `/tmp/compound-engineering-<uid>` when it is usable, else the validated `$TMPDIR` fallback the block below selects — never `.context/`. Run this to validate the owner-private root, create the run directory, and capture its absolute path:
+**Pre-resolve the scratch directory.** Generate a `<run-id>` once (8 hex chars) and reuse it for the V15 cache and the Phase 2/4 checkpoints so they share one per-run directory. Scratch lives beneath workspace-local `.tmp/rocketclaw/`, or local `.tmp/rocketclaw/` in the current directory when no JJ repository exists — never `.context/` or OS temporary storage. Run this from the target workspace's absolute root to validate the owner-private root, create the run directory, and capture its absolute path:
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+LOCAL_ROOT="$(jj workspace root 2>/dev/null || pwd -P)";
+if [ -L "$LOCAL_ROOT/.tmp" ]; then echo "unsafe local scratch parent" >&2; exit 1; fi;
+SCRATCH_ROOT="$LOCAL_ROOT/.tmp/rocketclaw";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
@@ -117,15 +118,17 @@ Consolidate all dispatched results into a short grounding summary using these se
 
 ## Model tiers (applies to every dispatch in this skill)
 
-Sub-agent dispatch is tiered by task shape, never hardcoded to a model name:
+Sub-agent dispatch is tiered by task shape, never hardcoded to a model name. Use OpenCode-native `opencode.models` to resolve configured model choices and tiers, and native subagents for dispatch (shell is for permitted research commands, never another harness's dispatcher). The repository configuration remains authoritative routing intent.
 
-- **Extraction tier** — evidence scouts and other retrieval/quoting work. Use the platform's cheapest capable model when the harness exposes a known override; escalate to the generation tier when the repo is large or the stack obscure.
-- **Generation tier** — evidence-driven ideation frames and basis verification. Use the platform's mid-tier model when the harness exposes a known override.
+**Permission and capacity gate (every dispatch).** These explicit researcher, ideation-frame, and fresh-context verifier requests satisfy a host rule permitting delegation when the user OR a loaded skill requests it; no second approval is needed under that rule. An unconditional higher-priority prohibition, unavailable tool, or actual denial still blocks delegation. Model-selection permission is separate: pass an optional model override only when host policy permits it, including an explicit user model request when required. Otherwise inherit when suitable and disclose unmet tier requirements. Resolve models only when an override is permitted; never guess IDs. Check actual runtime nesting capacity separately from permission; distinguish depth/capacity errors, model-argument rejection, missing tools, and permission denial using the actual error. Do not retry denials or evade depth limits through shell or another harness. Use facilitator-only or parent-coordinator fallback only where the phase contract permits it, and report degradation and incomplete independence/coverage. Separate same-model agents are not evidence of cross-model independence; an unavailable required different-model or fixed-route pass remains incomplete.
+
+- **Extraction tier** — evidence scouts and other retrieval/quoting work. Request the configured cheapest capable model only when an override is available and permitted by the gate above; otherwise inherit when suitable. Escalate the desired tier to generation when the repo is large or the stack obscure.
+- **Generation tier** — evidence-driven ideation frames and basis verification. Request the configured mid-tier model only when an override is available and permitted by the gate above; otherwise inherit when suitable.
 - **Ceiling tier** — ceiling ideation frames, cross-cutting synthesis, and final arbitration. Inherit the orchestrator's model by omitting the model parameter.
 
-If model names are unknown, omit the override and inherit rather than guessing.
+If model names are unknown or overrides are forbidden, omit the override and inherit rather than guessing, provided the inherited model can meet the task requirements. All earlier tier/override instructions are subject to this permission and capacity gate.
 
-**Degradation rule.** When the platform's subagent primitive does not support per-agent model selection, dispatch everything on the inherited model and keep the read budgets and dossier caps — cost control then comes from structure, not tiering.
+**Degradation rule.** When native subagents do not support or policy forbids per-agent model selection, use suitable inherited-model agents and keep the read budgets and dossier caps — cost control then comes from structure, not tiering. Disclose unmet configured tiers or required independence; do not count unavailable required passes as complete.
 
 For every native dispatch in this skill, classify rejection by whether an agent launched: correct a pre-launch argument rejection once, leave capacity-limited work queued, and send any other failure to that phase's stated degraded path.
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate cited claims in a solution doc against the git tree.
+"""Validate cited claims in a solution doc against the JJ tree.
 
 Usage:
     python3 validate-doc-claims.py <doc-path>
@@ -47,8 +47,10 @@ decides per flag: fix, annotate as historical, or confirm intentional.
 Only the summary exit code distinguishes "clean" from "needs a look".
 
 The script never touches the network (no fetch); classification uses
-whatever refs exist locally. Run a best-effort `git fetch --quiet` first
-when freshness matters. Pure stdlib (no third-party deps).
+whatever revisions exist locally. Run a best-effort `jj git fetch` from
+the absolute workspace root first when freshness matters. Repository-scoped
+GitHub verification uses `(cd "$workspace_root" && export GIT_DIR=$(jj git root)
+&& gh ...)`. Pure stdlib (no third-party deps).
 """
 import os
 import re
@@ -102,17 +104,59 @@ def usage_fail(msg: str) -> "NoReturn":
 
 
 def git(args: list[str], cwd: str) -> tuple[int, str]:
-    try:
-        result = subprocess.run(
-            ["git", *args],
-            cwd=cwd,
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        return result.returncode, result.stdout.strip()
-    except (OSError, subprocess.TimeoutExpired):
+    """Translate the validator's read-only tree queries to native JJ.
+
+    The historical function name is internal; no Git process is dispatched.
+    All revision paths are interpreted from the absolute workspace root.
+    """
+    def jj(arguments: list[str], root: str) -> tuple[int, str]:
+        try:
+            result = subprocess.run(
+                ["jj", *arguments], cwd=os.path.abspath(root),
+                capture_output=True, text=True, timeout=30,
+            )
+            return result.returncode, result.stdout.strip()
+        except (OSError, subprocess.TimeoutExpired):
+            return 1, ""
+
+    code, root = jj(["workspace", "root"], cwd)
+    if code or not root:
         return 1, ""
+    def rev(value: str) -> str:
+        return "@" if value == "HEAD" else value.replace("origin/", "").replace("upstream/", "") + ("@origin" if value.startswith("origin/") else "@upstream" if value.startswith("upstream/") else "")
+    if args == ["rev-parse", "--show-toplevel"]:
+        return 0, root
+    if args[:2] == ["rev-parse", "--abbrev-ref"]:
+        # JJ has no remote-default symbolic-ref query. Read only its backend.
+        code, backend = jj(["git", "root"], root)
+        if code:
+            return 1, ""
+        try:
+            result = subprocess.run(
+                ["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
+                cwd=root, env={**os.environ, "GIT_DIR": backend},
+                capture_output=True, text=True, timeout=30,
+            )
+            return result.returncode, result.stdout.strip()
+        except (OSError, subprocess.TimeoutExpired):
+            return 1, ""
+    if args[0] == "rev-parse":
+        return jj(["log", "-r", rev(args[-1]), "--no-graph", "-T", "commit_id"], root)
+    if args[0] == "rev-list":
+        left, right = args[-1].split("..", 1)
+        code, output = jj(["log", "-r", f"{rev(left)}..{rev(right)}", "--no-graph", "-T", 'commit_id ++ "\\n"'], root)
+        return code, str(len(output.splitlines())) if code == 0 else ""
+    if args[0] == "cat-file":
+        value = args[-1]
+        if ":" in value:
+            revision, path = value.split(":", 1)
+            code, output = jj(["file", "list", "-r", rev(revision), path], root)
+            return (0 if code == 0 and path in output.splitlines() else 1), output
+        return jj(["log", "-r", value.removesuffix("^{commit}"), "--no-graph", "-T", "commit_id"], root)
+    if args[0] == "merge-base":
+        code, output = jj(["log", "-r", f"{rev(args[-2])} & ancestors({rev(args[-1])})", "--no-graph", "-T", "commit_id"], root)
+        return (0 if code == 0 and output else 1), output
+    return 1, ""
 
 
 def split_body(text: str) -> tuple[str, int]:

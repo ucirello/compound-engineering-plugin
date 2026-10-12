@@ -43,12 +43,9 @@ Option 4 (continue) re-enters Phase 3 with the current state, state re-read from
 
 ### 4.4 Cleanup
 
-Clean up scratch space:
-```bash
-# Keep the experiment log for local resume/audit on this machine
-# Remove temporary batch artifacts
-rm -f .context/compound-engineering/ce-optimize/<spec-name>/strategy-digest.md
-```
+Clean up only verified disposable temporary batch artifacts. Preserve the experiment log and strategy digest for local resume/audit; copy and read back evidence into tracked storage when durable sharing is needed. Do not delete the digest while it is required for resume, recovery, or audit.
 
 Do NOT delete the experiment log if the user may resume locally or wants a local audit trail. If they need a durable shared artifact, summarize or export the results into a tracked path before cleanup.
 Do NOT delete experiment worktrees that are still being referenced.
+
+Retire disposable experiment workspaces only under the complete JJ-owned retirement safeguards in `loop.md`; completion does not authorize deleting a user's or harness-owned workspace. Preserve the optimization, best, archive, and recovery bookmarks. Keep required digests/evidence when still needed, regardless of the scratch-cleanup example above. For an authorized PR handoff, use `ce-commit-push-pr`; repository-scoped GitHub commands must run as `(cd "$workspace_root" && export GIT_DIR=$(jj git root) && gh ...)`, with the target absolute cwd and local `.tmp/` artifacts.

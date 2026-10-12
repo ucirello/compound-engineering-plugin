@@ -10,7 +10,7 @@ The reader does not change the decision. An artifact rendered for another reader
 
 ## Shape
 
-- One section headed `Check yourself`, placed last: after the explanation and before the HTML footer.
+- One section headed `Check yourself`, placed last: after the explanation.
 - Questions first, then their answers under an `Answers` label, so a reader can attempt every question before any answer is in view. Choose the number according to what is worth practicing.
 - Each answer states what a correct response contains and names the gap a plausible wrong answer exposes. One correction per question — do not lecture past the gap.
 - Static only: no forms, scripts, click handlers, or collapsing widgets. The label and spacing set the answers apart; nothing hides them.

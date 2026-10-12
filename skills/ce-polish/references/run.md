@@ -4,9 +4,11 @@ This reference owns checkout safety, server startup, reachability, and browser h
 
 ## Resolve the workspace
 
-If the user named a PR or branch, first locate whether its branch is already checked out in a worktree. Enter that existing worktree when the harness can; if it cannot, report the blocker and stop. Only use the harness's checkout capability in the current workspace when no other worktree owns the target. With no argument, stay in the current checkout.
+Resolve the current absolute root with `jj workspace root`. Run every JJ command from the target workspace's absolute root, for example `(cd "$workspace_root" && jj status)`; `jj -R` is not a working-directory substitute. Consult https://docs.jj-vcs.dev/latest/cli-reference/#jj-workspace and https://docs.jj-vcs.dev/latest/git-experts/ for native workspace and bookmark semantics. For repository-scoped GitHub calls use `(cd "$workspace_root" && export GIT_DIR=$(jj git root) && gh ...)`.
 
-Confirm the resulting branch is neither the repository's default branch nor detached. Report and stop when a safe feature-branch workspace cannot be reached; do not create another worktree behind the harness or move uncommitted user changes.
+If the user named a PR or branch, resolve its exact revision and bookmark, then inspect `jj workspace list` and the registered workspaces to locate any existing workspace on that target (including an empty `@` directly above it). Enter that existing workspace and move the active harness session there using its supported capability; if it cannot, report the blocker and stop. Reuse existing isolation under its verified name without renaming, recreating, or silently changing its colocation. Only use the harness's JJ revision-switch capability in the current workspace when no other workspace owns the target and unrelated tracked, ignored, and untracked work is preserved. With no argument, stay in the current workspace.
+
+Confirm the resulting feature revision is associated with the intended non-default bookmark, not the repository's default bookmark; JJ's working-copy change need not itself carry a bookmark. Report and stop when a safe feature workspace cannot be reached; do not create another workspace behind the harness or move unrelated user changes. This workflow does not create or remove workspaces. Any separately authorized isolated setup must follow `ce-worktree`'s explicit `jj workspace add --colocate`, destination-root `jj git colocation status`, stable `YYYYMMDD-<meaningful-kebab-case-slug>` identity matching the local `.tmp/` destination basename, collision suffixes, and harness ownership rules; incompatible harness capabilities are blockers, not a Git fallback. Retirement belongs to the authorized workspace owner under `ce-worktree`'s safe JJ-owned `workspace remove` lifecycle, not this polish loop.
 
 ## Resolve the start command
 
@@ -48,7 +50,7 @@ Startup may proceed only when the tuple has a usable command, working directory,
 
 ## Start and hand off
 
-Inspect the chosen port and select exactly one intended server instance before handoff. Reuse a process already serving that port only when evidence identifies it as the intended project server. Only when no intended instance is selected may the resolved command be launched in the background with the project's working directory and environment; that process becomes the selected instance. Keep its process or session handle, and write its output under a directory created with `mktemp -d "${TMPDIR:-/tmp}/ce-polish-XXXXXX"`.
+Inspect the chosen port and select exactly one intended server instance before handoff. Reuse a process already serving that port only when evidence identifies it as the intended project server. Only when no intended instance is selected may the resolved command be launched in the background with the project's working directory and environment; that process becomes the selected instance. Keep its process or session handle, and write its output under a directory created with `mktemp -d "$workspace_root/.tmp/polish-XXXXXX"`. First ensure the workspace-local `.tmp/` parent exists, is owned and writable, is not a symlink, and is ignored; do not fall back to OS-global temporary storage on failure.
 
 An occupied port that cannot be attributed to the intended project server remains an unresolved collision. Ask the user whether to stop that process, choose another port, or stop this run; never kill it or launch past it.
 

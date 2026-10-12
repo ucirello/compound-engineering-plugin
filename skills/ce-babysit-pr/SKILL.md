@@ -32,13 +32,17 @@ One PR named → `target` (ask once if a confirmed multi-layer stack exists); as
 
 ## Step 1: Resolve and arm
 
-1. `gh repo view` must succeed, else say GitHub-only, stop.
-2. Resolve the PR from the argument or current branch (`references/setup.md`); none → report, stop.
+1. Run commands from the target workspace's absolute root; export `GIT_DIR=$(jj git root)` before all repository-scoped `gh` calls and helper invocations. `gh repo view` must succeed, else say GitHub-only, stop. JJ documentation: https://docs.jj-vcs.dev/latest/git-experts/ and https://docs.jj-vcs.dev/latest/cli-reference/ .
+2. Resolve the PR from the argument or JJ bookmarks (`references/setup.md`). `@` may be an empty change above the pushed PR head: inspect `@-`, its bookmarks, remote branch, and associated PR before concluding none exists. Continue when that PR is eligible; empty `@` alone never stops babysitting.
 3. Chain classification comes from the snapshot, never the user; resolve posture before semantic work.
-4. **Checkout must be the PR's head branch with matching upstream** before any delegated mutation; default `gh pr checkout <ref>`; no push access or dirty checkout → stop, say so.
+4. **Verify the exact PR head repository, bookmark, remote, commit, and push authority** before delegated mutation. Fetch the verified bookmark with JJ and align a clean workspace with `jj new <verified-head>` from its absolute root; an empty `@` directly above that head is already aligned. Routine authorized alignment needs no extra approval. Dirty/conflicted state, ignored/unrelated work that could be affected, uncertain targets, denied permissions, or unknown push authority → preserve state and use the safe stop/decision path; never reset, discard, guess, or use `gh pr checkout`.
 5. **Sustain mode** (`references/watch-loop.md`): Keep monitoring in the current session until a stop condition is met. Use checkpoint mode only when the user requests it or the harness cannot keep the session active while waiting for the watcher's output. The default self-sustaining in-session watch uses `pr-snapshot watch` and runs one tick per `BABYSIT_WAKE`; never collapse the loop into a script. In checkpoint mode, run one tick and report paused monitoring with the resume invocation from `references/setup.md`. **Pipeline** (`mode:pipeline`): bounded synchronous ticks, structured return (`references/pipeline.md`).
 
 ## Step 2: One tick (ordering invariant)
+
+Authorized maintenance includes factual refresh of a stale PR description with verified results of this run: preserve unrelated user-authored content and issue links, apply without another preview/yes-no approval, and do not route through standalone rewrite approval. Starting/re-arming authorized monitoring also needs no extra approval, subject to actual permissions, checkpoint boundaries, and standing opt-outs. Outside this maintenance or an explicit apply request, optional existing-description rewrites still need approval; description-only requests remain draft-only. A declined optional rewrite never blocks otherwise authorized monitoring or alignment and is never bundled into their permission question.
+
+Use OpenCode-native skill invocation and, where delegation is permitted, `subagents`/`shell`; resolve configured model intent through `opencode.models`. These explicit leaf dispatch instructions satisfy a host user-or-loaded-skill delegation exception, but never override an unconditional prohibition or denial. Model override permission and nesting capacity are separate: omit optional `model` when no explicit user model request authorizes it, use suitable inherited reviewers, distinguish actual depth/capacity errors from denials or missing tools, and report required unavailable cross-model/independent coverage as incomplete. Never evade a denial/depth limit through another harness.
 
 Snapshot first, then in this order:
 

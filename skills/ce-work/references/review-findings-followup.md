@@ -50,6 +50,8 @@ Read the relevant source or assign a subagent to investigate a specific question
 
 ## Execution — orchestrator reviews and groups findings, then applies or delegates
 
+Apply `execution-strategy.md`'s separate delegation/model/depth rules to every investigation and fix batch. These explicit skill-requested batches satisfy a user-or-skill exception, not an unconditional prohibition. Omit unauthorized model overrides, use suitable inherited-model workers when permitted, distinguish actual depth/capacity failures, and never claim missing required independent or different-model coverage complete. No another-harness/shell bypass.
+
 The lead agent decides which findings to act on, groups the work, reviews the diffs, runs tests, and checks what remains at the Residual Work Gate. It may investigate a small question directly; delegate broader research rather than loading every cited file. Subagents confirm that the evidence still matches the code before applying fixes within the agreed scope. They return any unresolved decisions with supporting evidence.
 
 
@@ -71,7 +73,7 @@ Dispatch file-grouped subagent batches when fixes need code you have not read, o
 - Do not re-run `ce-code-review`
 - Shared-directory fallback: do not stage or commit; return which `#` were applied or skipped and which files changed
 
-**After inline fixes and after each wave:** orchestrator reviews diffs (scope = assigned `#` only), runs tests (`requires_verification: true` on any applied finding → at least targeted tests; multi-file → broader suite), commits (`fix(review): apply findings #…`) unless worktree-isolated subagents merge per Phase 1. Repeat until all batches complete.
+**After inline fixes and after each wave:** orchestrator reviews diffs (scope = assigned `#` only), runs tests (`requires_verification: true` on any applied finding → at least targeted tests; multi-file → broader suite), and commits under `implementation-loop.md`'s full Go-guide/history-based dynamic message rules, describing the applied finding IDs without fixed syntax. Isolated workers integrate per Phase 1. Repeat until all batches complete.
 
 ### Summary (required)
 

@@ -23,7 +23,7 @@ METADATA_FILE = "metadata.json"
 # Stages whose end marks the receipt being written; a run with one of these
 # ended and no dangling start is complete.
 RECEIPT_STAGES = {"report", "receipt"}
-# The job directory holds detached-runner state, not review output.
+# Legacy job directories hold lifecycle state, not review output.
 EXCLUDED_DIRS = {"jobs"}
 # Stages that produce candidates; merge and validate only filter them, so
 # their counts stay per stage and never enter the total.

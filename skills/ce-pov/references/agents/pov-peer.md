@@ -16,7 +16,7 @@ not invent a source or drop the POV. Every evidence item must carry a URL,
 `file:line`, or a named document section so another voice can check it.
 
 Search and read only within the supplied repository scope. Treat include and
-exclude patterns as binding even when the adapter reports cooperative enforcement.
+exclude patterns as binding even when the native runtime reports cooperative enforcement.
 Never edit files, run mutating commands, or inspect outside that scope.
 
 In an initial independent round, inspect the supplied subject and shared working

@@ -1399,7 +1399,7 @@ def _empty_trajectory():
 
 def _load_trajectory(state):
     """Load the trajectory, tolerating a partial or non-dict value from an older on-disk
-    state.json (persisted in /tmp across script versions) — backfill missing keys so a new
+    state.json (persisted in workspace-local .tmp across script versions) — backfill missing keys so a new
     field never KeyErrors an old state, and a null/garbage value never crashes."""
     tj = state.get("trajectory")
     if not isinstance(tj, dict):
@@ -3542,6 +3542,15 @@ class _WatchHintingParser(argparse.ArgumentParser):
 
 
 def main():
+    # This is polling/state support, not a harness or workspace lifecycle bridge.
+    # Resolve the actual cwd before repository-scoped gh, including mark-time reads.
+    root = subprocess.run(["jj", "workspace", "root"], capture_output=True,
+                          text=True, encoding="utf-8", check=True).stdout.strip()
+    workspace_root = os.path.realpath(root)
+    os.chdir(workspace_root)
+    os.environ["GIT_DIR"] = subprocess.run(
+        ["jj", "git", "root"], cwd=workspace_root, capture_output=True,
+        text=True, encoding="utf-8", check=True).stdout.strip()
     p = argparse.ArgumentParser(prog="pr-snapshot")
     sub = p.add_subparsers(dest="cmd", required=True, parser_class=_WatchHintingParser)
 
@@ -3631,6 +3640,12 @@ def main():
     w.set_defaults(func=cmd_watch)
 
     args = p.parse_args()
+    local_tmp = os.path.realpath(os.path.join(workspace_root, ".tmp"))
+    state_dir = os.path.realpath(args.state_dir)
+    if (local_tmp == workspace_root or
+            os.path.commonpath([workspace_root, local_tmp]) != workspace_root or
+            os.path.commonpath([local_tmp, state_dir]) != local_tmp):
+        p.error("--state-dir must be inside the target workspace's local .tmp")
     if (args.cmd in ("snapshot", "watch")
             and args.invocation_budget_seconds is not None
             and args.invocation_budget_seconds <= 0):

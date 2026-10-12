@@ -17,10 +17,12 @@ It works **with or without Spiral**: with nothing installed it drafts directly f
 
 A free-form description in the arguments is the source of truth. Otherwise derive it from context, using what is available and never waiting on any single source:
 
-- **Merged/active PR** — `gh pr view --json title,body,url` (the title and body usually state the user-facing value)
-- **The diff** — `git diff main...HEAD --stat`, skimming notable changes so the claim is grounded in what actually changed
+- **Merged/active PR** — `(cd "$workspace_root" && export GIT_DIR=$(jj git root) && gh pr view --json title,body,url)` (the title and body usually state the user-facing value)
+- **The diff** — `(cd "$workspace_root" && jj diff --from "<verified-common-ancestor-of-base-and-feature>" --to "<verified-feature-revision>" --stat)`, skimming notable changes so the claim is grounded in what actually changed. Resolve the actual base bookmark and feature revision first; do not assume a branch name or that an empty `@` represents the shipped commit.
 - **Changelog** — the top or `[Unreleased]` entry in `docs/changelog.md`, `CHANGELOG.md`, or similar
-- **Recent commits** — `git log --oneline -15` for the arc of the change
+- **Recent changes** — `(cd "$workspace_root" && jj log -r 'ancestors(@)' --limit 15)` for the arc of the change
+
+Resolve `workspace_root` to the target workspace's absolute root with `jj workspace root`, and run repository commands from that root, not from a nested directory. Use the [JJ command reference](https://docs.jj-vcs.dev/latest/cli-reference/) and [Git command comparison](https://docs.jj-vcs.dev/latest/git-command-table/) for revision selection. Without a JJ repository, use the user's description, changelog, or supplied PR context rather than requiring repository setup. Any temporary output, including fallback/error captures, belongs under the target workspace's `.tmp/` (or local `.tmp/` without a repository), never OS-global temporary storage.
 
 Then write a 1-3 sentence summary of the **user-facing value**: what a user can now do that they couldn't before, and why they'd care. Outcome, not implementation — "You can now export any report to CSV in one click", not "Added a CsvSerializer and an export endpoint." If you can't confidently tell what shipped, ask one short question rather than guessing.
 

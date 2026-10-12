@@ -103,12 +103,13 @@ For each hypothesis in the batch, dispatch according to `execution.mode`. In `se
 
 The Phase 3 blocks below each set `SKILL_DIR` inline as well (the loaded `ce-optimize` skill directory; see the Bundled scripts note in Phase 1). Shell state does not persist from Phase 1, so each block carries its own assignment.
 
-**Worktree backend:**
-1. Create experiment worktree:
+**JJ workspace backend (legacy `worktree` setting):**
+1. Detect existing isolation first; reuse its verified name without renaming or recreating it. Honor harness ownership and lifecycle. For new isolation, use the supported colocated JJ capability or load `ce-worktree`. Capture local creation date once, derive a meaningful slug from the spec and experiment, normalize caller names without double-prefixing, and persist `YYYYMMDD-<slug>` before creation. Use that identical name as the workspace name and destination basename under the source root's local `.tmp/`. Check registrations and absolute destinations for collisions; append `-2`, `-3`, etc., never overwrite. Preserve the selected identity on retries, resumes, and midnight boundaries. Verify the optimization bookmark's exact base revision, then create from the source absolute root:
    ```bash
-   SKILL_DIR="<absolute path of the directory containing this SKILL.md>";
-   WORKTREE_PATH=$(bash "$SKILL_DIR/scripts/experiment-worktree.sh" create "<spec_name>" <exp_index> "optimize/<spec_name>" <shared_files...>)  # creates optimize-exp/<spec_name>/exp-<NNN>
+   (cd "$workspace_root" && jj workspace add --colocate --name "$workspace_name" --revision "$verified_base" "$absolute_destination")
+   (cd "$absolute_destination" && jj git colocation status)
    ```
+   Request and verify that name with harness-native creation too; unsupported naming or colocation is a compatibility blocker, not a Git fallback. Existing isolation that does not meet new-creation rules is not silently modified. Adopt the experiment root through the harness session API where supported. Record registration, absolute path, base, and run ownership. Copy required `.env` files except `.env.example`, and declared shared files into owned destinations without replacing existing content; isolate mutable databases and outputs. Set actual cwd to the target absolute root for every JJ command (never rely on `-R`). See https://docs.jj-vcs.dev/latest/cli-reference/#jj-workspace .
 2. Apply port parameterization if configured (set env vars for the measurement script)
 3. Fill the experiment prompt template (`references/experiment-prompt-template.md`) with:
    - Iteration number, spec name
@@ -121,19 +122,7 @@ The Phase 3 blocks below each set `SKILL_DIR` inline as well (the loaded `ce-opt
    - The current best's `worst_cases` that bear on this hypothesis, if any were recorded (from the kept experiment's entry, or the baseline before any keep)
 4. Dispatch a subagent with the filled prompt, working in the experiment worktree
 
-**Codex backend:**
-1. Check environment guard -- do NOT delegate if already inside a Codex sandbox:
-   ```bash
-   # If these exist, we're already in Codex -- fall back to subagent
-   test -n "${CODEX_SANDBOX:-}" || test -n "${CODEX_SESSION_ID:-}" || test ! -w .git
-   ```
-2. Fill the experiment prompt template
-3. Write the filled prompt to a temp file
-4. Dispatch via Codex:
-   ```bash
-   cat /tmp/optimize-exp-XXXXX.txt | codex exec --skip-git-repo-check - 2>&1
-   ```
-5. Security posture: use the user's selection (ask once per session if not set in spec)
+**Native dispatch (including legacy `codex` configuration intent):** Read configured model routes, tiers, and security posture as authoritative intent. Resolve models with `opencode.models`, then execute with native subagents and allowed shell tools, never another harness dispatcher. These experiment, research, and judge instructions explicitly request delegation: under a user-OR-loaded-skill permission rule no second approval is needed. Respect unconditional prohibitions, tool absence, and actual denials. Delegation permission does not authorize a model override: if a user model request is required and absent, omit the optional model argument and use a suitable inherited model, disclosing unmet configured routes. Same-model reviewers do not establish cross-model independence. Verify available nesting depth separately; classify actual depth/capacity, permission, model-argument, and missing-tool failures distinctly. Never evade a denial or depth limit through shell or another harness. Required independent judges that cannot start remain unmeasured under step 3.3, not inline-scored. Preserve configured concurrency/spend caps and ask once for an unset security posture. Prompt and error artifacts belong in target-local `.tmp/`, which must be ignored.
 
 ### 3.3 Collect and Persist Results
 
@@ -180,7 +169,7 @@ For each completed experiment, **immediately**:
    ```
    If that probe finds no runtime, do not invoke an empty command. Mark the experiment `error` with that reason and continue the batch. Use `decision` and `next_measurement`. Collect the requested measurement and repeat this sequence whenever `next_measurement` is not `none`. Do not keep a candidate until `next_measurement` is `none`. Record `inconclusive` and `censored` as those outcomes, not as `reverted`. Each extra sample belongs to this same experiment: write it onto the existing entry at CP-3, then decide again.
 
-7. **IMMEDIATELY persist this experiment on disk (CP-3).** Do not defer this to batch evaluation. The durable unit is one log entry per experiment at `.context/compound-engineering/ce-optimize/<spec-name>/experiment-log.yaml`. After the first measurement, append that entry, including any `worst_cases`. After every later ladder sample for the same experiment, write the accumulated metrics and current outcome onto that same entry. Do not append a second entry for the same hypothesis, and do not rewrite a different experiment's samples. Write a decide terminal only when `next_measurement` is `none`. Until then the entry stays nonterminal, `promising` while the keep path still needs samples and `measured` otherwise (including an inconclusive result that still wants samples). When `next_measurement` is `none`, an eligible result stays `measured` until its diff is on the optimization branch; a non-eligible result gets the decide terminal (`reverted`, `inconclusive`, `censored`, `degenerate`). `kept` and `runner_up_kept` wait until that integration. The raw metrics are on disk and safe from context compaction.
+7. **IMMEDIATELY persist this experiment on disk (CP-3).** Do not defer this to batch evaluation. The durable unit is one log entry per experiment at `.context/ce-optimize/<spec-name>/experiment-log.yaml`. After the first measurement, append that entry, including any `worst_cases`. After every later ladder sample for the same experiment, write the accumulated metrics and current outcome onto that same entry. Do not append a second entry for the same hypothesis, and do not rewrite a different experiment's samples. Write a decide terminal only when `next_measurement` is `none`. Until then the entry stays nonterminal, `promising` while the keep path still needs samples and `measured` otherwise (including an inconclusive result that still wants samples). When `next_measurement` is `none`, an eligible result stays `measured` until its diff is on the optimization branch; a non-eligible result gets the decide terminal (`reverted`, `inconclusive`, `censored`, `degenerate`). `kept` and `runner_up_kept` wait until that integration. The raw metrics are on disk and safe from context compaction.
 
 8. **VERIFY the write (CP-3 verification).** Read the experiment log back from disk and confirm the entry just written is present. If verification fails, retry the write. Do NOT proceed to the next experiment until this entry is confirmed on disk.
 
@@ -195,19 +184,19 @@ After all experiments in the batch have been measured:
 2. **Rank** the eligible experiments in the batch by the script's `rank_score` (primary relative gain when the primary moved; otherwise the strongest required-objective relative gain). Identify that winner as the experiment to keep. An eligible experiment may be kept even if the ranking primary did not move.
 
 3. **If `decide.mjs` returns `keep` for that winner: KEEP**
-   - Commit the experiment branch first so the winning diff exists as a real commit before any merge or cherry-pick
+   - Snapshot and describe the verified experiment JJ change first so the winning diff has a stable revision before integration
    - Include only mutable-scope changes in that commit; if no eligible diff remains, treat the experiment as non-improving and revert it
-   - Merge the committed experiment branch into the optimization branch
-   - Use the message `optimize(<spec-name>): <hypothesis description>` for the experiment commit
+   - Integrate the verified experiment revision into the optimization bookmark using the JJ Integration procedure below
+   - Compose the experiment's JJ description dynamically using the message standards below; include the spec identity and hypothesis semantics, not a fixed prefix
    - After the merge succeeds, clean up the winner's experiment worktree and branch; the integrated commit on the optimization branch is the durable artifact
    - This is now the new baseline for subsequent batches
 
 4. **Check file-disjoint runners-up** (up to `max_runner_up_merges_per_batch`):
    - For each runner-up that also improved, check file-level disjointness with the kept experiment
    - **File-level disjointness**: two experiments are disjoint if they modified completely different files. Same file = overlapping, even if different lines.
-   - If disjoint, cherry-pick the runner-up onto the new baseline and run the same decide loop as step 3.3 against a fresh sample set for that combined snapshot. Do not reuse the standalone experiment's accumulated samples; they were measured against the previous baseline. Collect further measurement whenever `next_measurement` is not `none`. Persist the combined pairing as `kind: integrated` on that same log entry without replacing the standalone comparison. Keep the original standalone log entry for audit.
-   - Keep the cherry-pick only when that result is eligible and `next_measurement` is `none` (outcome: `runner_up_kept`); then clean up that runner-up's experiment worktree and branch
-   - Otherwise revert the cherry-pick, log it as "promising alone but neutral/harmful in combination" (outcome: `runner_up_reverted`), then clean up the runner-up's experiment worktree and branch
+   - If disjoint, rebase the verified runner-up delta onto the new baseline in its isolated JJ workspace and run the same decide loop as step 3.3 against a fresh sample set for that combined snapshot. Do not reuse the standalone experiment's accumulated samples; they were measured against the previous baseline. Collect further measurement whenever `next_measurement` is not `none`. Persist the combined pairing as `kind: integrated` on that same log entry without replacing the standalone comparison. Keep the original standalone log entry for audit.
+   - Update the optimization bookmark to the combined revision only when eligible and `next_measurement` is `none` (outcome: `runner_up_kept`); then retire the runner-up workspace under the safeguards below
+   - Otherwise leave the optimization bookmark at its preserved baseline, log the combined candidate as "promising alone but neutral/harmful in combination" (outcome: `runner_up_reverted`), preserve recovery, and retire only disposable runner-up state under the safeguards below
    - Stop after first failed combination
 
 5. **Handle deferred dependencies.** Experiments that need unapproved dependencies get outcome `deferred_needs_approval`
@@ -224,7 +213,7 @@ After all experiments in the batch have been measured:
 
 3. **Update the `best` section** in the experiment log if a new best was found. Update the running spend totals there too: judge spend, and the estimated spend of the whole run, which counts experiment workers, judges, and research subagents. Use the usage the host reports where it reports any, estimate the rest from the work dispatched, and record which parts are estimates. Write to disk.
 
-4. **Write strategy digest** to `.context/compound-engineering/ce-optimize/<spec-name>/strategy-digest.md`:
+4. **Write strategy digest** to `.context/ce-optimize/<spec-name>/strategy-digest.md`:
    - Categories tried so far (with success/failure counts)
    - Key learnings from this batch and overall
    - Failure patterns that recur across `worst_cases`, and which ones the current best still shows
@@ -260,7 +249,39 @@ If none is met, proceed to the next batch (3.1).
 
 ### 3.7 Cross-Cutting Concerns
 
-**Codex failure cascade**: Track consecutive Codex delegation failures. After 3 consecutive failures, auto-disable Codex for remaining experiments and fall back to subagent dispatch. Log the switch.
+**Dispatch failure cascade**: Track consecutive failures of a configured native route. After 3 non-capacity failures, disable that route for remaining experiments and use an allowed native fallback only when it satisfies the experiment contract. Log the switch and any unmet model or independence coverage; do not retry denied operations.
+
+### JJ Integration, Descriptions, and Retirement
+
+Before integration, inspect `jj diff` and conflicts in the experiment root. Preserve out-of-scope changes separately rather than committing them with the winner. Describe the verified mutable-scope change with `jj describe -m "<message composed from the standards below>"`, preserve a recovery bookmark, and integrate its verified change onto the current optimization revision with `jj rebase` for an independent delta or `jj new` with verified parents for an intentional merge. Update `optimize/<spec-name>` only after conflict resolution and successful combined measurement. Runner-up application uses its verified delta against the new baseline, not a blind branch merge; on failed combination restore the preserved baseline through a new clean JJ change without discarding unrelated work. Keep best/archive/recovery references separate from disposable experiment bookmarks.
+
+**Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.** Before every composition read the full guide and compare several recent subjects AND bodies from `(cd "$workspace_root" && GIT_DIR=$(jj git root) git log -10 --format=%B)`. Determine repository prefixes/package names, casing, tense, subject/body separation, wrapping, and issue placement at runtime. Repository/project/user syntax wins over Go guidance; apply compatible clarity and structure without inventing precedent when history is absent. This read-only backend history is not permission for Git workspace mutation.
+
+Go source guidance, not a mandatory repository template:
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+
+```text
+net/http: handle foo when bar
+
+[longer description here in the body]
+
+Fixes #12345
+```
+
+> Notably, for the subject (the first line of description):
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+
+> For the body (the rest of the description):
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
+
+Every cleanup instruction in this loop means JJ-owned retirement only within existing authorization: stop workers, leave the target, and move active harness sessions to a surviving workspace first. Verify exact registered name, absolute path, and run ownership. Prove integration for kept outcomes; preserve recovery references for rejected work. Copy result markers and required measurements/evidence outside the target and read them back before removal. Inspect tracked changes, conflicts, ignored and untracked files; JJ removal snapshots do not protect ignored or left-untracked content. Never delete unrelated, ambiguous, still-referenced, or non-disposable content, and respect harness lifecycle authority. From the surviving absolute root use `jj workspace remove <verified-workspace-name>`, then verify both deregistration with `jj workspace list` and directory disappearance. Warnings or incomplete deletion are blockers: retain remaining state and report, never force-delete or fall back to Git. Use `jj workspace forget` only to unregister while preserving files. Bookmark deletion is separate and never removes best/archive/recovery or still-needed references.
 
 **Error handling**: Classify a failed measurement from what `measure.sh` actually signaled. The censored stderr marker (with exit 125) is `censored`. Exit 124 is `timeout`. Any other non-zero exit (including 125 without that marker) is `error`. Log that outcome with the error message, revert the experiment, and continue the batch.
 

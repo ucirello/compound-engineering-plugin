@@ -37,7 +37,7 @@ When triage selects Return-to-Caller Mode, read `references/return-to-caller.md`
 
 2. **Resolve the engine, then strategy.** After bounded plan intake and task derivation, but before selecting a unit for execution, writing, dispatching, or committing, read `references/execution-engines.md` and complete its route selection. It applies with or without a typed binding; native execution is eligible only when that reference selects it or exhausts an allowed fallback. The engine choice never changes which reference governs how the run ends.
 
-   If cross-model execution is selected, read `references/cross-model-execution.md` before any content or authority crosses to the other model. It defines controller initialization, the post-init engine lock, bounded egress, transactions, recovery, and receipts.
+   If cross-model execution is selected, read `references/cross-model-execution.md` before any content or authority crosses to the other model. It defines native dispatch initialization, the post-init engine lock, bounded egress, transactions, recovery, and receipts.
 
    Before choosing inline, serial, or parallel execution, and before dispatching any worker, read `references/execution-strategy.md`. It decides scheduling, isolation, the packet each worker receives, worker lifecycle, and integration. The host orchestrator keeps authoritative verification and makes the canonical commits.
 
@@ -45,7 +45,7 @@ When triage selects Return-to-Caller Mode, read `references/return-to-caller.md`
 
 Before the first implementation write, including on the Trivial route, read `references/implementation-loop.md`. It decides how evidence is chosen, verification, when to stop a unit, incremental commits, following existing patterns, continuous testing, where simplification stops, UI work, progress tracking, and settled decisions.
 
-The commit rule from this file stays in force throughout: every implementation commit names only that unit's owned files. A bare `git commit` can absorb the user's pre-existing index, so it is forbidden.
+The commit rule from this file stays in force throughout: every implementation commit includes only that unit's owned files. A bare `jj commit` can absorb unrelated working-copy changes, so use the path-limited workflow in `implementation-loop.md`.
 
 ### Phase 3-4: Quality Check and Finishing Work
 

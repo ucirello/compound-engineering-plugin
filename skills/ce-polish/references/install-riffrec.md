@@ -28,7 +28,7 @@ Follow riffrec's own README when it names a different mount point for the framew
 
 ## Commit
 
-Commit the dependency change, the lockfile, and the mount edit as one setup commit on the current branch through `ce-commit`, with a message that says it adds riffrec live mode for polish sessions. Keep its hash: the live-mode report names it, including when the riffer later declines the consent screen and no session runs (the commit stays; riffrec remains in the app after the session, as disclosed).
+Save the dependency change, the lockfile, and the mount edit as one setup change on the current feature bookmark through `ce-commit`, delegating message composition to that skill's full standards workflow. The semantic requirements are to describe the addition of riffrec live mode for polish sessions and name the installed version; they impose no fixed subject syntax. Keep its commit ID: the live-mode report names it, including when the riffer later declines the consent screen and no session runs (the change stays; riffrec remains in the app after the session, as disclosed).
 
 ## When it fails
 

@@ -51,6 +51,8 @@ Detection is reasoning-based. Do not maintain an enumerated checklist of files t
 
 ## Probe timing and caching
 
+For every repository-scoped `gh` probe, issue creation, or update below, run from the target workspace's absolute root with `export GIT_DIR=$(jj git root)` first. Store any temporary request bodies, receipts, or fallback/error artifacts under that workspace's local `.tmp/`, not OS-global temporary storage.
+
 Availability probes run **at most once per session** and **only when Defer execution is imminent**. Never speculatively at review start, never per-Defer, never per-walk-through-finding. The cached tuple is reused for every Defer action in the same run.
 
 Typical probe sequence:

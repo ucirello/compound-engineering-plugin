@@ -205,8 +205,11 @@ def write_record(path: Path, raw: bytes, *, checkpoint: bool) -> None:
 
 
 def github_json(host: str, endpoint: str) -> dict:
+    workspace_root = subprocess.run(["jj", "workspace", "root"], capture_output=True, text=True, check=True).stdout.strip()
+    git_dir = subprocess.run(["jj", "git", "root"], cwd=workspace_root, capture_output=True, text=True, check=True).stdout.strip()
     result = subprocess.run(
         ["gh", "api", "--hostname", host, "--method", "GET", endpoint],
+        cwd=workspace_root, env={**os.environ, "GIT_DIR": git_dir},
         capture_output=True, text=True, check=False,
     )
     require(result.returncode == 0, result.stderr.strip() or f"GitHub GET failed: {endpoint}")
@@ -256,8 +259,13 @@ def main() -> None:
         if command in {"create", "checkpoint"}:
             command_parser.add_argument("--input", required=True)
     args = parser.parse_args()
+    root_result = subprocess.run(["jj", "workspace", "root"], capture_output=True, text=True, check=False)
+    workspace_root = Path(root_result.stdout.strip()) if root_result.returncode == 0 else Path.cwd()
+    temporary_root = workspace_root / ".tmp"
+    temporary_root.mkdir(exist_ok=True)
     if args.command == "preflight":
-        path = Path(args.path).absolute() if args.path else Path(tempfile.mkdtemp(prefix="ce-pending-feedback-")) / "pending.json"
+        path = Path(args.path).absolute() if args.path else Path(tempfile.mkdtemp(dir=temporary_root, prefix="pending-feedback-")) / "pending.json"
+        require(path.is_relative_to(temporary_root.resolve()), "handoff must be under workspace-local .tmp")
         require(not os.path.lexists(path), "handoff destination already exists")
         require(path.parent.is_dir(), "handoff parent directory does not exist")
         with tempfile.TemporaryFile(dir=path.parent):
@@ -265,6 +273,7 @@ def main() -> None:
         print(json.dumps({"handoff": str(path)}))
         return
     path = Path(args.path).absolute()
+    require(path.is_relative_to(temporary_root.resolve()), "handoff must be under workspace-local .tmp")
     if args.command in {"validate", "inspect-publication"}:
         record, _ = read_record(path)
     else:

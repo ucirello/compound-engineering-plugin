@@ -76,27 +76,11 @@ One run, and the log shows precisely which layer drops the value — secrets →
 
 ---
 
-## Git Bisect for Regressions
+## JJ-Guided Binary Search for Regressions
 
-When a bug is a regression ("it worked before"), use binary search to find the breaking commit:
+Verify known-good and known-bad revisions with `jj log`, record the original change/commit IDs, and preserve a recovery reference. Follow the skill body's isolation-first creation, colocation, naming, session adoption and cleanup contract for an experimental workspace; never switch the user's dirty workspace. Inspect ancestry with `jj log -r '<good>::<bad>'`; choose a middle revision on the relevant causal path, then from the experiment's absolute root use `jj new <verified-candidate>` and run the reproduction there. Record candidate commit ID, command, sanitized output and result under local `.tmp/`; narrow the interval until the first failing change is identified. Merge histories require testing relevant parents rather than assuming linear ancestry. An unavailable environment or inconclusive test is not a bad result.
 
-```bash
-git bisect start
-git bisect bad                    # current commit is broken
-git bisect good <known-good-ref> # a commit where it worked
-# git bisect will checkout a middle commit — test it
-# mark as good or bad, repeat until the breaking commit is found
-git bisect reset                  # return to original branch when done
-```
-
-For automated bisection with a test script:
-
-```bash
-git bisect start HEAD <known-good-ref>
-git bisect run <test-command>
-```
-
-The test command should exit 0 for good, non-zero for bad.
+For deterministic test commands, exit 0 means good and non-zero means bad only after excluding infrastructure failures. Execute the bounded search agentically through native shell, not a Git workspace bridge. Return the session to the original workspace, verify its state unchanged, copy/read back evidence outside the experiment, and retire only authorized disposable state through safe JJ-owned removal. See the [JJ CLI](https://docs.jj-vcs.dev/latest/cli-reference/).
 
 ---
 
@@ -214,7 +198,7 @@ When the symptom is "slow" rather than "wrong", logs and code reading mislead: i
 
 - Establish a numeric baseline before touching anything — a timing harness around the slow operation, a profiler run, a query plan (`EXPLAIN ANALYZE`). The baseline is Phase 1's reproduction check for a perf bug: the number is the red, and the fix is verified by re-measuring the same thing, not by reasoning that the change should be faster.
 - Attribute before optimizing: a profile or per-stage timings that show where the time actually goes. Optimizing an unmeasured suspect is the perf version of shotgun debugging.
-- If the slowness is a regression, bisect against the measurement (see Git Bisect above) rather than reading diffs for something that looks expensive.
+- If the slowness is a regression, binary-search against the measurement (see JJ-Guided Binary Search above) rather than reading diffs for something that looks expensive.
 
 ---
 

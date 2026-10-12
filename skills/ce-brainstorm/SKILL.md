@@ -23,12 +23,14 @@ The feature description is what the invocation carries, whether the user wrote i
 
 ## Artifact Root
 
+Resolve the absolute target workspace root with `jj workspace root` and run subsequent JJ commands from that root: `(cd "$workspace_root" && jj ...)`. Repository-scoped GitHub calls, if needed during handoff, use `(cd "$workspace_root" && export GIT_DIR=$(jj git root) && gh ...)`. Keep temporary artifacts, caches, and fallback/error scratch under that workspace's `.tmp/` (local `.tmp/` without a repository); ensure `.tmp/` is ignored. The retained pack-source resolver's Git clone/fetch operations are bounded support caching, not workspace lifecycle operations. JJ command guidance: https://docs.jj-vcs.dev/latest/git-command-table/ and https://docs.jj-vcs.dev/latest/cli-reference/.
+
 Resolve `<root>` the first time you compose or read a `<root>/` path, never earlier; a scratch-only or no-repo run that touches none skips this entirely.
 
 <!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only (`<repo-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
 - **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
@@ -36,9 +38,9 @@ Resolve `<root>` the first time you compose or read a `<root>/` path, never earl
 `brainstorm_output` and `brainstorm_model` resolve by this rule instead:
 
 <!-- ce-config-layers:start -->
-**Resolve ordinary CE yaml keys from the two repo files.**
+**Resolve ordinary configuration yaml keys from the two repo files.**
 
-- **Read** `<repo-root>/.compound-engineering/config.local.yaml`, then `config.yaml` (`<repo-root>` = `git rev-parse --show-toplevel`). Missing files are skipped. Gitignore does not change resolution.
+- **Read** `<repo-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<repo-root>` = `jj workspace root`). Missing files are skipped. Gitignore does not change resolution.
 - **Win** with the first active (non-commented) value. For scalars, empty is unset; an invalid value continues to the next layer, then the skill default. For lists and maps, a present key — including an empty list or map — replaces the whole key.
 - **Do not** use this rule for `docs_root` — that key is `config.yaml` only.
 <!-- ce-config-layers:end -->

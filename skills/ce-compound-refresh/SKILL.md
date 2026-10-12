@@ -31,13 +31,15 @@ On option 1, **read `references/worth-audit.md`** before Investigate; it adds th
 
 ## Artifact Root
 
-Resolve `<root>` when you first compose a `<root>/solutions/` path. Pass the resolved `<root>/solutions/` path to any subagent, not the config. Every subagent spawn omits the `mode` parameter, so the user's permission settings apply.
+Resolve `<root>` when you first compose a `<root>/solutions/` path. Pass the resolved `<root>/solutions/` path to any subagent, not the config. Every subagent spawn omits the `mode` parameter, so the user's permission settings apply. Apply `references/investigate.md`'s native dispatch, model-permission, and nesting-depth contract to every investigation, Replace, and Split spawn, including inline fallback reporting.
+
+Resolve the absolute workspace root with `jj workspace root`. Run every JJ operation from that root; repository-scoped GitHub calls use `(cd "$workspace_root" && export GIT_DIR=$(jj git root) && gh ...)`. Any scratch, fallback, or error artifact belongs under `$workspace_root/.tmp/` (local `.tmp/` outside a JJ repository), never OS-global temporary storage. JJ references: https://docs.jj-vcs.dev/latest/cli-reference/ and https://docs.jj-vcs.dev/latest/git-command-table/ .
 
 <!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only (`<repo-root>` = `jj workspace root`, resolved to an absolute path). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/` or `.jj/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
 
@@ -81,7 +83,7 @@ Edits apply silently in every mode. The report's `CONCEPTS.md` line records what
 
 ## Commit
 
-Skip if nothing changed. Otherwise stage **only** the files this refresh modified, and commit in the repo's convention. **Read `references/commit.md`** for the per-mode branch decision and the git-failure fallback.
+Skip if nothing changed. Otherwise commit **only** the files this refresh modified in the repo's convention. **Read `references/commit.md`** for the per-mode bookmark decision and the JJ-failure fallback.
 
 ## Discoverability Check
 

@@ -24,6 +24,8 @@ Writing the file, checking confidence, and running or explicitly skipping `ce-do
 
 Ask one question at a time through the host's blocking question tool already in the current tool list. Match by capability; never probe a user-facing tool to discover it. If none is listed or a real question call errors, render numbered choices in chat; never silently skip a required question. If no feature description was supplied, ask what to plan and wait.
 
+**Repository execution context:** Run all JJ commands and repository-scoped helpers with actual cwd set to the target workspace's absolute root, not merely `-R`; shell examples use `(cd "$workspace_root" && jj ...)`. Resolve that root from the current target workspace with `jj workspace root`. Keep returned file paths workspace-relative. Repository-scoped `gh` requires `(cd "$workspace_root" && export GIT_DIR=$(jj git root) && gh ...)`. Store all scratch, fallback, and error artifacts under this workspace's `.tmp/` (local `.tmp/` outside JJ), ensure `.tmp/` is ignored, and preserve unrelated files. See https://docs.jj-vcs.dev/latest/git-experts/ and https://docs.jj-vcs.dev/latest/cli-reference/.
+
 ## Output Contract
 
 Decide which output contract applies at the start of scoping (Phase 0.6), before choosing depth and before the scoping synthesis. It applies only when no resume route (Phase 0.1) fired and the source check (Phase 0.2) found no upstream artifact. Ground it with bounded inline reads of what the request names, without dispatching a subagent. Select one:

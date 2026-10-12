@@ -8,7 +8,7 @@ This phase is interactive-only: a non-interactive caller has no human-in-the-loo
 
 <parallel_tasks>
 
-Based on problem type, optionally dispatch generic subagents seeded with local prompt assets from `references/agents/` to review the documentation. Do not dispatch standalone agents by type/name.
+Based on problem type, optionally dispatch native OpenCode generic subagents seeded with local prompt assets from `references/agents/` to review the documentation. Follow `references/research.md`'s separate delegation-permission, model-override, and nesting-capacity rules, keeping configured model intent and incomplete independence/coverage explicit. Do not dispatch standalone agents by type/name or route through another harness.
 
 - **performance_issue** → `references/agents/performance-oracle.md`
 - **security_issue** → `references/agents/security-sentinel.md`

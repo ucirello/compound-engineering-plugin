@@ -2,12 +2,14 @@
 
 Which orchestration shape fits each phase, and what breaks when you pick the wrong one.
 
-Two primitives are assumed, both platform-neutral:
+Two primitives are assumed, implemented with native OpenCode subagents for independent contexts and shell for deterministic local work, not another harness's model dispatcher. Use `opencode.models` to resolve permitted model choices; configuration remains authoritative for intended routes and tiers.
 
 - **A dispatch primitive** that launches an independent agent with its own context window and returns a result to the orchestrator (in one host it is a subagent-spawning tool; in another a job runner). Only two properties matter: fresh context per agent, and a result the orchestrator can read.
 - **A concurrency cap** the host enforces on how many agents run at once (often around 10). Dispatches above the cap queue rather than fail, so a 31-unit fan-out is three waves, not one. Plan the wave count; do not assume flat cost.
 
-Classify a rejected dispatch by whether an agent launched. Correct a pre-launch argument rejection once, and leave capacity-limited work queued. Any other launch failure follows the phase's own failure direction. In the corpus audit, the proposal and defense contexts must be independent for the audit to mean anything, so a launch failure there is a blocker: stop the audit rather than running the missing side inline.
+This skill explicitly requests audit, defense, and verification subagents. Under a user-OR-loaded-skill delegation rule, this satisfies the skill-requested exception without extra approval. Respect unconditional prohibitions, missing tools, and actual denials; never bypass them through shell or another harness. Model permission is separate: omit optional model overrides when explicit user model authorization is required but absent. Use suitable inherited-model reviewers and disclose unmet configured tiers. Separate same-model contexts are independent readers, not cross-model coverage; a required different-model pass that cannot run remains incomplete.
+
+Check effective nesting capacity separately using discovered host depth configuration and actual errors; a shipped default does not prove remaining capacity. Distinguish depth/capacity exhaustion from permission denial, model-argument rejection, and missing tools. Correct an allowed argument error once and queue capacity-limited work where supported; do not retry denials or evade depth limits. For the corpus audit, ask a permitted parent coordinator to dispatch or report a blocker and stop: proposal and defense must remain independent, never inline both sides. Preserve incomplete coverage in the result.
 
 ## The shapes
 
@@ -57,6 +59,8 @@ Run the mechanical suite once, as one check, not once per agent. Keep the cohere
 **The residual critic is one agent, run last.** Give it the pass list, the registered bar, and the measured results, and ask for one line per intended change: landed, partial, or not landed, plus what a next pass would have to do. Instruct it explicitly that declaring success is not its job and that returning an empty list requires naming what it checked to reach that conclusion. Without that framing it will summarize the work approvingly, which tells you nothing you did not already believe.
 
 ## Cross-cutting rules
+
+All per-run scratch, extractors, and fallback/error output belong under the target workspace's absolute root `.tmp/`, which must be ignored. Durable measurement artifacts belong in the repository's docs location. Run JJ from the target absolute root, not with `-R` alone. Repository-scoped GitHub calls use `(cd "$workspace_root" && export GIT_DIR=$(jj git root) && gh ...)`.
 
 **Fan out by disjoint file ownership, never by item.** Disjoint file ownership means each agent edits its own set of files and no file appears in two agents' sets. One item routinely touches several files and one file routinely hosts several items, so an item-partitioned fan-out silently produces two agents writing the same file. Partition the file set first, then assign each item to the agent that edits its files. An item spanning two agents' file sets is either one agent's job with both files, or it is a contract-then-fan-out (above), not a split.
 

@@ -16,6 +16,8 @@ Invoking this skill authorizes reading the repo, building the harness, and (afte
 
 Independent calls and dispatches that do not depend on each other go in one response. Serialize only real dependencies.
 
+Before any research, experiment, judge, or review dispatch, apply `references/loop.md`'s native dispatch contract: configuration-driven `opencode.models` and subagents/shell, with delegation permission, model-override permission, and nesting capacity checked separately. Required independence or configured coverage that cannot be met remains explicitly incomplete; never use another harness to bypass a denial. Workspace creation, integration, dynamic JJ descriptions, and retirement follow that reference's safeguards.
+
 Report findings, user decisions, blockers, and results. During longer work, give occasional updates on what was learned and what remains. Routine preparation and phase or batch transitions need no separate announcement. Keep accounting in the log and final recap unless it affects a current decision.
 
 Explain the target, evidence, and decision in ordinary task language. Workflow labels (such as 'harness' or 'parallel readiness') belong in artifacts unless the user asks about those mechanics. State unknown duration or cost as unknown; caps are limits, not forecasts.
@@ -31,10 +33,10 @@ Use the host's blocking question tool already in the current tool list (match by
 Resolve `<root>` the first time you compose a path under it. Reading learnings under `<root>/solutions/` counts as composing one. Give any subagent the resolved path, not the config.
 
 <!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only (`<repo-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/` or `.jj/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
 

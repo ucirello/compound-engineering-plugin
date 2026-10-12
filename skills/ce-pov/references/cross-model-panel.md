@@ -17,9 +17,9 @@ Keep four identities separate for the host and every peer:
 
 - **target** — the user-facing choice (`codex`, `claude`, `grok`, `cursor`, or
   `composer`);
-- **harness/intermediary route** — the CLI or intermediary that runs it;
+- **harness/intermediary route** — the actual OpenCode-native execution route and provider;
 - **requested model** — an explicit model or the route's declared default; and
-- **served model** — the model the worker's receipt (the route's adapter
+- **served model** — the model the runtime's receipt (native serving evidence
   reporting which model answered) names, otherwise `unverified`.
 
 The requested model is a fact about the request and is always known; the served
@@ -65,21 +65,20 @@ does not determine the serving model: it keeps harness `cursor` and family
 `XHOST_FAMILY` to `codex`, `claude`, `grok`, or `composer`.
 Never infer serving family from the Cursor brand.
 
-Section 4 passes `XHOST_FAMILY` as the worker's first argument and
-`XHOST_HARNESS` as `CROSS_MODEL_HOST_HARNESS`; a provider name such as
-`anthropic`, `openai`, or `xai` in either slot makes the worker refuse the
-job and produce no artifact.
+Record `XHOST_FAMILY` and `XHOST_HARNESS` separately in the dispatch record.
+Provider IDs such as `anthropic`, `openai`, or `xai` belong in the provider
+field, not in either family/harness slot.
 
 `Cursor` and `Composer` are distinct targets:
 
-- `cursor` uses `cursor-agent` with no forced model, allowing Cursor's configured
-  default/Auto choice. No model was requested, so unless a receipt identifies it,
+- `cursor` means Cursor's configured default/Auto choice, not Composer. Preserve
+  that compatibility intent; if native OpenCode cannot satisfy it, report the
+  named route unavailable rather than launching Cursor. Unless a receipt identifies it,
   report `Cursor default/Auto; serving model unverified` and
   `independence_verified: false`.
-- `composer` requests the current compatible Composer model through
-  `cursor-agent`.
-- `grok` prefers the native Grok CLI; Grok through Cursor is a different route
-  and recipient. Section 3 binds which token.
+- `composer` requests a compatible Composer model, not Cursor Auto.
+- Native Grok and Grok through a Cursor intermediary remain different configured
+  routes and recipients; compatibility intent does not authorize another harness's dispatch.
 
 Apply exactly one participation branch:
 
@@ -128,7 +127,7 @@ Normalize the allowed read scope once as:
 - one repository-relative workspace root; and
 - optional ordered include and exclude path patterns.
 
-Pass that identical representation to every peer prompt and route adapter. The
+Pass that identical representation to every peer prompt and native dispatch. The
 default is the repository root. A narrower user- or host-supplied scope is
 binding and is never broadened. Peers launched on the same host inspect existing
 subject files and supporting evidence directly from this shared working tree;
@@ -137,20 +136,27 @@ Pass material inline only when it exists solely in the conversation or is
 otherwise unavailable in the workspace.
 
 Treat include and exclude path patterns as cooperative unless the concrete
-adapter turns them into filesystem controls. Never present prompt-only patterns,
+runtime turns them into filesystem controls. Never present prompt-only patterns,
 a working directory, or a read-only flag as a confidentiality boundary, and
 never promise that secrets inside the readable scope are inaccessible. Peers may
 search and read within the declared scope but may not mutate the project or
-intentionally inspect outside it. Every route denies the peer's write requests
-and runs the adapter's read-only mode where one exists, but the Codex adapter
-does not enforce its read-only mode, so no route is a write sandbox.
+intentionally inspect outside it. Use available native read-only/tool restrictions
+and deny peer write requests; do not claim a write sandbox without verified enforcement.
 
 Before initial dispatch, capture one **repository-scope identity**: the committed
-revision plus a digest of dirty and untracked content inside the normalized
+JJ revision plus a digest of tracked working-copy and untracked content inside the normalized
 scope. Include it in every peer payload. Revalidate it before every reconcile
 dispatch and before final fold-in. If it changed, never reconcile or fold stale
 voices into the current project: disclose the change and either restart all
 voices on the new identity or return an incomplete panel result.
+
+Use `(cd "$workspace_root" && jj log -r @ --no-graph -T 'commit_id')` and
+target-root `jj diff`/`jj status` plus bounded file reads to capture the identity;
+digest all decision-relevant dirty and untracked scope content, not only names.
+Exclude only this run's own verified scratch artifacts from the identity digest
+so receipt writes do not invalidate it; never exclude subject evidence. In a
+non-JJ project use a stable content digest of the allowed local scope instead.
+JJ command references: https://docs.jj-vcs.dev/latest/cli-reference/ .
 
 The caller passes this panel the resolved absolute `$SCRATCH_DIR` created in
 SKILL.md Phase 1. Keep payloads, raw output, logs, and result artifacts there;
@@ -163,42 +169,61 @@ the ambient umask or a mode flag alone.
 Routing is adaptable only inside hard boundaries. The requested target plus
 safety, authority, independence, read scope, and the rules on which external
 recipients may receive project content are durable;
-concrete model IDs, CLI flags, and availability are adapter defaults.
+concrete model IDs and availability are resolved through `opencode.models`.
 
 For each peer:
 
-1. Probe current route and model capabilities without giving the process project
-   content or repository access.
+1. Read the applicable `.rocketclaw/config.yaml` and `config.local.yaml` model
+   choices, tiers, preferred routes, and recipient policy as authoritative intent.
+   Query `opencode.models` without sending project content to resolve exact available IDs.
 2. Try the declared preferred mapping first.
 3. If that default is observed unavailable, obsolete, or incompatible, choose
    only the closest compatible equivalent in the same requested target, model
    family, and reasoning tier. Record the observed local fact and substitute.
    An explicit user model request cannot become another model.
-4. Resolve one concrete target, model choice, harness route, provider, and every
+4. Resolve one concrete target, model choice, OpenCode-native route, provider, and every
    intermediary. Confirm every actual recipient is on the allowlist of permitted
    external recipients.
 5. Announce the selected target and route in ordinary language before dispatch.
 
-The fixed route passed to the worker accepts exactly these tokens; the worker
-refuses anything else (including route-shaped guesses like `codex-cli`):
+Preserve configured reasoning tiers. Without a configured override, peer review
+uses high reasoning (native Grok uses xhigh); resolve current concrete IDs through
+`opencode.models` rather than pinning obsolete adapter defaults. If the native
+runtime cannot apply the required tier, disclose that unmet requirement instead
+of treating an unsupported option as active.
 
-| Target | Route token(s) |
-|--------|----------------|
-| `codex` | `codex` |
-| `claude` | `claude` |
-| `grok` | `grok-cli` (native CLI) or `grok-cursor` (via Cursor intermediary) |
-| `cursor` | `cursor` |
-| `composer` | `composer` |
-| `opencode` | `opencode` |
+Execute through OpenCode-native subagents, not another harness CLI or dispatcher.
+Legacy configured route tokens (`codex`, `claude`, `grok-cli`, `grok-cursor`,
+`cursor`, `composer`, `opencode`) preserve recipient/model intent; they are not
+commands to invoke. A native mapping must satisfy that intent and recipient policy.
+If a fixed intermediary/default cannot be reproduced, report it unavailable.
 
-The host harness does not choose the Grok route. Target `grok` binds `grok-cli` when that CLI is installed. Bind `grok-cursor` only when the user asked for Grok through Cursor, or when the grok CLI is absent and Cursor is a sanctioned recipient.
+**Delegation, model choice, and nesting are separate gates.** This protocol
+explicitly requests peer delegation. Under a host rule permitting subagents when
+the user OR an applicable loaded skill asks, these instructions satisfy the skill
+exception; do not require another user request. An unconditional higher-priority
+prohibition, missing tool, or actual permission denial still applies. A skill that
+does not request delegation does not grant it merely by being loaded.
 
-Binary presence proves only that a route is a candidate. Pre-dispatch capability
-evidence may refine the fixed route only when the current host context makes that
-evidence authoritative. Do not preflight authentication there: the
-provider-capable worker attempt owns authentication truth, and a valid artifact
-is the usability proof. Classify a failed run from its structured diagnostics
-rather than guessing from a generic terminal state.
+Model configuration and tiers are intent, not authority to override host policy.
+If the host requires an explicit user model request before an override, omit the
+native subagent's optional `model` argument unless that request exists. Use a
+suitable inherited model for otherwise permitted reviewers, disclosing any unmet
+configured tier or route. These are separate reviewers, not cross-model proof.
+If a required different-model pass or named fixed route cannot run, mark that
+coverage incomplete, never fully verified or silently substituted.
+
+Verify effective depth from runtime-discovered configuration and the current
+nesting level; shipped `experimental.subagent_depth` is a project default, not a
+guarantee that a consuming project adopted it or that capacity remains. Classify
+dispatch failures by the actual error: depth/capacity, permission, model-argument
+rejection, or missing tool. A permitted parent-coordinator handoff can preserve
+the fixed route and payload; inline work cannot satisfy an independent peer pass.
+Never retry a denied operation or evade a nesting limit through shell/another harness.
+
+Catalog availability is only candidate evidence. Provider-capable native dispatch
+owns authentication truth; a valid artifact proves usable completion. Classify a
+failure from its actual structured diagnostics, not a generic terminal state.
 
 The dispatched worker runs only the fixed route. It must return failure to the
 host rather than automatically hopping to another provider or intermediary. If
@@ -255,132 +280,46 @@ Verify that the same complete payload fits every selected route; never truncate
 it per provider. A route that cannot accept it is unavailable under the ordinary
 partial-panel degradation rule.
 
-Use `scripts/cross-model-pov.sh` from this skill's directory to run one resolved
-fixed route per peer, and `scripts/peer-job-runner.py` for detached lifecycle
-control. Fill in the start command below rather than reconstructing the worker's
-arguments from its usage header. Pass the actual repository root separately from
-any narrower read root, and pre-create the round output directory as private
-scratch outside the repository. For named peers, start one job per exact target;
-for a selected panel, start one job per selected peer. Start all jobs before
-waiting.
+Use native subagents with the resolved permitted model (or omit `model` for
+inherited execution), seeded with `references/agents/pov-peer.md`, the canonical
+payload, and the exact result path for host publication. Peers return JSON without
+writing files; the host atomically publishes it to that verified path. Pass the actual absolute workspace root
+separately from a narrower read root. Pre-create the private round directory under
+the Phase 1 local `.tmp/` scratch root, never outside it. Start all ready peers
+concurrently before waiting, recording every returned task/session ID. Named
+peers each receive their exact target; selected panels each receive one selected peer.
 
-**At the defaults, the peer budget needs nothing from you.** This skill's worker
-stops itself at 600s and the runner supervisor derives a floor of 1230s, so the
-runner window is already longer than the worker's cap and kills nothing healthy.
+Native task ownership and lifecycle replace detached runner jobs. Use shell only
+for permitted local file preparation, evidence reads, and receipt handling, never
+to bypass native delegation policy. A denied or unavailable permission creates
+no peer task; record it and continue with survivors. Started-task network,
+authentication, or provider failures follow terminal/recovery rules below.
+Do not unset sandbox markers to claim connectivity or broaden permissions by
+default; request only an actual required grant through the host's supported flow.
+Retain the distinction between launch context and enforceable peer restrictions.
 
-**Raising `CROSS_MODEL_HARD_SECS` widens the runner window automatically.** The
-runner derives its supervisor hard cap from the ambient knob
-(`max(1230, knob + 30)`). Do not set a numeric `CE_PEER_HARD_SECS` here — and
-clear any ambient one on the start prefix (`CE_PEER_HARD_SECS=`) so a stale
-export cannot undercut the derivation. Do not re-export a *resolved*
-`CROSS_MODEL_HARD_SECS` onto the worker's command line: that converts a
-fallback into an override and strips the worker of its own default.
+Each peer returns `<run-dir>/pov-<target>.json`, with Grok routes using `grok`.
+Record the exact path and native ID, not a guessed filename. Use a 600-second
+peer hard budget by default, respecting a valid `CROSS_MODEL_HARD_SECS` override;
+any supported supervisor timeout must be at least `max(1230, budget + 30)` seconds
+and must not inherit a stale shorter cap. Use one aggregate deadline
+of that budget plus 10 seconds, measured after the final start. Wait through
+native supported bounded slices of at most 30 seconds without crossing the
+deadline; one short slice is not completion. At deadline cancel run-owned active
+tasks through the supported lifecycle and collect terminal status in a final
+bounded wait. If the runtime cannot provide this lifecycle, disclose the
+capability blocker; never invent timeout/cancellation flags or claim a task stopped.
 
-Each worker writes `<run-dir>/pov-<target>.json`, where `<target>` is the resolved
-route target with `grok-cli`/`grok-cursor` collapsing to `grok`. Pass exactly that
-path as `--result-path` to `peer-job-runner.py start`, so `done` is keyed to the
-artifact and `result <job-id>` reads it without guessing the filename or the
-host's provider key.
-
-**Interpreter.** The commands below run a bundled Python script. Resolve the
-interpreter in the *same* shell call as the command -- each tool call is a fresh
-shell, so a `$PY` set in an earlier call does not persist. Do not hardcode
-`python3`: on native Windows it resolves to a Microsoft Store stub that exits
-without running Python, and that stub still satisfies `command -v`, so probe
-execution rather than presence.
-
-```bash
-PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c '' >/dev/null 2>&1 && { echo "$c"; break; }; done)"; [ -n "$PY" ] || { echo "no working Python 3 interpreter on PATH" >&2; exit 1; };
-```
-
-**Host command-sandbox boundary.** The detached worker inherits the permission
-context of the `start` call that launches it. Before executing that exact call,
-treat `CODEX_SANDBOX_NETWORK_DISABLED` as a positive signal that the current
-Codex command sandbox cannot reach the provider; unsetting it does not change
-the sandbox policy. A DNS or authentication failure alone is not proof of that
-condition. Use the narrowest host permission that restores the fixed route's
-provider connection. When Codex exposes only full command escalation, attach
-this request to the exact `peer-job-runner.py start ...` tool call after the
-existing disclosure of which external provider receives the subject:
-
-```json
-{
-  "sandbox_permissions": "require_escalated",
-  "justification": "Allow the disclosed read-only cross-model panel request to reach the fixed external provider."
-}
-```
-
-Disclose that this is not launcher-only isolation: the detached worker inherits
-that launch context for its lifetime, so the adapter's declared read-only/tool
-restrictions — not the Codex command sandbox — bound the peer while the subject
-is sent to the provider. If the grant is denied or unavailable, do not execute `start`; create
-no peer job, drop that voice, and continue with the surviving panel. After
-`start` returns a job id, any network, authentication, or provider failure is a
-started-job outcome and follows the ordinary terminal/recovery rules; keep
-`status`, `wait`, `result`, and `reap` sandboxed because they need no provider
-connection.
-
-Start one job per peer with the command below, filling every `<...>` slot. Set
-`SKILL_DIR` to the absolute directory of **this** skill's `SKILL.md`; the Bash
-tool's CWD is the user's project on every host, not the skill directory.
-
-```bash
-SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
-PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c '' >/dev/null 2>&1 && { echo "$c"; break; }; done)"; [ -n "$PY" ] || { echo "no working Python 3 interpreter on PATH" >&2; exit 1; };
-CE_PEER_HARD_SECS= "$PY" "$SKILL_DIR/scripts/peer-job-runner.py" start --skill ce-pov --run-id "<run-id>" --label "<target>" --result-path "<run-dir>/pov-<target>.json" -- env CROSS_MODEL_HOST_HARNESS="<host-harness>" CROSS_MODEL_REPO_ROOT="<repo-root>" CROSS_MODEL_READ_ROOT="<read-root>" CROSS_MODEL_SCRATCH_PARENT="<scratch-dir>" bash "$SKILL_DIR/scripts/cross-model-pov.sh" "<host-serving-family>" "<fixed-route>" "<payload-path>" "<run-dir>"
-```
-
-- `<host-serving-family>` is `codex`, `claude`, `grok`, `composer`, or
-  `unknown`; `<host-harness>` is `codex`, `claude`, `grok`, `cursor`, or
-  `unknown`. Both are the Section 1 attestation, not a provider name.
-- `<fixed-route>` is the sanctioned route token from Section 3's table;
-  `<target>` is its resolved target, with `grok-cli` and `grok-cursor`
-  collapsing to `grok`.
-- `<payload-path>` is this round's mode-600 payload and `<run-dir>` the
-  pre-created round output directory; `<scratch-dir>` is the Phase 1 scratch
-  root, and `<run-id>` its basename.
-- `<read-root>` is Section 2's normalized workspace root and `<repo-root>` the
-  actual repository root containing it.
-- Add `CROSS_MODEL_INCLUDE_PATHS` / `CROSS_MODEL_EXCLUDE_PATHS` only when
-  Section 2 resolved patterns, and `CROSS_MODEL_MODEL_OVERRIDE_TARGET` /
-  `CROSS_MODEL_MODEL_OVERRIDE` only for a Section 3 same-family substitution.
-
-Record every job id and the epoch after the final start. Poll all jobs in
-bounded slices (resolve `$PY` again in each tool call — shells do not persist):
-
-```bash
-SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
-PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c '' >/dev/null 2>&1 && { echo "$c"; break; }; done)"; [ -n "$PY" ] || { echo "no working Python 3 interpreter on PATH" >&2; exit 1; };
-"$PY" "$SKILL_DIR/scripts/peer-job-runner.py" wait --max-secs 30 --json <job-ids...>
-```
-
-Job ids or job-directory paths are positional. `--skill`, `--run-id`, and
-`--label` are start-only; never pass them to `wait`. Do not add a separate shell
-sleep: `wait` itself provides the bounded polling delay. Use one aggregate
-deadline of `CROSS_MODEL_HARD_SECS` + 10 seconds (610s by default, since this
-skill's workers stop themselves at 600s); never begin a wait that can cross it. Read
-the knob rather than hardcoding the result -- a hardcoded deadline silently reaps
-a healthy peer whenever a user raises the knob, wasting the peer's full spend.
-Repeat the bounded slices above until every job is terminal or that deadline is
-spent; a single slice shorter than the deadline is not a substitute. At the
-deadline, reap each nonterminal job in a short call, then make one final wait:
-
-```bash
-SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
-PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c '' >/dev/null 2>&1 && { echo "$c"; break; }; done)"; [ -n "$PY" ] || { echo "no working Python 3 interpreter on PATH" >&2; exit 1; };
-"$PY" "$SKILL_DIR/scripts/peer-job-runner.py" wait --max-secs 10 --json <job-ids...>
-```
-
-Classify every started job from its terminal state; `done` alone does not
-prove a usable artifact exists.
-
-Read artifacts and logs only through the runner's ownership-checked `result`
-interface. Accept only schema-shaped artifacts whose `position` is a settled
+Classify each task from actual terminal evidence; completion alone does not prove
+a usable artifact. Read result/log files only after verifying exact run ownership,
+containment, no symlink redirection, and expected private permissions. Preserve
+atomic result publication with a temporary file in the same local run directory.
+Accept only schema-shaped artifacts whose `position` is a settled
 answer to the framed question, with non-empty `reasoning`, a valid `movement`,
 and the route/model receipt tuple. Settledness is the peer's own declaration
 through the schema's required `final` flag, never a reading of its prose: a
 settled `Blocked — …` verdict marked `final: true` is a usable answer, while
-any shaped artifact whose `final` is not true is a placeholder. The worker
+any shaped artifact whose `final` is not true is a placeholder. The host
 retries a non-final artifact once on the same route with a final-answer
 requirement, inside the same hard window, and if it recurs or no window
 remains drops the voice with `peer skip evidence: non-final position`. Should
@@ -395,17 +334,19 @@ target, actual harness/intermediary route, requested model, served model, and
 `unverified` in the record; it does not become "unknown model" in the note,
 because the requested model is known.
 
-Every route runs through acpx, which needs Node 22.13 or newer and `npx`. A
-worker line `transport unavailable (pre-egress, <scope>): <reason>` means the
-peer did not run and nothing reached the provider; report that voice as not run
-with the reason. Scope `shared` (Node, `npx`, or the npm fetch of acpx) fails
-every route the same way, so another route cannot replace it. Scope `route`
-(that route's CLI is missing, an acpx config file replaces its launch command,
-or the model was rejected, with the available models listed) affects only that
-route; any replacement follows Section 3's recipient rules.
+Capture native receipts for route, target, actual harness (`opencode`), requested
+model, served model, and verified independence using `references/pov-schema.json`.
+The host namespaces `voice` as `peer-<provider>` and adds the verified receipt
+tuple to the validated peer JSON; peer assertions cannot manufacture receipts.
+A catalog entry or requested model is not a served-model receipt. Missing receipt
+means `model_actual: unverified`; never infer actual serving from peer prose.
+Distinguish a shared native capability failure from a route-specific provider/model
+failure; replacements still follow Section 3's recipient and model-permission rules.
+Only positive runtime evidence proves no provider egress occurred; do not claim
+that merely because no usable artifact arrived.
 
-If a job yields no usable artifact, use bounded `peer skip evidence`
-from its log to state an observed quota, authentication, or route failure; never
+If a task yields no usable artifact, retain bounded `peer skip evidence`
+from its actual diagnostics to state an observed quota, authentication, or route failure; never
 invent a cause. Attribute an account authentication failure only after
 provider-capable dispatch is positively established by the launch context or
 provider response; then report the observed failure and login or
@@ -484,6 +425,8 @@ note:
 - **Partial:** name surviving and dropped targets and the observed failure state
   (for example quota, authentication, timeout, or a non-final placeholder
   position that survived the bounded retry).
+  Missing required cross-model independence or a fixed route remains incomplete,
+  even when same-model reviewers delivered useful checks; say so explicitly.
 - **No survivor:** deliver the solo POV with "cross-model check unavailable or
   incomplete." When a summons was present but the panel branch never entered
   (no reachable peers, or the branch was never entered), still state that panel status —
@@ -517,20 +460,22 @@ payload; no surviving peer yields the solo POV plus the availability note.
 
 Distinguish a route-level failure from a dispatch-infrastructure failure. A
 route that runs and returns no usable artifact is dropped as above. But if the
-dispatch scripts themselves fail unexpectedly — a crash, a non-zero exit before
-any job starts, an unresolved script path — do not drop that peer on the first
-error. Attempt the same resolved route by hand, holding the selected target and
+native dispatch infrastructure fails unexpectedly before a task starts, do not
+drop that peer on the first recoverable error. Correct a pre-launch argument once
+or use a permitted parent-coordinator handoff, holding the selected target and
 model, the normalized read scope, and the round's independence rules fixed.
-Keep attempting only while each failure is a new, plausibly recoverable one and
-the panel's aggregate deadline has not passed; stop and fall to the solo POV
-once a failure repeats or the deadline is spent. A hand recovery may not
+Keep recovery bounded by the panel's aggregate deadline; stop and fall to the
+solo POV once a failure repeats or the deadline is spent. A recovery may not
 substitute a different target, widen read scope, or include a withheld
 position — those make the recovered peer's result untrustworthy, not merely
-unavailable.
+unavailable. A permission denial, missing tool, prohibited model override, or
+nesting limit is not a recoverable bridge error: report it accurately, do not
+retry or route through another harness. Required unavailable different-model or
+fixed-route coverage remains incomplete, even if inherited-model reviewers ran.
 
 ## 8. Cleanup
 
-Remove every consumed job directory, round output directory, payload, raw log,
+Stop or cancel and verify termination of run-owned peers first. Remove every consumed task artifact directory, round output directory, payload, raw log,
 and result beneath this run's private scratch root on success, failure, timeout,
 interruption, and reap. Never delete outside the current run root. Peer reasoning
 and project context must not outlive their use.

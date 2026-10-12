@@ -6,27 +6,45 @@ Read this before dispatching scouts. It defines how the Ground step (SKILL.md Ph
 
 Dispatch is tiered by task shape, never hardcoded to a model name:
 
-- **Extraction tier** — the project-grounding scout and the precedent-&-activity scout: search-and-quote work. Use the platform's cheapest capable model when the harness exposes a known override; otherwise inherit.
-- **Generation tier** — the external-evidence researcher: web/docs retrieval and entailment checking. Use the platform's mid-tier model when a known override exists; otherwise inherit.
+- **Extraction tier** — the project-grounding scout and the precedent-&-activity scout: search-and-quote work. Use the platform's cheapest capable model only when a known override is permitted; otherwise inherit.
+- **Generation tier** — the external-evidence researcher: web/docs retrieval and entailment checking. Use the platform's mid-tier model only when a known override is permitted; otherwise inherit.
 - **Ceiling tier** — the final assessment stays with the agent running `ce-pov`, even when another agent delegated the task to it. That agent checks whether the evidence is sufficient, weighs skeptical findings, and produces the required result. Research subagents gather evidence; they do not make this final assessment.
 
-**When per-agent models cannot be chosen.** If the platform's subagent mechanism cannot select a model per agent, dispatch every scout on the inherited model and keep their read budgets. Cost control then comes from the read budgets and the tier-sensitive scout count, not from tiering.
+**Permission and capability are separate.** This skill explicitly requests scout delegation: under a host rule allowing the user OR a loaded skill to request subagents, these instructions satisfy the skill exception without another approval. Respect an unconditional higher-priority prohibition, missing tool, or actual denial. Use OpenCode-native subagents; consult `opencode.models` and project configuration for model intent, not permission. If model overrides require an explicit user model request, omit the optional `model` argument unless that request exists. If overrides are unavailable or forbidden, use a suitable inherited model and retain read budgets; disclose any unmet tier requirement. Do not present separate same-model scouts as cross-model independence.
 
-When a scout dispatch is rejected, first check whether an agent launched. If the rejection was a bad argument before launch, correct it once. If the platform is out of capacity, leave the work queued. If a launch still fails after the correction, gather that scout's bounded evidence inline and lower the verdict's stated confidence.
+Verify effective nesting capacity from the runtime's discovered configuration and actual depth; a package default is not proof the consuming project adopted it. When dispatch is rejected, check whether an agent launched and classify the actual error as depth/capacity, permission, model-argument rejection, or missing tool. Correct a bad argument once before launch; do not retry a denial or evade a depth limit through shell or another harness. Capacity-limited work may remain queued or return to the parent coordinator. Bounded inline grounding is permitted here with lower stated confidence, but is not an independent peer pass; disclose unmet coverage.
 
 Create the scratch dir once, and reuse the echoed path for every scout this run:
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+PROJECT_ROOT="<verified absolute target workspace root, or local project root without JJ>";
+SCRATCH_ROOT="$PROJECT_ROOT/.tmp/rocketclaw";
+if [ -L "$PROJECT_ROOT/.tmp" ]; then echo "unsafe local temporary parent" >&2; exit 1; fi;
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
 chmod 700 "$SCRATCH_ROOT" || exit 1;
-SCRATCH_DIR="$SCRATCH_ROOT/ce-pov/$(openssl rand -hex 4)";
-(umask 077; mkdir -p "$SCRATCH_DIR") || exit 1; chmod 700 "$SCRATCH_DIR" || exit 1;
+SCRATCH_PARENT="$SCRATCH_ROOT/ce-pov";
+[ ! -L "$SCRATCH_PARENT" ] || exit 1;
+(umask 077; mkdir -p "$SCRATCH_PARENT") || exit 1;
+[ ! -L "$SCRATCH_PARENT" ] && [ -O "$SCRATCH_PARENT" ] || exit 1;
+chmod 700 "$SCRATCH_PARENT" || exit 1;
+SCRATCH_DIR="";
+for attempt in 1 2 3; do
+  candidate="$SCRATCH_PARENT/$(openssl rand -hex 4)";
+  if (umask 077; mkdir "$candidate"); then SCRATCH_DIR="$candidate"; break; fi;
+  [ -e "$candidate" ] || exit 1;
+done;
+[ -n "$SCRATCH_DIR" ] || exit 1; chmod 700 "$SCRATCH_DIR" || exit 1;
 echo "$SCRATCH_DIR";
 ```
+
+Resolve a JJ root with `(cd "$workspace_root" && jj workspace root)`; always run JJ from the target workspace's absolute root, not with repository selection alone. Keep fallback/error artifacts under the same local `.tmp/` and ensure `.tmp/` is ignored. For repository-scoped tracker calls use `(cd "$workspace_root" && export GIT_DIR=$(jj git root) && gh ...)`. See https://docs.jj-vcs.dev/latest/cli-reference/ and https://docs.jj-vcs.dev/latest/git-experts/ . A refused or unsafe scratch directory is a blocker, not permission to use global temporary storage.
+
+Verify the scratch path's resolved containment beneath the local project `.tmp/`
+and current-user ownership/private permissions before dispatch and every artifact
+read; refuse symlink redirection. Allocate a fresh run directory exclusively and
+retry an allocation collision without reusing existing state.
 
 **Scoping applies on both paths.** Use the project's active instructions already in context. If the candidate cannot be scoped from the frame and existing context, allow one targeted root or workspace probe. This holds whether this phase dispatches scouts or resolves the facts with bounded inline reads.
 

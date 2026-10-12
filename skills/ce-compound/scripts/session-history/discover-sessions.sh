@@ -135,6 +135,8 @@ encode_omp_raw_cwd() {
             printf -- '-%s' "$rel"
             ;;
         *)
+            # Read-only decoding of historical omp bucket names, not scratch
+            # storage: preserve the provider's original OS-temp encoding.
             canon_tmp="$(cd "${TMPDIR:-/tmp}" 2>/dev/null && pwd -P)" || canon_tmp=""
             case "$cwd" in
                 "$canon_tmp")

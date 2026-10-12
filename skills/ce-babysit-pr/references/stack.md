@@ -1,5 +1,7 @@
 # Managed stacks: posture, discovery, transitions, upstack maintenance, landing
 
+All local operations use JJ from the absolute target workspace root; repository-scoped `gh` calls export `GIT_DIR=$(jj git root)`. Propagation/landing recipes here follow `stack-commands.md`'s native JJ path and explicit manager-only compatibility gate. Layer checkout means verified JJ head alignment in `setup.md`, with an empty `@` above the head already aligned, not Git checkout. Preserve all baseline, conflict, lease, recovery and partial-progress requirements below.
+
 ## Posture (full text)
 
 Hold exactly one posture for the run. It is written as `posture:target|stack-ready|stack-land` — distinct from `watch` / `checkpoint` / `mode:pipeline` / duration. Re-state the same posture on every managed-stack layer `--continue-invocation` transition alongside the existing budget flags.

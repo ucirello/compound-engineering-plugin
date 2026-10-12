@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate cited claims in a solution doc against the git tree.
+"""Validate cited claims in a solution doc against the JJ workspace and history.
 
 Usage:
     python3 validate-doc-claims.py <doc-path>
@@ -47,7 +47,7 @@ decides per flag: fix, annotate as historical, or confirm intentional.
 Only the summary exit code distinguishes "clean" from "needs a look".
 
 The script never touches the network (no fetch); classification uses
-whatever refs exist locally. Run a best-effort `git fetch --quiet` first
+whatever refs exist locally. Run a best-effort `jj git fetch` first
 when freshness matters. Pure stdlib (no third-party deps).
 """
 import os
@@ -101,10 +101,11 @@ def usage_fail(msg: str) -> "NoReturn":
     sys.exit(2)
 
 
-def git(args: list[str], cwd: str) -> tuple[int, str]:
+def jj(args: list[str], cwd: str) -> tuple[int, str]:
+    """Run a bounded native JJ query in the target workspace's actual cwd."""
     try:
         result = subprocess.run(
-            ["git", *args],
+            ["jj", *args],
             cwd=cwd,
             capture_output=True,
             text=True,
@@ -113,6 +114,15 @@ def git(args: list[str], cwd: str) -> tuple[int, str]:
         return result.returncode, result.stdout.strip()
     except (OSError, subprocess.TimeoutExpired):
         return 1, ""
+
+
+def revision_exists(revision: str, cwd: str) -> bool:
+    code, output = jj(["log", "-r", revision, "--no-graph", "-T", "commit_id"], cwd)
+    return code == 0 and bool(output)
+
+
+def reachable(ancestor: str, descendant: str, cwd: str) -> bool:
+    return revision_exists(f"{ancestor} & ancestors({descendant})", cwd)
 
 
 def split_body(text: str) -> tuple[str, int]:
@@ -263,26 +273,37 @@ def main(argv: list[str]) -> int:
     flags: list[str] = []
 
     # --- Repo context -----------------------------------------------------
-    code, repo_root = git(["rev-parse", "--show-toplevel"], doc_dir)
+    code, repo_root = jj(["workspace", "root"], os.path.abspath(doc_dir))
     in_git = code == 0 and bool(repo_root)
     upstream: str | None = None
     if in_git:
-        code, ref = git(["rev-parse", "--abbrev-ref", "origin/HEAD"], repo_root)
-        if code == 0 and ref:
-            upstream = ref
-        else:
-            for candidate in ("origin/main", "origin/master"):
-                code, _ = git(
-                    ["rev-parse", "--verify", "--quiet", candidate], repo_root
+        # Prefer the remote's declared default branch when gh can verify it;
+        # local candidate bookmarks remain a bounded offline fallback.
+        candidates = []
+        code, backend = jj(["git", "root"], repo_root)
+        if code == 0 and backend:
+            try:
+                result = subprocess.run(
+                    ["gh", "repo", "view", "--json", "defaultBranchRef", "--jq", ".defaultBranchRef.name"],
+                    cwd=repo_root, env={**os.environ, "GIT_DIR": backend},
+                    capture_output=True, text=True, timeout=30,
                 )
-                if code == 0:
-                    upstream = candidate
-                    break
+                default = result.stdout.strip()
+                if result.returncode == 0 and default and re.fullmatch(r"[\w./-]+", default):
+                    candidates.append(f'"{default}"@origin')
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+        candidates.extend(("main@origin", "master@origin"))
+        for candidate in candidates:
+            if revision_exists(candidate, repo_root):
+                upstream = candidate
+                break
         if upstream:
-            code, behind = git(
-                ["rev-list", "--count", f"HEAD..{upstream}"], repo_root
+            code, commits = jj(
+                ["log", "-r", f"@..{upstream}", "--no-graph", "-T", 'commit_id ++ "\\n"'], repo_root
             )
-            if code == 0 and behind.isdigit() and int(behind) > 0:
+            behind = len(commits.splitlines()) if commits else 0
+            if code == 0 and behind > 0:
                 infos.append(
                     f"INFO: worktree is {behind} commits behind {upstream} — "
                     "verify merge-state claims against remote truth (gh pr view), "
@@ -295,20 +316,20 @@ def main(argv: list[str]) -> int:
             )
     else:
         infos.append(
-            "INFO: not a git repository — path and SHA classification skipped "
+            "INFO: not a JJ workspace — path and SHA classification skipped "
             "(scaffold and link checks still apply)"
         )
 
     def upstream_has_path(path: str) -> bool:
         if not (in_git and upstream):
             return False
-        code, _ = git(["cat-file", "-e", f"{upstream}:{path}"], repo_root)
+        code, _ = jj(["file", "show", "-r", upstream, path], repo_root)
         return code == 0
 
     def head_has_path(path: str) -> bool:
         if not in_git:
             return False
-        code, _ = git(["cat-file", "-e", f"HEAD:{path}"], repo_root)
+        code, _ = jj(["file", "show", "-r", "@", path], repo_root)
         return code == 0
 
     # --- 1. Cited repo paths ----------------------------------------------
@@ -391,8 +412,7 @@ def main(argv: list[str]) -> int:
                 seen_shas[sha] = (line_no, True)
         for sha in order:
             line_no, cited = seen_shas[sha]
-            code, _ = git(["cat-file", "-e", f"{sha}^{{commit}}"], repo_root)
-            resolved = code == 0
+            resolved = revision_exists(sha, repo_root)
             loc = f" (line {line_no})"
             if not resolved:
                 if not cited:
@@ -414,12 +434,11 @@ def main(argv: list[str]) -> int:
                 continue
             checked_shas += 1
             in_head = (
-                git(["merge-base", "--is-ancestor", sha, "HEAD"], repo_root)[0] == 0
+                reachable(sha, "@", repo_root)
             )
             in_up = (
                 upstream is not None
-                and git(["merge-base", "--is-ancestor", sha, upstream], repo_root)[0]
-                == 0
+                and reachable(sha, upstream, repo_root)
             )
             if in_head and (in_up or upstream is None):
                 continue

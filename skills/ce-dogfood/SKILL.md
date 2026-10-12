@@ -21,7 +21,7 @@ This is **diff-scoped**, not whole-app exploration. You test what *this branch* 
 - Never dogfood the trunk on a branch-name or blank target — there is no diff. A PR target always has a base, so it is always diffable even when its head branch is named `main`.
 - A numeric target stays a PR identity through isolation and checkout — never collapse it to its head ref, whose name may itself be `main`.
 - Never switch the primary checkout out from under the user. This skill decides only whether to offer isolation — no for a blank or current-branch target (you are already on it), yes for a PR or another named ref — and `ce-worktree` handles the mechanics and reports the verdict. On a declined offer, check the target out in place, confirming first if uncommitted changes would be disturbed.
-- Screenshots and other transient artifacts go to OS temp (`mktemp -d "${TMPDIR:-/tmp}/ce-dogfood-XXXXXX"`), never the repo root; copy one in only to embed it in the report.
+- Screenshots and other transient artifacts go under the target workspace's absolute root in `.tmp/` (create it and ensure `.tmp/` is ignored); use `mktemp -d "$workspace_root/.tmp/dogfood-XXXXXX"`. Copy one into the report only to embed it.
 - Auto-fix only what is small, well-understood, and low-risk. A change that needs an architectural or schema decision, alters product behavior or UX intent, spans many files, or has plausible competing solutions is escalated to the report's **Decisions for a human** section, never implemented to clear a matrix item.
 
 ## Prerequisites
@@ -42,16 +42,18 @@ This is **diff-scoped**, not whole-app exploration. You test what *this branch* 
 Reports live under `<root>/dogfood-reports/` and personas under `<root>/personas/`. Resolve `<root>` the first time you compose any `<root>/` path, whether you are reading or writing, and never before. A run that composes none skips it.
 
 <!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only (`<repo-root>` = `jj workspace root`). Run JJ from the target workspace's absolute root. Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
 - **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
 
 ## Delegation
 
-`ce-dogfood` is an orchestrator: prefer an existing CE skill over re-deriving its behavior. Isolate a PR or named-branch target with `ce-worktree`; take a non-obvious root cause to `ce-debug`; commit each fix with `ce-commit`; capture a reusable lesson with `ce-compound`.
+`ce-dogfood` is an orchestrator: prefer an existing skill over re-deriving its behavior. Isolate a PR or named-bookmark target with `ce-worktree`; take a non-obvious root cause to `ce-debug`; commit each fix with `ce-commit`; capture a reusable lesson with `ce-compound`.
+
+When a called skill explicitly requests reviewer dispatch, use OpenCode-native `opencode.models` and subagents/shell according to configuration, not another harness's dispatcher. Treat delegation permission, model-override permission, and nesting capacity separately: a user-or-loaded-skill delegation rule accepts that explicit skill request without a second approval, but higher-priority prohibitions and actual denials still apply. If overrides require an explicit user model request, omit the optional model argument and use suitable inherited-model reviewers; retain configured tiers as intent and disclose unmet requirements. Same-model reviewers do not establish cross-model independence. Classify actual dispatch errors as permission, model rejection, missing tool, or depth/capacity failures; do not retry denials or evade nesting limits through shell/another harness. Use inline or parent fallback only when the called skill permits it, and report unavailable required independent coverage as incomplete.
 
 ## Compound Packs
 

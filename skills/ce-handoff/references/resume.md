@@ -10,11 +10,12 @@ A supplied folder or collection is a discovery boundary, not a selected document
 
 ## Without an explicit source
 
-1. Search the folder or collection the user supplied; otherwise resolve the managed roots in the current shell call with this block, then enumerate candidate files beneath `$SCRATCH_ROOT/ce-handoff/` and, when it differs from `$SCRATCH_ROOT` and passes the same symlink and ownership checks, beneath the other candidate root's `ce-handoff/` as well (`/tmp/compound-engineering-$(id -u)` or `${TMPDIR:-/tmp}/compound-engineering-$(id -u)`, whichever the block did not select) — a handoff written from a sandboxed session and resumed from an unsandboxed one, or the reverse, lives under the other root. Bound the candidate set before inspecting content; prefer recent files and current repository or working-directory affinity without making repository affinity mandatory. Resolve the roots with this block:
+1. Search the folder or collection the user supplied; otherwise resolve the workspace-local managed root in the current shell call with this block, then enumerate candidate files beneath `$SCRATCH_ROOT/ce-handoff/`. Do not search OS-global temporary directories or other workspaces automatically. If a sandboxed session or another workspace used a different local store, ask for its explicit source path or a user-selected discovery boundary. Bound the candidate set before inspecting content; prefer recent files and current repository or working-directory affinity without making repository affinity mandatory. Resolve the root with this block:
 
    ```bash
-   SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-   [ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+   WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)" || WORKSPACE_ROOT="$(pwd -P)";
+   SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw/handoffs-$(id -u)";
+   if [ -L "$WORKSPACE_ROOT/.tmp" ] || [ -L "$WORKSPACE_ROOT/.tmp/rocketclaw" ]; then echo "unsafe scratch parent symlink" >&2; exit 1; fi;
    if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
    (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
    if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
@@ -23,7 +24,7 @@ A supplied folder or collection is a discovery boundary, not a selected document
 
 2. Before reading any candidate metadata or frontmatter, resolve the discovery boundary and exclude symlink candidates and candidates whose resolved path escapes that boundary. This discovery-only containment rule does not restrict an explicit selected source.
 3. During discovery, do not inspect the body of a candidate without frontmatter: check only its first line, then treat it as unindexed using its filename, location, and filesystem metadata. For a candidate beginning with the exact frontmatter opener `---`, read at most the first 64 lines or 16 KiB, whichever comes first, stopping sooner at the closing delimiter. If no closing delimiter appears within those bounds, treat the candidate as unindexed and do not read farther. Treat `ce-handoff/v1` metadata as an enriched index, not an eligibility gate. Never read an unselected body merely to rank it.
-4. Rank only available frontmatter, filename, location, and filesystem metadata using the user's keywords, title, summary, keyword overlap, repository or worktree affinity, working-directory affinity, and recency.
+4. Rank only available frontmatter, filename, location, and filesystem metadata using the user's keywords, title, summary, keyword overlap, repository or JJ workspace affinity, working-directory affinity, and recency. Existing `branch`, `head`, and `worktree_path` metadata remains readable; newly created handoffs use those compatible fields for the bookmark, JJ commit ID, and workspace path.
 5. Present a short shortlist with match reasons and whatever title, creation time, summary, and inspectable source are available. Label unindexed candidates clearly rather than excluding them.
 6. **MUST stop and ask the user to select a candidate.** Do not choose one, read a body, or continue the prior work.
 
@@ -35,7 +36,7 @@ Read the selected source directly. For a long or structured source, inspect the 
 
 Assess whether the source contains enough concrete continuity context to orient the session. Judge sufficiency from its contents, not its author, format, location, ownership, or metadata contract. If it is too sparse, ambiguous, or unrelated to recover a meaningful objective or current state, say what context is missing and ask the user to supplement it or choose another source. Do not invent a forced resume; stop without acting.
 
-The current user, the current project's active instructions, and verified current state are authoritative. Check only material claims that can be verified read-only within the user's present scope. If the handoff is stale, the worktree is gone, or current files disagree, name the mismatch and distinguish durable state from missing machine-local state.
+The current user, the current project's active instructions, and verified current state are authoritative. Check only material claims that can be verified read-only within the user's present scope. Run JJ inspections from the target workspace's absolute root, for example `(cd "$workspace_root" && jj status)`; repository-scoped GitHub calls require `(cd "$workspace_root" && export GIT_DIR=$(jj git root) && gh ...)`. See https://docs.jj-vcs.dev/latest/cli-reference/ . If the handoff is stale, the workspace is gone, or current files disagree, name the mismatch and distinguish durable state from missing machine-local state. Never recreate or remove a workspace as part of orientation.
 
 Intent and decisions in the source carry the user's weight only where the source attributes them to the user; the rest is its writer's own reading, whoever wrote it. Check those with the current user where acting on them would commit the user to something hard to walk back.
 

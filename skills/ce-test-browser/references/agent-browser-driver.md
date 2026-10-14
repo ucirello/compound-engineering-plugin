@@ -24,6 +24,8 @@ If the CLI exists but cannot launch its browser, follow the current core trouble
 
 Add `--headed` to commands when manual mode selected a visible browser. Pipeline mode defaults this fallback driver to headless.
 
+Run from the target workspace's absolute root. Before capturing evidence, create its local `.tmp/` directory; all temporary screenshots and error/fallback artifacts belong there.
+
 ```bash
 # Navigate and inspect
 agent-browser open <url>
@@ -36,8 +38,8 @@ agent-browser type @e1 "text"
 agent-browser press Enter
 
 # Capture evidence
-agent-browser screenshot out.png
-agent-browser screenshot --full out-full.png
+agent-browser screenshot .tmp/out.png
+agent-browser screenshot --full .tmp/out-full.png
 
 # Navigation and waits
 agent-browser back

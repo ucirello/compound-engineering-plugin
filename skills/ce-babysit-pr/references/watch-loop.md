@@ -1,5 +1,7 @@
 # Watch loop — scheduling, state, dedup, edge cases
 
+In OpenCode use native shell/background completion tools for this retained snapshot/state helper; the other-harness table is compatibility reference, not a dispatch route. Run every JJ/forge operation from the absolute target root and supply `GIT_DIR=$(jj git root)` for repository-scoped `gh`. Local checkout/branch/merge language below means the verified JJ bookmark/remote alignment and owned exact-base repair protocol in `setup.md` and `branch-currency.md`, including empty `@` above the head; never Git checkout/reset/merge. Managed operations require `stack-commands.md`'s JJ compatibility gate. Read `change-descriptions.md` before describing repairs. Preserve monitoring opt-outs and actual permission/depth boundaries; authorized re-arming needs no extra approval.
+
 Read this once per babysit session, before acting on the first tick's output. It explains four things: how ticks are scheduled on each harness, what the on-disk state file contains, the claim→act→confirm protocol that keeps ticks idempotent and crash-safe, and how edge cases are handled. SKILL.md states the tick ordering; this file explains the mechanics behind it.
 
 ## How the watch sustains itself
@@ -25,7 +27,7 @@ Use the harness's tools to run the detector and wait for its output. A skill dri
 
 **Checkpoint:** Use checkpoint mode only when the user requests it or the harness cannot keep the session active while waiting for the detector's output. Run one tick, persist state, report, and print the exact host-rendered resume invocation. Say monitoring is paused. Never fake a loop with a foreground `sleep` or an unmanaged detached process.
 
-**Durability:** the in-session watch dies with the session. Re-invoking the skill resumes from disk, because `/tmp` persists across ticks. For an unattended multi-day watch, escalate to a durable scheduler: Grok's `scheduler_create --durable`, or cron running `<cli> exec '<host-rendered resume invocation>'`. A fresh headless run has no memory of this conversation, so persist consequential decisions to disk. **Shell env vars do not persist between separate tool calls** on any harness — re-set `SKILL_DIR`/`STATE_DIR` inline in every command.
+**Durability:** the in-session watch dies with the session. Re-invoking resumes from the same workspace-local `.tmp/rocketclaw` state. For an explicitly requested unattended multi-day watch, use an authorized native durable scheduler or cron invoking OpenCode with the resume invocation; never another harness's dispatcher or an opt-out workaround. A fresh run reconstructs consequential decisions from disk. Shell environment variables do not persist between tool calls: re-set `SKILL_DIR`, `STATE_DIR`, the absolute workspace cwd and `GIT_DIR=$(jj git root)` inline.
 
 ## Cadence (the watch interval)
 

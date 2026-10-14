@@ -2,12 +2,18 @@
 
 Which orchestration shape fits each phase, and what breaks when you pick the wrong one.
 
-Two primitives are assumed, both platform-neutral:
+Use OpenCode-native `subagents` for independent model contexts and `shell` for deterministic local mining and measurement commands, not another harness's dispatcher. Resolve permitted configured/requested model choices with `opencode.models`; configuration remains the source of desired routes and tiers. No dispatch or workspace bridge helper is required. Put all per-run scratch, fallback and error files under the target workspace's ignored local `.tmp/`; durable evidence belongs in the repository's docs location.
+
+This skill explicitly requests the reviewer/auditor/defender dispatches below. Under a host rule allowing user OR loaded-skill requested delegation, that satisfies the skill exception without another approval. It does not override an unconditional higher-priority prohibition, an actual denial, or an unavailable tool. Delegation permission, model-selection permission, and runtime nesting capacity are separate checks. If model overrides require an explicit user model request, omit the optional `model` argument and use a suitable inherited model; preserve configured tier intent and disclose unmet requirements. Separate same-model contexts provide reviewer independence, not cross-model independence. A required different-model route that cannot run remains incomplete.
+
+Verify effective nesting capacity through the host's discovered configuration and actual dispatch result; permission does not imply available depth. Classify errors as permission denial, model-argument rejection, missing tool, or depth/capacity exhaustion based on evidence. Never retry a denied operation or evade it or a depth limit through shell/another harness. Use an allowed parent-coordinator fallback only when the phase permits it and retains independent contexts; the adversarial audit never permits one-context inline substitution.
+
+Two native capabilities are assumed:
 
 - **A dispatch primitive** that launches an independent agent with its own context window and returns a result to the orchestrator (in one host it is a subagent-spawning tool; in another a job runner). Only two properties matter: fresh context per agent, and a result the orchestrator can read.
-- **A concurrency cap** the host enforces on how many agents run at once (often around 10). Dispatches above the cap queue rather than fail, so a 31-unit fan-out is three waves, not one. Plan the wave count; do not assume flat cost.
+- **A concurrency cap** the host enforces on how many agents run at once. Discover its actual queue/error behavior and plan bounded waves; do not assume flat cost or guaranteed queuing.
 
-Classify a rejected dispatch by whether an agent launched. Correct a pre-launch argument rejection once, and leave capacity-limited work queued. Any other launch failure follows the phase's own failure direction. In the corpus audit, the proposal and defense contexts must be independent for the audit to mean anything, so a launch failure there is a blocker: stop the audit rather than running the missing side inline.
+Classify a rejected dispatch by whether an agent launched and by the specific error categories above. Correct a genuinely invalid pre-launch argument once only when allowed; leave queued work queued when the host supports queuing. Any other launch failure follows the phase's own failure direction. In the corpus audit, the proposal and defense contexts must be independent for the audit to mean anything, so an unresolved launch failure there is a blocker: stop the audit rather than running the missing side inline.
 
 ## The shapes
 

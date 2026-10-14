@@ -34,9 +34,9 @@ Debugging surfaces raw output constantly — command results, captured payloads,
 Resolve `<root>` only when you first compose a `<root>/` path — a run that composes none skips this entirely.
 
 <!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only (`<repo-root>` = `jj workspace root`, run from the target workspace's absolute root). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
 - **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
@@ -75,8 +75,10 @@ If the user chose "Diagnosis only," skip to Phase 4's summary. If they chose "Re
 
 **Read `references/fix.md` before editing any file** — the test-first sequence, the failed-fix rule, and the defense-in-depth and post-mortem triggers. Two rules decide whether the fix may start at all, so they stay here:
 
-- **Branch.** Check `git status`; if the user has unstaged work in files that need modification, confirm before editing. If the current branch is the default branch, create a feature branch without asking — derive a name from the bug, `git checkout -b <name>`, and say which branch you moved to. Detect the default by comparing against `main`, `master`, or `git rev-parse --abbrev-ref origin/HEAD` **with its `origin/` prefix stripped** — the raw output is `origin/<name>`, so an unstripped comparison never matches.
-- **Record the pre-fix scope:** current `HEAD`, whether `git status --short` is clean, and any pre-existing changed files. Then keep a list of **fix-owned files** (the tests and implementation changed for this bug) as you work. Phase 4 answers both of its questions from this record and cannot reconstruct it afterwards.
+- **Branch/bookmark.** From the target absolute workspace root, inspect `jj status`, `jj diff --summary`, and `jj bookmark list`. Confirm before editing files carrying the user's work. Verify the remote default bookmark rather than guessing from a name. On the default bookmark, without a feature bookmark, or when unsure, prepare a separate fix change with `jj new <verified-base>` only when unrelated work is safely preserved, and create a bug-derived feature bookmark with `jj bookmark create <name> -r <fix-change>`; never move an existing default/source bookmark. Report the selected bookmark. Pipeline mode retains the caller's verified PR context instead.
+- **Record the pre-fix scope:** current `@` commit ID and parent, whether `jj status` and `jj diff --summary` show changes/conflicts, and all pre-existing changed files. Keep a list of **fix-owned files** (tests and implementation changed for this bug). Phase 4 cannot reconstruct this record afterwards.
+
+**Workspace and command safety.** Read `references/workspace-safety.md` before an isolated probe or workspace creation/cleanup. Run every JJ command from the target workspace's absolute root, e.g. `(cd "$workspace_root" && jj status)`; paths in file lists stay repository-relative. Repository-scoped forge commands use `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh ...)`. All captures, sanitized logs, and temporary files, including error/fallback paths, belong under that workspace's `.tmp/` (local `.tmp/` outside a repository). Before any fix or follow-up commit description, read and follow `references/change-descriptions.md`, including its full-guide and runtime history comparison.
 
 ### Phase 4: Handoff
 
@@ -113,9 +115,9 @@ If the user chose "Diagnosis only," skip to Phase 4's summary. If they chose "Re
   - `ce-commit-push-pr` pushes the **whole branch**, and its PR spans every commit on it, not just your fix. So the question is about the branch, not your diff. It also pushes *before* creating the PR, so a remote `gh` cannot open a PR against leaves the branch published with no PR.
   - Already pushed is not already **offered**. Commits in an open PR are under review, so they are offered, and this run updates that PR rather than opening a second one. Commits pushed for backup or to trigger CI are not offered, and a first PR would publish them. Compare against the remote rather than a local ref: a local branch, including the default branch Phase 3 may have branched off, can itself be ahead of what was pushed.
 
-  If you cannot establish all three, take the local route instead; that is the safe direction, and the preview is not a substitute for it. Otherwise preview what will be committed, on what branch, and whether a PR opens or updates, then **invoke the `ce-commit-push-pr` skill with `branding:on`.** It commits under question 1's scope, so do not commit first. The preview is a statement, not a question. Surface the resulting PR URL.
+   If you cannot establish all three, take the local route instead; that is the safe direction, and the preview is not a substitute for it. Otherwise preview what will be committed, on what bookmark, and whether a PR opens or updates, then **invoke the `ce-commit-push-pr` skill.** It commits under question 1's scope, so do not commit first. The preview is a statement, not a question. Surface the resulting PR URL. Routine already-authorized maintenance, verified clean-head alignment, and authorized monitoring need no second approval; optional description rewrites outside that scope still follow that skill's approval rule and cannot block otherwise authorized monitoring.
 - **Stays local** when any of those three fails. Invoke the `ce-commit` skill under question 1's scope and push nothing. Say in one line what stayed local and why, and that you will push and open the PR on request. Do not ask first; a local commit is reversible.
-- **Not a git repo**: nothing commits. Stop after the summary and the quality block.
+- **Not a JJ repo**: nothing commits. Stop after the summary and the quality block.
 
 **Contextual override** ("don't open PRs from skills", "commit only", "stop after the fix") — follow what the user said, and **Stop here** without committing when that is what they asked for. A vague tonal cue is not an override.
 

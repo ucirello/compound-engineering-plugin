@@ -24,9 +24,9 @@ When Spiral is unauthed or absent, offer setup once. First check the opt-out so 
 ### Check the opt-out
 
 <!-- ce-config-layers:start -->
-**Resolve ordinary CE yaml keys from the two repo files.**
+**Resolve ordinary RocketClaw yaml keys from the two repo files.**
 
-- **Read** `<repo-root>/.compound-engineering/config.local.yaml`, then `config.yaml` (`<repo-root>` = `git rev-parse --show-toplevel`). Missing files are skipped. Gitignore does not change resolution.
+- **Read** `<repo-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<repo-root>` = the absolute root returned by `jj workspace root` in the target workspace). Missing files are skipped. Ignore rules do not change resolution. Outside a JJ repository, use an explicitly verified project root; if none is available, skip repository-local opt-out persistence rather than guessing.
 - **Win** with the first active (non-commented) value. For scalars, empty is unset; an invalid value continues to the next layer, then the skill default. For lists and maps, a present key — including an empty list or map — replaces the whole key.
 - **Do not** use this rule for `docs_root` — that key is `config.yaml` only.
 <!-- ce-config-layers:end -->
@@ -64,14 +64,16 @@ There is deliberately no separate "don't ask again" option: **dismissing is itse
 
 ### Record the opt-out (best-effort)
 
-Resolve the repo root, then add `ce_promote_spiral_optout: true` as a top-level key to `<root>/.compound-engineering/config.local.yaml`, using the native file-write/edit tool:
+Resolve the repo root, then add `ce_promote_spiral_optout: true` as a top-level key to `<root>/.rocketclaw/config.local.yaml`, using the native file-write/edit tool:
+
+Run every JJ or backend Git command below from that root's absolute path (`workspace_root`). Before editing an existing config, check `(cd "$workspace_root" && jj file list .rocketclaw/config.local.yaml)`; if it is already tracked, do not alter or untrack it as a drafts-only side effect. Skip persistence and continue to Path B instead.
 
 - **File already exists:** ensure an **uncommented** `ce_promote_spiral_optout: true` line is present — add one (or uncomment the example) unless an uncommented one already exists. A commented `# ce_promote_spiral_optout: true` (from `ce-setup`'s template) does **not** count as present; leaving only the comment would let the comment-ignoring read path re-prompt next run.
-- **File absent:** create it (and its `.compound-engineering/` directory) with the key, AND make sure the machine-local config won't be committed. Check whether the root-relative path `<root>/.compound-engineering/config.local.yaml` is already ignored (`git check-ignore -q <path>`); if it isn't, append `.compound-engineering/*.local.yaml` to git's **local exclude file** — resolve that file's path with `git rev-parse --git-path info/exclude` (this is correct in worktrees too, where `.git` is a *file* and `info/exclude` lives in the common git dir; do **not** hardcode `<root>/.git/info/exclude`). Use the local exclude, **not** `.gitignore`: it keeps the rule local and avoids dirtying a tracked file on what was a drafts-only action. `ce-setup` is the canonical place that adds the shared `.gitignore` entry for teammates. Without any ignore, a user who runs `/ce-promote` before `/ce-setup` could accidentally commit machine-local opt-out state.
+- **File absent:** before creating it (and its `.rocketclaw/` directory), make sure the machine-local config will not be tracked. JJ honors Git ignore rules; because JJ has no equivalent ignore-query or local-exclude-path command, this narrow read-only Git fallback is allowed: `(cd "$workspace_root" && GIT_DIR=$(jj git root) git check-ignore -q -- .rocketclaw/config.local.yaml)`. Distinguish an unignored path from a command error. If unignored, obtain the backend directory with `(cd "$workspace_root" && jj git root)` and use the native file-edit tool to append `.rocketclaw/*.local.yaml` to that backend's `info/exclude`, preserving existing contents and avoiding duplicate rules. Do **not** hardcode `<root>/.git/info/exclude`: `.git` may be a file. Recheck the ignore result before creating the config, and verify with `(cd "$workspace_root" && jj file list .rocketclaw/config.local.yaml)` that it is not already tracked; never untrack existing user content. Use the local exclude, **not** `.gitignore`: it keeps the rule local and avoids dirtying a tracked file on what was a drafts-only action. `ce-setup` is the canonical place that adds the shared `.gitignore` entry for teammates. If the ignore cannot be safely established, skip persistence and continue drafting. See [JJ's Git compatibility guidance](https://docs.jj-vcs.dev/latest/git-experts/).
 
 If the root can't be resolved or any write fails, proceed to Path B anyway; the opt-out is a convenience, never a blocker.
 
-After recording, confirm it in one line so the write isn't silent and the user knows how to undo it — e.g. "Got it — I won't bring up Spiral here again (saved to `.compound-engineering/config.local.yaml`, kept out of git). Want it back later? Just ask, or remove the `ce_promote_spiral_optout` key." Keep it to a single line; don't belabor it.
+After recording, confirm it in one line so the write isn't silent and the user knows how to undo it — e.g. "Got it — I won't bring up Spiral here again (saved to `.rocketclaw/config.local.yaml`, kept out of version control). Want it back later? Just ask, or remove the `ce_promote_spiral_optout` key." Keep it to a single line; don't belabor it.
 
 ## Generate
 

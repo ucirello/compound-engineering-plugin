@@ -76,27 +76,9 @@ One run, and the log shows precisely which layer drops the value — secrets →
 
 ---
 
-## Git Bisect for Regressions
+## JJ revision bisection for regressions
 
-When a bug is a regression ("it worked before"), use binary search to find the breaking commit:
-
-```bash
-git bisect start
-git bisect bad                    # current commit is broken
-git bisect good <known-good-ref> # a commit where it worked
-# git bisect will checkout a middle commit — test it
-# mark as good or bad, repeat until the breaking commit is found
-git bisect reset                  # return to original branch when done
-```
-
-For automated bisection with a test script:
-
-```bash
-git bisect start HEAD <known-good-ref>
-git bisect run <test-command>
-```
-
-The test command should exit 0 for good, non-zero for bad.
+When a bug is a regression ("it worked before"), binary-search the verified ancestry between known-good and known-bad commits using `jj log`. Use the isolated workspace procedure in `references/workspace-safety.md`, preserving the source working copy. In the probe workspace's absolute root, use `jj new <verified-candidate>` to test each midpoint, recording its commit ID and good/bad result under local `.tmp/`. Do not advance past unexpected probe changes or conflicts; preserve evidence and stop safely. Narrow the ancestry interval until the introducing change is identified, accounting for merge parents rather than assuming a linear history. A repeatable test command exits 0 for good and non-zero for bad; infrastructure failure is neither. Report the candidate and boundary evidence. Cleanup follows the complete owned-workspace removal safeguards, never a reset of the user's workspace.
 
 ---
 

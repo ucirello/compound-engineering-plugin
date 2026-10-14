@@ -17,10 +17,12 @@ It works **with or without Spiral**: with nothing installed it drafts directly f
 
 A free-form description in the arguments is the source of truth. Otherwise derive it from context, using what is available and never waiting on any single source:
 
-- **Merged/active PR** — `gh pr view --json title,body,url` (the title and body usually state the user-facing value)
-- **The diff** — `git diff main...HEAD --stat`, skimming notable changes so the claim is grounded in what actually changed
+- **Merged/active PR** — `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh pr view --json title,body,url)` (the title and body usually state the user-facing value)
+- **The diff** — verify the project's base revision and shipped head, then `(cd "$workspace_root" && jj diff --from '<verified-base>' --to '<verified-shipped-head>' --stat)`, skimming notable changes so the claim is grounded in what actually changed
 - **Changelog** — the top or `[Unreleased]` entry in `docs/changelog.md`, `CHANGELOG.md`, or similar
-- **Recent commits** — `git log --oneline -15` for the arc of the change
+- **Recent changes** — `(cd "$workspace_root" && jj log -r 'ancestors(@, 15)' --limit 15)` for the arc of the change
+
+Resolve `workspace_root` to the target workspace's absolute root with `jj workspace root` before these commands; never run them from a nested or unrelated directory. See the [JJ command reference](https://docs.jj-vcs.dev/latest/cli-reference/) for revision and diff operations. If this is not a JJ repository, use the supplied description, changelog, or other verified context rather than initializing or modifying version control. Any temporary output or error capture belongs under `<workspace_root>/.tmp/` (local `.tmp/` outside a repository), never OS-global temporary storage; ensure `.tmp/` is ignored in the repository's `.gitignore`.
 
 Then write a 1-3 sentence summary of the **user-facing value**: what a user can now do that they couldn't before, and why they'd care. Outcome, not implementation — "You can now export any report to CSV in one click", not "Added a CsvSerializer and an export endpoint." If you can't confidently tell what shipped, ask one short question rather than guessing.
 

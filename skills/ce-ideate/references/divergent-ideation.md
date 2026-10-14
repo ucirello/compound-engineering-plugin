@@ -4,10 +4,10 @@ Read this file at the start of Phase 2 — after Phase 1 grounding and any Phase
 
 ## Fleet
 
-Dispatch parallel ideation sub-agents per the model-tier fleet in `references/grounding.md`. Omit the `mode` parameter so the user's configured permission settings apply. The default fleet is **5 agents covering all six frames**:
+Dispatch parallel OpenCode-native ideation sub-agents per the model-tier fleet and delegation/model/depth policy in `references/grounding.md`. Omit the `mode` parameter so the user's configured permission settings apply; omit optional model overrides unless the host permits them. The default fleet is **5 agents covering all six frames**:
 
 - **3 generation-tier agents**, one per evidence-driven frame (Pain and friction; Inversion, removal, or automation; Leverage and compounding). These frames live on evidence — the dossiers do the heavy lifting, so the mid-tier model performs well here.
-- **2 ceiling-tier agents** for the ceiling frames, where the strong model's reasoning is the product and must not be tiered down: one takes Cross-domain analogy; the other takes Assumption-breaking and reframing **plus** Constraint-flipping (cousins — both invert givens; one agent holds both as starting biases).
+- **2 ceiling-tier agents** for the ceiling frames, where the strong model's reasoning is the product: one takes Cross-domain analogy; the other takes Assumption-breaking and reframing **plus** Constraint-flipping (cousins — both invert givens; one agent holds both as starting biases). Preserve the ceiling-tier requirement; if the permitted inherited model cannot satisfy it, report that coverage incomplete rather than silently tiering down or violating model-selection policy.
 
 Fleet variants. **Every variant that uses the default frame set covers all six** — scaling changes the agent count, the tier, or the per-frame volume, never how many lenses run. Issue-tracker mode is the one variant that *replaces* the frame set (themes become the frames), so the six-frame floor does not apply to it:
 
@@ -107,6 +107,6 @@ Basis is required, not optional. If a sub-agent cannot articulate a basis of at 
 4. If a focus was provided, weight the merged list toward it without excluding stronger adjacent ideas.
 5. Spread ideas across multiple dimensions when justified: workflow/DX, reliability, extensibility, missing capabilities, docs/knowledge compounding, quality/maintenance, leverage on future work.
 
-**Checkpoint A (V17).** Immediately after the cross-cutting synthesis step completes and the raw candidate list is consolidated, write `<scratch-dir>/raw-candidates.md` (using the absolute path captured in Phase 1) containing the full candidate list with sub-agent attribution. This protects the most expensive output (the parallel ideation dispatches + dedupe) before Phase 3 critique potentially compacts context. Best-effort: if the write fails (disk full, permissions), log a warning and proceed; the run does not depend on the checkpoint. Not cleaned up at the end of the run (the run directory is preserved so the web-research cache remains reusable across run-ids in the same session — see Phase 5).
+**Checkpoint A (V17).** Immediately after the cross-cutting synthesis step completes and the raw candidate list is consolidated, write `<scratch-dir>/raw-candidates.md` (using the absolute path captured in Phase 1) containing the full candidate list with its originating frame labels. This protects the most expensive output (the parallel ideation dispatches + dedupe) before Phase 3 critique potentially compacts context. Best-effort: if the write fails (disk full, permissions), log a warning and proceed; the run does not depend on the checkpoint. Not cleaned up at the end of the run (the run directory is preserved so the web-research cache remains reusable across run-ids in the same session — see Phase 5).
 
 When the merge, synthesis, and axis-coverage steps are complete, load `references/post-ideation-workflow.md` before any critique begins. That read is required: the filtering rubric, the Phase 4 auto-write, and the Phase 5 menu live only there.

@@ -47,7 +47,7 @@ decides per flag: fix, annotate as historical, or confirm intentional.
 Only the summary exit code distinguishes "clean" from "needs a look".
 
 The script never touches the network (no fetch); classification uses
-whatever refs exist locally. Run a best-effort `git fetch --quiet` first
+whatever refs exist locally. Run a best-effort `jj git fetch` first
 when freshness matters. Pure stdlib (no third-party deps).
 """
 import os
@@ -101,10 +101,10 @@ def usage_fail(msg: str) -> "NoReturn":
     sys.exit(2)
 
 
-def git(args: list[str], cwd: str) -> tuple[int, str]:
+def jj(args: list[str], cwd: str) -> tuple[int, str]:
     try:
         result = subprocess.run(
-            ["git", *args],
+            ["jj", *args],
             cwd=cwd,
             capture_output=True,
             text=True,
@@ -113,6 +113,11 @@ def git(args: list[str], cwd: str) -> tuple[int, str]:
         return result.returncode, result.stdout.strip()
     except (OSError, subprocess.TimeoutExpired):
         return 1, ""
+
+
+def reachable(sha: str, revision: str, workspace_root: str) -> bool:
+    code, matches = jj(["log", "--no-graph", "-r", f"{sha} & ancestors({revision})", "-T", "commit_id"], workspace_root)
+    return code == 0 and bool(matches)
 
 
 def split_body(text: str) -> tuple[str, int]:
@@ -263,29 +268,29 @@ def main(argv: list[str]) -> int:
     flags: list[str] = []
 
     # --- Repo context -----------------------------------------------------
-    code, repo_root = git(["rev-parse", "--show-toplevel"], doc_dir)
+    code, repo_root = jj(["workspace", "root"], doc_dir)
     in_git = code == 0 and bool(repo_root)
     upstream: str | None = None
     if in_git:
-        code, ref = git(["rev-parse", "--abbrev-ref", "origin/HEAD"], repo_root)
+        code, ref = jj(["log", "--no-graph", "-r", "trunk()", "-T", "commit_id"], repo_root)
         if code == 0 and ref:
             upstream = ref
         else:
-            for candidate in ("origin/main", "origin/master"):
-                code, _ = git(
-                    ["rev-parse", "--verify", "--quiet", candidate], repo_root
+            for candidate in ("main@origin", "master@origin"):
+                code, _ = jj(
+                    ["log", "--no-graph", "-r", candidate, "-T", "commit_id"], repo_root
                 )
                 if code == 0:
                     upstream = candidate
                     break
         if upstream:
-            code, behind = git(
-                ["rev-list", "--count", f"HEAD..{upstream}"], repo_root
+            code, behind = jj(
+                ["log", "--no-graph", "-r", f"@..{upstream}", "-T", 'commit_id ++ "\\n"'], repo_root
             )
-            if code == 0 and behind.isdigit() and int(behind) > 0:
+            if code == 0 and behind:
                 infos.append(
-                    f"INFO: worktree is {behind} commits behind {upstream} — "
-                    "verify merge-state claims against remote truth (gh pr view), "
+                    f"INFO: workspace is {len(behind.splitlines())} commits behind {upstream} — "
+                    "verify merge-state claims against remote truth (GIT_DIR=$(jj git root) gh pr view), "
                     "not this checkout"
                 )
         else:
@@ -302,13 +307,13 @@ def main(argv: list[str]) -> int:
     def upstream_has_path(path: str) -> bool:
         if not (in_git and upstream):
             return False
-        code, _ = git(["cat-file", "-e", f"{upstream}:{path}"], repo_root)
+        code, _ = jj(["file", "show", "-r", upstream, path], repo_root)
         return code == 0
 
     def head_has_path(path: str) -> bool:
         if not in_git:
             return False
-        code, _ = git(["cat-file", "-e", f"HEAD:{path}"], repo_root)
+        code, _ = jj(["file", "show", "-r", "@", path], repo_root)
         return code == 0
 
     # --- 1. Cited repo paths ----------------------------------------------
@@ -391,7 +396,7 @@ def main(argv: list[str]) -> int:
                 seen_shas[sha] = (line_no, True)
         for sha in order:
             line_no, cited = seen_shas[sha]
-            code, _ = git(["cat-file", "-e", f"{sha}^{{commit}}"], repo_root)
+            code, _ = jj(["log", "--no-graph", "-r", sha, "-T", "commit_id"], repo_root)
             resolved = code == 0
             loc = f" (line {line_no})"
             if not resolved:
@@ -413,13 +418,11 @@ def main(argv: list[str]) -> int:
                 )
                 continue
             checked_shas += 1
-            in_head = (
-                git(["merge-base", "--is-ancestor", sha, "HEAD"], repo_root)[0] == 0
-            )
+            code, matches = jj(["log", "--no-graph", "-r", f"{sha} & ancestors(@)", "-T", "commit_id"], repo_root)
+            in_head = code == 0 and bool(matches)
             in_up = (
                 upstream is not None
-                and git(["merge-base", "--is-ancestor", sha, upstream], repo_root)[0]
-                == 0
+                and reachable(sha, upstream, repo_root)
             )
             if in_head and (in_up or upstream is None):
                 continue

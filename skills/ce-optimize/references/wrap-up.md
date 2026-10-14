@@ -47,8 +47,8 @@ Clean up scratch space:
 ```bash
 # Keep the experiment log for local resume/audit on this machine
 # Remove temporary batch artifacts
-rm -f .context/compound-engineering/ce-optimize/<spec-name>/strategy-digest.md
+rm -f .context/ce-optimize/<spec-name>/strategy-digest.md
 ```
 
 Do NOT delete the experiment log if the user may resume locally or wants a local audit trail. If they need a durable shared artifact, summarize or export the results into a tracked path before cleanup.
-Do NOT delete experiment worktrees that are still being referenced.
+Do NOT delete experiment worktrees that are still being referenced. Any authorized retirement must follow `workspace-safety.md`, including evidence readback, recovery references, session migration and both removal postchecks; use JJ-owned `workspace remove`, never force-delete directories.

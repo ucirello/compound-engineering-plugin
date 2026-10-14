@@ -85,20 +85,22 @@ AGENT_SURFACE_PATTERN = re.compile(
 )
 
 
-def git(*args: str) -> subprocess.CompletedProcess[str]:
+def jj(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["git", *args], capture_output=True, text=True, check=False
+        ["jj", "--color", "never", "--no-pager", *args], cwd=repo_root(),
+        capture_output=True, text=True, check=False
     )
 
 
 def valid_commit(ref: str | None) -> bool:
     if not ref:
         return False
-    return git("rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}").returncode == 0
+    result = jj("log", "-r", ref, "--no-graph", "-T", 'commit_id ++ "\n"')
+    return result.returncode == 0 and len(result.stdout.splitlines()) == 1
 
 
 def unique_merge_base(base: str, head: str) -> str | None:
-    result = git("merge-base", "--all", base, head)
+    result = jj("log", "-r", f"heads(::({base}) & ::({head}))", "--no-graph", "-T", 'commit_id ++ "\n"')
     candidates = [line for line in result.stdout.splitlines() if line]
     if result.returncode != 0 or len(candidates) != 1:
         return None
@@ -125,15 +127,9 @@ def normalize_docs_root(docs_root: str | None) -> str:
 
 @functools.lru_cache(maxsize=None)
 def repo_root() -> Path:
-    """The repository root, matching how docs_root is resolved everywhere else.
-
-    docs_root is repo-relative (``<repo-root>/<docs_root>``), so the corpus
-    check must resolve against the git toplevel, not the current working
-    directory. ce-code-review can run from a subdirectory (``git diff`` still
-    works there), where ``Path.cwd()`` would join docs_root under the subdir and
-    wrongly report the corpus absent. Fall back to cwd when git can't answer.
-    """
-    result = git("rev-parse", "--show-toplevel")
+    """Resolve the workspace root before any JJ diff, including from subdirectories."""
+    result = subprocess.run(["jj", "workspace", "root"], cwd=Path.cwd().resolve(),
+                            capture_output=True, text=True, check=False)
     if result.returncode == 0 and result.stdout.strip():
         return Path(result.stdout.strip()).resolve()
     return Path.cwd().resolve()
@@ -164,10 +160,10 @@ PACKS_RESOLVER_TIMEOUT = 30.0
 
 
 def declared_packs() -> tuple[bool | None, int]:
-    """Whether the local CE config declares Compound Packs, from the config alone.
+    """Whether the local RocketClaw config declares Compound Packs, from the config alone.
 
     Runs the sibling resolver in `--declared-only` mode, which parses the
-    `packs:` list from both CE config layers and shape-checks each entry with no
+    `packs:` list from both RocketClaw config layers and shape-checks each entry with no
     git or cache work. Its `declared` is true when any entry parsed or the block
     is malformed -- a broken declaration is still one the learnings pass must
     surface in Coverage. ``None`` means the helper could not tell (resolver
@@ -294,33 +290,39 @@ def main() -> int:
         print(json.dumps(fail_closed("invalid head endpoint", repo), sort_keys=True))
         return 0
 
-    diff_args = [args.base]
+    diff_args = ["--from", args.base, "--to", "@"]
     if args.head:
         merge_base = unique_merge_base(args.base, args.head)
         if merge_base is None:
             print(json.dumps(fail_closed("merge base unavailable or ambiguous", repo), sort_keys=True))
             return 0
-        diff_args = [merge_base, args.head]
+        diff_args = ["--from", merge_base, "--to", args.head]
 
-    numstat = git("diff", "--numstat", *diff_args)
-    raw = git("diff", "--raw", *diff_args)
-    if numstat.returncode != 0 or raw.returncode != 0:
-        print(json.dumps(fail_closed("git diff failed", repo), sort_keys=True))
+    patch = jj("diff", "--git", *diff_args)
+    # JJ has no per-file numeric diff format; Git is a read-only patch parser,
+    # not the source of workspace state. Run at the absolute JJ workspace root.
+    if patch.returncode != 0:
+        print(json.dumps(fail_closed("jj diff failed", repo), sort_keys=True))
+        return 0
+    backend = jj("git", "root")
+    if backend.returncode != 0:
+        print(json.dumps(fail_closed("Git backend unavailable for numstat parser", repo), sort_keys=True))
+        return 0
+    env = {**os.environ, "GIT_DIR": backend.stdout.strip()}
+    numstat = subprocess.run(["git", "apply", "--numstat", "-"], input=patch.stdout,
+                             cwd=repo_root(), env=env, capture_output=True, text=True, check=False)
+    if numstat.returncode != 0:
+        print(json.dumps(fail_closed("diff numstat parsing failed", repo), sort_keys=True))
         return 0
 
     executable_mode_paths: set[str] = set()
-    for line in raw.stdout.splitlines():
-        if "\t" not in line:
-            continue
-        meta, path_field = line.split("\t", 1)
-        fields = meta.lstrip(":").split(" ")
-        if len(fields) < 2:
-            continue
-        old_mode, new_mode = fields[0], fields[1]
-        mode = old_mode if new_mode == "000000" else new_mode
-        if not mode.endswith("755"):
-            continue
-        for path in path_field.split("\t"):
+    path = None
+    for line in patch.stdout.splitlines():
+        if line.startswith("diff --git "):
+            # Quoted/ambiguous path syntax is deliberately left unclassified.
+            match = re.match(r"diff --git a/(.+) b/(.+)$", line)
+            path = match.group(2) if match else None
+        elif path and re.search(r"(?:mode |index .* )100755$", line):
             executable_mode_paths.add(path)
 
     files: list[str] = []

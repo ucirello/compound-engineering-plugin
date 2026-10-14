@@ -1,5 +1,7 @@
 # Managed stacks: posture, discovery, transitions, upstack maintenance, landing
 
+Interpret local branch/worktree and checkout references below as the verified JJ bookmark/remote and clean exact-head alignment from `setup.md`, including empty `@` above the head. Use `jj status`, `jj bookmark list`, `jj log` and `jj git fetch` from the absolute target root for local verification. Follow `stack-commands.md`'s manager compatibility gate before manager mutation; unsupported Git-branch assumptions yield recoverable residuals, never Git checkout or altered existing isolation. All repository-scoped `gh` calls carry `GIT_DIR=$(jj git root)`.
+
 ## Posture (full text)
 
 Hold exactly one posture for the run. It is written as `posture:target|stack-ready|stack-land` — distinct from `watch` / `checkpoint` / `mode:pipeline` / duration. Re-state the same posture on every managed-stack layer `--continue-invocation` transition alongside the existing budget flags.

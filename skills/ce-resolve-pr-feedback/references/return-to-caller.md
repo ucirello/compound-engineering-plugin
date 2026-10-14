@@ -14,7 +14,7 @@ PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c 
 "$PY" "$SKILL_DIR/scripts/pending-feedback.py" preflight
 ```
 
-When the invocation supplies `handoff:<path>`, append `--path '<caller path>'` to that command, preserving the actual argument. Preflight refuses an existing destination, including a dangling symlink, and probes exclusive temporary-file creation in its parent directory. Without a supplied path it allocates a private OS scratch directory and returns an unused `pending.json` path. Retain the returned absolute `handoff` path. Do not clean it up at skill completion; the caller owns retention.
+When the invocation supplies `handoff:<path>`, append `--path '<caller path>'` to that command, preserving the actual argument and explicit persistent destination. Preflight refuses an existing destination, including a dangling symlink, checks parent-directory write/search access and same-filesystem atomic-checkpoint compatibility, and probes temporary-file creation only in local `.tmp/`. Resolve that scratch directory from the absolute root returned by `jj workspace root`, running JJ from the absolute current directory; outside a JJ repository use the absolute current directory's `.tmp/`. Without a supplied path it allocates a private directory there and returns an unused `pending.json` path. Retain the returned absolute `handoff` path. Do not clean it up at skill completion; the caller owns retention.
 
 If preflight fails, stop before editing and return the blocker. Do not substitute another destination for a rejected caller path. Creation also refuses overwrite, so a destination that appears during preparation cannot be replaced.
 
@@ -86,7 +86,7 @@ PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c 
 "$PY" "$SKILL_DIR/scripts/pending-feedback.py" create --input '<prepared JSON file>' --path '<preflight handoff path>'
 ```
 
-The helper validates the original bytes, creates the destination exclusively with private permissions, reads it back, and returns `{handoff, record}`. Preparation is complete only after this succeeds. `validate --path '<handoff path>'` reads and validates an existing record. `checkpoint --input '<updated JSON file>' --path '<handoff path>'` atomically saves progress, status and residuals while preserving the prepared PR, fix SHA, verification, source identities, exact replies and tick intent. These commands never mutate GitHub.
+The helper validates the original bytes, creates the destination exclusively with private permissions, reads it back, and returns `{handoff, record}`. Preparation is complete only after this succeeds. `validate --path '<handoff path>'` reads and validates an existing record. `checkpoint --input '<updated JSON file>' --path '<handoff path>'` stages bytes only under local `.tmp/` and atomically saves progress, status and residuals while preserving the prepared PR, fix SHA, verification, source identities, exact replies and tick intent. If atomic replacement fails, including across filesystems, preserve the existing record and report incomplete handoff with observed progress; never fall back to non-atomic copying or temporary staging beside an arbitrary destination or in global storage. These commands never mutate GitHub.
 
 If a save or checkpoint fails, report the actual local commit and any observed remote success, plus the precise failure. Do not lose the fix SHA behind a generic failed status or describe an unreadable record as a usable handoff.
 

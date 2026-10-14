@@ -31,14 +31,16 @@ Use the host's blocking question tool already in the current tool list (match by
 Resolve `<root>` the first time you compose a path under it. Reading learnings under `<root>/solutions/` counts as composing one. Give any subagent the resolved path, not the config.
 
 <!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only (`<repo-root>` = `jj workspace root`, run from the target workspace's absolute root). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
 - **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
 
 ## Persistence Discipline
+
+Read `references/workspace-safety.md` before creating, adopting, integrating, or retiring experiment isolation. All JJ commands run from the target workspace's absolute root. Repository-scoped GitHub commands use `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh ...)`. Temporary prompts, payloads, stderr and fallback files belong in that workspace's local `.tmp/`, ignored via `.gitignore`.
 
 The experiment log on disk is the source of truth. Write order is measure, write, verify, then show the user. **Read `references/persistence.md` now** for checkpoints CP-0 through CP-5, the file layout, and resume. The phases below mark where each checkpoint falls.
 

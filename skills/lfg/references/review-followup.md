@@ -14,6 +14,8 @@ Do not commit in this step. `ce-simplify-code` leaves its changes in the working
 
 ## Step 4 — invoke `ce-code-review`
 
+Read `references/stage-routing.md`'s native delegation/model/depth contract before reviewer dispatch, even when the feature has no routing directive. Preserve incomplete independence/coverage in the result; a permitted same-model or inline fallback is not proof of a required cross-model pass.
+
 Load `ce-code-review` from the host catalog's listed path. A host skill named `review` is not this step; do not invent `skills/review/SKILL.md` under this plugin.
 
 ```
@@ -53,7 +55,7 @@ Do not treat `autofix_class` as permission to auto-apply.
 1. Filter `actionable_findings` (or markdown Actionable Findings) with the bar above.
 2. Apply eligible fixes in the working tree in severity order (`#` stable from the review).
 3. Run targeted tests when `requires_verification: true` on any applied finding.
-4. If `git status --short` shows changes, stage only review-driven files and commit `fix(review): apply review findings`. Then push before step 6 **when a remote is configured** (per LFG's shipping precondition) and, on the defect route, when everything the push would publish is work the user offered (`references/debug-return.md`). To push: if an upstream exists, run `git push`. If no upstream exists but a remote is configured (common on a fresh feature branch), pick a writable remote at run time: prefer `origin` when present, otherwise run `git remote` and choose the first configured remote. Then run `git push --set-upstream <remote> HEAD`. If there is no remote at all, do not push; the local commit suffices. If no eligible fixes were applied, say so explicitly and skip the commit.
+4. From the target workspace's absolute root, inspect `jj status` and `jj diff`. If eligible fixes changed files, commit only review-driven paths with `jj commit -m "<message composed from the standards below>" -- <review-driven-paths>`; never sweep unrelated work into that change. Describe the review findings applied, without imposing a fixed prefix. Then push before step 6 **when a remote is configured** (per LFG's shipping precondition) and, on the defect route, when everything the push would publish is work the user offered (`references/debug-return.md`). Verify the PR bookmark and its commit, move that bookmark to the completed change only when authorized, and use `jj git push --remote <verified-writable-remote> --bookmark <verified-bookmark>` (with `--allow-new` only for an authorized new remote bookmark). Prefer `origin` when writable; otherwise inspect `jj git remote list` and select a verified writable remote, never guess push authority. If there is no remote at all, do not push; the local commit suffices. If no eligible fixes were applied, say so explicitly and skip the commit. Read `references/shipping.md`'s message standards before composing this description.
 
 ## Step 6 — residual handoff
 

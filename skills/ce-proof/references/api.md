@@ -56,7 +56,7 @@ curl -sS -H "Accept: text/markdown" "https://www.proofeditor.ai/d/{slug}?token=<
 
 curl -sS "https://www.proofeditor.ai/api/agent/{slug}/v3/document" \
   -H "Authorization: Bearer <token>" \
-  -H "X-Agent-Id: ai:compound-engineering"
+  -H "X-Agent-Id: ai:assistant"
 # -> { ok, revision, title, markdown, comments[], suggestions[], mutationReady? }
 ```
 
@@ -74,10 +74,10 @@ Send `{ by, baseRevision?, operations: [...] }` to `POST /api/agent/{slug}/v3/ed
 curl -sS -X POST "https://www.proofeditor.ai/api/agent/{slug}/v3/edit" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <token>" \
-  -H "X-Agent-Id: ai:compound-engineering" \
+  -H "X-Agent-Id: ai:assistant" \
   -H "Idempotency-Key: $(uuidgen)" \
   -d '{
-    "by":"ai:compound-engineering",
+    "by":"ai:assistant",
     "operations":[
       {"op":"replace","find":"old visible text","with":"new text"},
       {"op":"comment","on":"text to anchor on","body":"Is this still accurate?"}
@@ -138,8 +138,8 @@ After every successful edit: confirm `ok:true`, confirm the intended text/commen
 curl -sS -X POST "https://www.proofeditor.ai/api/agent/{slug}/presence" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <token>" \
-  -H "X-Agent-Id: ai:compound-engineering" \
-  -d '{"name":"Compound Engineering","status":"reading","summary":"Joining the doc"}'
+  -H "X-Agent-Id: ai:assistant" \
+  -d '{"name":"AI Assistant","status":"reading","summary":"Joining the doc"}'
 ```
 
 Common statuses: `reading`, `thinking`, `acting`, `waiting`, `completed`, `error`.
@@ -173,4 +173,3 @@ Emptying the markdown (including `set_document` to blank/minimal content) does *
 ### When the loop breaks
 
 If a mutation keeps failing after a fresh read and one safe retry, call `POST https://www.proofeditor.ai/api/bridge/report_bug` with the failing request ID, slug, and raw response. The server enriches and files an issue. Ask before including the user's name/email.
-

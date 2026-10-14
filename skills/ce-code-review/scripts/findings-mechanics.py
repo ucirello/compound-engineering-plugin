@@ -73,7 +73,8 @@ def fingerprint(finding: dict[str, Any]) -> tuple[str, str, str]:
 
 
 def independent_reviewer(name: str, source: dict[str, Any]) -> bool:
-    if name == "fast-pass":
+    if (name == "fast-pass" or source.get("execution_context") in ("parent", "inline")
+            or source.get("independent_review") is False):
         return False
     if cross_model_peer(name):
         return source.get("independence_verified") is True

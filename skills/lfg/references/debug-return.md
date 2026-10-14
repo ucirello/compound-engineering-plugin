@@ -4,6 +4,8 @@ On the defect route, `ce-debug mode:return-to-caller` is the work source and the
 
 ## What advances
 
+Before invoking the defect route, read the workspace lifecycle contract in `references/work-return.md`; its isolation, colocated creation, stable dated names, session adoption, ownership and authorized removal safeguards apply equally to `ce-debug`. A fixed return never authorizes workspace deletion.
+
 Only `status: fixed` advances to step 3. `diagnosed-no-fix`, `needs-human`, and `blocked` stop the run with the return's `root_cause`, `residuals`, and blockers reported verbatim; nothing has been pushed. A malformed return, or a `fixed` return whose fix-owned files show no change on the branch, stops the run as blocked.
 
 ## What `status: fixed` must carry

@@ -5,6 +5,10 @@
 # thread whose comments contain the target ID.
 
 set -e
+if workspace_root=$(jj workspace root 2>/dev/null); then
+    cd "$workspace_root"
+    export GIT_DIR=$(jj git root)
+fi
 
 if [ $# -lt 2 ]; then
     echo "Usage: get-thread-for-comment PR_NUMBER COMMENT_NODE_ID [OWNER/REPO]"
@@ -20,7 +24,7 @@ if [ -n "$3" ]; then
     REPO=$(echo "$3" | cut -d/ -f2)
 else
     # `|| true` is load-bearing: under `set -e`, a failed command substitution
-    # in an assignment aborts the script immediately. Run outside a git repo,
+    # in an assignment aborts the script immediately. Run outside a JJ repo,
     # `gh repo view` exits 1, its stderr is swallowed by `2>/dev/null`, and the
     # script would die here with rc=1 and no output -- making the friendly error
     # below unreachable. Keep `|| true` so detection failure falls through to it.
@@ -29,7 +33,7 @@ else
 fi
 
 if [ -z "$OWNER" ] || [ -z "$REPO" ]; then
-    echo "Error: could not resolve owner/repo. Run get-thread-for-comment from inside the target git repository, or pass OWNER/REPO as the third argument (e.g., get-thread-for-comment $PR_NUMBER $COMMENT_NODE_ID EveryInc/cora)." >&2
+    echo "Error: could not resolve owner/repo. Run get-thread-for-comment from the target JJ workspace root, or pass OWNER/REPO as the third argument (e.g., get-thread-for-comment $PR_NUMBER $COMMENT_NODE_ID EveryInc/cora)." >&2
     exit 1
 fi
 
@@ -37,7 +41,9 @@ fi
 # more than one page of threads can still resolve a comment to its parent
 # thread. Per-thread comments are still capped at 100 -- threads exceeding
 # that depth are not paginated here.
-tmp_threads=$(mktemp "${TMPDIR:-/tmp}/ce-pr-threads.XXXXXX")
+scratch_root="$(pwd)/.tmp"
+mkdir -p "$scratch_root"
+tmp_threads=$(mktemp "$scratch_root/pr-threads.XXXXXX")
 trap 'rm -f "$tmp_threads"' EXIT
 
 gh api graphql --paginate --slurp \

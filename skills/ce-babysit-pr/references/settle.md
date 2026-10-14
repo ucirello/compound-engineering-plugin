@@ -1,5 +1,7 @@
 # Stop conditions, settle, and the merge-ready judgment
 
+The freshness checkpoint below is authorized babysitting maintenance, not standalone optional description rewriting: apply only factual verified run results, preserve unrelated user-authored prose and existing issue links, and do not ask for preview approval. Description-only requests stay draft-only; outside authorized maintenance or an explicit apply request, optional rewrites retain approval and never block otherwise authorized monitoring when declined. Higher-priority permissions and standing opt-outs remain binding.
+
 **"Looks ready" is a judgment, not just an elapsed timer.** It is never enough that CI is green and the PR has been quiet for a while — see the review-still-coming check below.
 
 **The in-progress signal gates only the *merge-ready declaration* — never the work.** Keep resolving open feedback as it arrives even while a review is in progress: **do not wait for the 👀 to clear before acting on the comments it has already posted.** Waiting for the review to *finish* before addressing feedback it already left would serialize the work the same way waiting for a full CI run before addressing comments would — the mistake the core principle forbids. Act on every open item continuously; the *only* thing the in-progress signal withholds is the "looks ready" call. (The engine reports only that the PR went quiet and for how long; whether a review is still coming is yours to judge at the settle decision, under the review-still-coming check in Step 3 below.)

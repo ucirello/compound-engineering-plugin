@@ -12,8 +12,8 @@ Simplify recently changed code for clarity, reuse, quality, and efficiency while
 Resolve the simplification scope in this order:
 
 1. **User-named scope** is authoritative; do not widen it.
-2. **Otherwise, in git**, use the current branch versus its base. Without a usable base, use staged and unstaged changes (`git diff HEAD`).
-3. **Outside git or without a diff**, use files the user named or that were edited earlier in the conversation.
+2. **Otherwise, in JJ**, use the current change/bookmark versus its verified base (`jj diff --from "<verified-base>" --to @`). Without a usable base, use working-copy changes (`jj diff`). Run commands from the target workspace's absolute root, for example `(cd "$workspace_root" && jj diff)`, so file paths remain workspace-relative. See the [JJ command reference](https://docs.jj-vcs.dev/latest/cli-reference/) and [Git-to-JJ command table](https://docs.jj-vcs.dev/latest/git-command-table/).
+3. **Outside JJ or without a diff**, use files the user named or that were edited earlier in the conversation.
 
 If none of the above produces a non-empty scope, stop and ask the user what to simplify rather than guessing. Use the host's blocking question tool already in the current tool list (match by capability, not by a host-specific name). Presence in the current tool list is proof the tool exists; never call a user-facing question tool to discover whether it exists. If a matching tool is listed but unloaded, use the host's tool-discovery primitive to load that capability — do not search for another host's tool name. Fall back to numbered options on the host's user-visible chat surface only when no such tool is in the list or a real question call errors. Never silently skip the question.
 
@@ -23,7 +23,7 @@ When the platform's task-tracking capability is available, show the review, appl
 
 ## Step 2: Launch 3 review agents in parallel
 
-Dispatch three generic subagents — code-reuse, code-quality, and efficiency reviewers — via the platform's subagent primitive (`Agent`/`Task` in Claude Code, `spawn_agent` in Codex) where available; otherwise run the reviews inline or serially. For each reviewer, read its prompt asset from this skill's directory and pass the **full file content** as the subagent's prompt, together with the resolved scope (the full diff or file set) so it has complete context:
+Dispatch three generic subagents — code-reuse, code-quality, and efficiency reviewers — via OpenCode's native subagent primitive where permitted and available; otherwise run the reviews inline or serially and disclose that substitution. This skill explicitly requests reviewer delegation: under a host rule allowing delegation when the user OR an applicable loaded skill requests it, no second approval is needed. An unconditional higher-priority prohibition, missing tool, or actual permission denial still applies; never bypass it through shell or another harness. For each reviewer, read its prompt asset from this skill's directory and pass the **full file content** as the subagent's prompt, together with the resolved scope (the full diff or file set) so it has complete context:
 
 - `references/personas/code-reuse-reviewer.md`
 - `references/personas/code-quality-reviewer.md`
@@ -33,9 +33,11 @@ Do not paraphrase these rubrics from memory. Read each file and pass it verbatim
 
 **Bounded dispatch.** Queue the three reviewers and launch only as many as the harness accepts at once. A concurrency or active-agent-limit error means the harness is full, not that the reviewer failed: leave the reviewer queued and retry after a slot frees. When a dispatch cannot recover through active work, supported release, or a corrected invocation, run that pass inline using the same prompt asset and disclose the substitution.
 
+**Nesting and coverage.** Check the runtime's effective nesting capacity separately from delegation permission. Classify dispatch errors from their actual evidence: depth/capacity limit, permission denial, rejected model argument, or unavailable tool. Do not retry denied operations or evade depth limits through another harness. Inline review is an allowed fallback here, but is not an independent subagent review; report that limitation and any incomplete review coverage rather than claiming a dispatched pass completed.
+
 **Agent lifecycle.** Collect terminal outcomes, including failures, before cleanup. Close or release review-owned agents when the harness provides caller-owned cleanup, before refilling slots, advancing stages, or returning. Do not message completed agents with no remaining work. Do not infer released capacity from completion or interruption, or invent cleanup operations.
 
-**Model selection.** Use the platform's balanced mid-tier model for these reviewers when the current harness exposes a known override. In Claude Code this is the Sonnet class. In Codex, apply this tier only when the active dispatch primitive exposes an explicit model or custom-agent selector; task wording alone does not select a different model. Otherwise omit the override and inherit the parent model -- a working pass on the parent model beats a broken dispatch.
+**Model selection.** Preserve the balanced mid-tier reviewer intent and any applicable configuration's model choices and tiers. Resolve permitted model choices through `opencode.models`, then use the native subagent selector only when the host permits an override. Delegation permission does not grant model-selection permission: if an explicit user model request is required and absent, omit the optional `model` argument and use a suitable inherited model. Disclose unmet tier or route requirements; task wording alone does not select a different model. Same-model reviewers remain separate reviewers, not proof of cross-model independence. If a required different-model pass cannot run, report that coverage as incomplete.
 
 **Permission mode.** Omit the `mode` parameter on the dispatch call so the user's configured permission settings apply.
 

@@ -6,7 +6,7 @@ A review round finishes outside the context that dispatched it. The **dispatch c
 2. the dispatch context launches the validator batch from `validator-input.json`, collects `validator-verdicts.json`, and records the terminal result in `validator-outcome.json` (Stage 5b step 4);
 3. the **report leaf** runs Stage 5b step 5, Stage 5c when authorized, and Stage 6 from those files, writes the final artifacts, and returns the report.
 
-The split exists because a six-lens round routinely uses up the dispatch context before Stage 5b, which is when subagent launches start failing (#1679, #1690). It is always on for the multi-agent path; the quick-review short-circuit never reaches it. No leaf launches a subagent: nested dispatch is unavailable on Gemini CLI, blocked one level down on Cursor, and configurable off on Claude Code and Codex, so the validator stays a parent launch on every host.
+The split protects dispatch context capacity. It is mandatory on the multi-agent path; quick review never reaches it. Leaves launch no subagents; the parent launches the validator. Apply `dispatch-reviewers.md` permission/model/depth checks to leaves and validators: skill-requested delegation satisfies a user-or-skill exception, never an unconditional prohibition; omit forbidden model overrides and preserve intended tiers in Coverage. Verify runtime depth independently and distinguish nesting errors from temporary capacity, missing tools or model rejection. An allowed parent coordinator may launch only within its own permissions/capacity; never evade limits via shell/another harness. If a mandatory leaf cannot launch, use failed-finish below, not inline synthesis reported as verified. Validator launch failure remains infrastructure-failure with affected findings unresolved, not confirmation.
 
 **Outcome:** the report leaf produces the same report the dispatch context would have, from the run directory alone, and the dispatch context emits that report verbatim. **Done:** `report.md` (default mode) or `review.json` (`mode:agent`) and `metadata.json` are on disk, every persisted peer job directory is deleted, and the dispatch context has returned the report leaf's output unchanged.
 
@@ -27,8 +27,8 @@ The dispatch context writes this file after every local reviewer is collected, a
     "base": "<BASE: marker>",
     "diff_a": "<DIFF_A>", "diff_b": "<DIFF_B or null>",
     "pr": { "number": null, "url": null, "title": null, "body": null, "base_ref_name": null, "head_ref_oid": null, "head_ref": null, "base_ref": null, "has_prior_comments": false },
-    "branch": "<git branch --show-current at dispatch>",
-    "head_sha": "<git rev-parse HEAD at dispatch>",
+    "branch": "<verified JJ bookmark at dispatch>",
+    "head_sha": "<jj log -r @ --no-graph -T commit_id at dispatch>",
     "files": "<run-dir>/files.txt",
     "diff": "<run-dir>/full.diff",
     "tree_is_reviewed_head": true,
@@ -79,7 +79,7 @@ Where `finish-review.md` routes prose through another skill (`ce-noslop`) and a 
 
 Read `finish-input.json`, then `references/finish-review.md` from `skill_dir`, record `--start merge` in the stage log, and run Stage 5 and Stage 5b steps 1 through 3; record `--end merge --candidates <primary findings>` before returning. Wherever the reference refers to an earlier stage's result, the intent summary, the roster, the plan, the scope, or conversation context, that value is the matching field of the file, and `<root>` is `docs_root`.
 
-Every decision about the cross-model peer is already made. The dispatch context performed the single-reap finish and the fold-in classification `references/cross-model-review.md` defines, with its recovery branches in `references/cross-model-recovery.md` (including any replacement recipient, same-route recovery, or in-process `adversarial-reviewer` dispatch, all of which need a launch or a disclosure only it can make), deleted the job directory, and recorded the result in `peer.outcome`, `peer.artifact`, and `peer.coverage`. When `peer.artifact` is set, fold that file into Stage 5 as reviewer `adversarial-<provider>` under the reference's promotion rule; an in-process fallback's return is already in `raw-returns.json`. Copy `peer.coverage` into Coverage verbatim. This leaf never reads job state, waits on a peer, or starts a route.
+Every peer decision is already made by dispatch: bounded native collection, recovery classification, permitted replacement/fallback and disposable scratch cleanup. Preserve `peer.outcome`, `peer.artifact`, `peer.coverage` and identity/permission/depth gaps. Fold a named artifact once as `adversarial-<provider>` under the verified-independence promotion rule; a local fallback is already in raw returns. Copy Coverage verbatim. The leaf never waits on peers or starts routes.
 
 Write, in the run directory: `synthesized-findings.json` (the final primary, pre-existing, and soft-bucket sets after Stage 5 steps 1 through 7, the triage groups, the hydrated detail, the fold-in outcome and every Coverage sentence Stage 5 produced) and `validator-input.json` (the Stage 5b step 3 batch: the selected findings in order, the skip count and its evidence basis, and the scope context the validator template needs). Return only a receipt: the two paths and the counts of primary and selected findings. Return nothing else; the dispatch context does not read findings.
 
@@ -97,7 +97,7 @@ Read `finish-input.json`, `synthesized-findings.json`, `validator-outcome.json` 
 
 ## What the dispatch context does with the returns
 
-Emit the report leaf's return verbatim as this skill's final response. Do not summarize, reformat, or add to it; in `mode:agent` the response must begin with the JSON object. A leaf that fails to launch, returns a tool error, or returns something other than its contract (the merge receipt, or the report) is a failed finish: in `mode:agent` emit `{"status":"failed","reason":"<one sentence>"}`; otherwise say the round could not finish, name the run directory so a re-run can finish from it, and no peer job is outstanding, because the dispatch context reaped it before launching the leaves.
+Emit the report leaf's return verbatim; in mode:agent begin with that JSON object. A leaf that cannot launch, errors or violates its return contract is a failed finish: mode:agent emits only `{"status":"failed","reason":"<one sentence>"}`; otherwise name the failed round and run directory for recovery. No native peer remains outstanding because dispatch stopped/collected it before finish. Explain actual denial/depth/model/tool cause without calling incomplete coverage verified.
 
 ## Run artifacts
 

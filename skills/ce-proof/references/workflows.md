@@ -7,20 +7,20 @@ Required read before running one of these end to end: reviewing a shared doc, cr
 When given a Proof URL like `https://www.proofeditor.ai/d/abc123?token=xxx`:
 
 1. Extract the slug and token
-2. Bind presence with the CE identity defaults
+2. Bind presence with the protocol identity defaults
 3. Read via `v3/document`
 4. Edit with `v3/edit` (narrow content ops; review ops for comments/suggestions)
 
 ```bash
 TOKEN="xxx"
 SLUG="abc123"
-AGENT="ai:compound-engineering"
+AGENT="ai:assistant"
 
 curl -sS -X POST "https://www.proofeditor.ai/api/agent/$SLUG/presence" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -H "X-Agent-Id: $AGENT" \
-  -d '{"name":"Compound Engineering","status":"reading","summary":"Reviewing doc"}'
+  -d '{"name":"AI Assistant","status":"reading","summary":"Reviewing doc"}'
 
 DOC=$(curl -sS "https://www.proofeditor.ai/api/agent/$SLUG/v3/document" \
   -H "Authorization: Bearer $TOKEN" \
@@ -34,7 +34,7 @@ curl -sS -X POST "https://www.proofeditor.ai/api/agent/$SLUG/v3/edit" \
   -H "X-Agent-Id: $AGENT" \
   -H "Idempotency-Key: $(uuidgen)" \
   -d "$(jq -n --argjson rev "${REVISION:-null}" '{
-    by:"ai:compound-engineering",
+    by:"ai:assistant",
     baseRevision: (if $rev == null then null else $rev end),
     operations:[{op:"comment",on:"text to comment on",body:"Your comment here"}]
   } | if .baseRevision == null then del(.baseRevision) else . end')"
@@ -45,7 +45,7 @@ curl -sS -X POST "https://www.proofeditor.ai/api/agent/$SLUG/v3/edit" \
   -H "Authorization: Bearer $TOKEN" \
   -H "X-Agent-Id: $AGENT" \
   -H "Idempotency-Key: $(uuidgen)" \
-  -d '{"by":"ai:compound-engineering","operations":[{"op":"replace","find":"old","with":"new"}]}'
+  -d '{"by":"ai:assistant","operations":[{"op":"replace","find":"old","with":"new"}]}'
 
 # Tracked suggestion
 curl -sS -X POST "https://www.proofeditor.ai/api/agent/$SLUG/v3/edit" \
@@ -53,7 +53,7 @@ curl -sS -X POST "https://www.proofeditor.ai/api/agent/$SLUG/v3/edit" \
   -H "Authorization: Bearer $TOKEN" \
   -H "X-Agent-Id: $AGENT" \
   -H "Idempotency-Key: $(uuidgen)" \
-  -d '{"by":"ai:compound-engineering","operations":[{"op":"suggest","kind":"replace","find":"old","with":"new"}]}'
+  -d '{"by":"ai:assistant","operations":[{"op":"suggest","kind":"replace","find":"old","with":"new"}]}'
 ```
 
 ## Workflow: Create and Share a New Document
@@ -78,8 +78,8 @@ OWNER_SECRET=$(echo "$RESPONSE" | jq -r '.ownerSecret')   # required for owner d
 curl -sS -X POST "https://www.proofeditor.ai/api/agent/$SLUG/presence" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
-  -H "X-Agent-Id: ai:compound-engineering" \
-  -d '{"name":"Compound Engineering","status":"reading","summary":"Uploaded doc"}'
+  -H "X-Agent-Id: ai:assistant" \
+  -d '{"name":"AI Assistant","status":"reading","summary":"Uploaded doc"}'
 
 echo "$URL"
 ```
@@ -103,22 +103,29 @@ Sync the current Proof doc state to a local markdown file. Used for:
 
 Canonical read for this workflow: `GET /api/agent/$SLUG/v3/document`.
 
+Resolve the absolute workspace root with `(cd "$known_workspace_root" && jj workspace root)` from the target workspace, not with `jj -R`. Use its `.tmp/` for all scratch storage; outside a JJ repository, use the absolute local project root's `.tmp/` instead.
+
 ```bash
 SLUG=<slug>
 TOKEN=<accessToken>
 LOCAL=<absolute-path>
 
-STATE_TMP=$(mktemp "${TMPDIR:-/tmp}/ce-proof-state.XXXXXX")
+# Set workspace_root to the verified absolute workspace root. Without a JJ
+# repository, use the absolute local project root instead.
+workspace_root="<absolute-workspace-root>"
+mkdir -p "$workspace_root/.tmp"
+# Ensure .tmp/ is ignored in the project's .gitignore before writing scratch data.
+STATE_TMP=$(mktemp "$workspace_root/.tmp/proof-state.XXXXXX")
 curl -sS "https://www.proofeditor.ai/api/agent/$SLUG/v3/document" \
   -H "Authorization: Bearer $TOKEN" \
-  -H "X-Agent-Id: ai:compound-engineering" > "$STATE_TMP"
+  -H "X-Agent-Id: ai:assistant" > "$STATE_TMP"
 REVISION=$(jq -r '.revision // empty' "$STATE_TMP")
 
-TMP="${LOCAL}.proof-sync.$$"
+TMP=$(mktemp "$workspace_root/.tmp/proof-sync.XXXXXX")
 jq -jr '.markdown' "$STATE_TMP" > "$TMP" && mv "$TMP" "$LOCAL"
 rm "$STATE_TMP"
 ```
 
-`jq -jr` streams markdown bytes without going through a shell variable, so trailing newlines survive. `mv` within the same filesystem is atomic.
+`jq -jr` streams markdown bytes without going through a shell variable, so trailing newlines survive. `mv` within the same filesystem is atomic; when the requested destination is on another filesystem, report that replacement is not atomic rather than moving temporary storage outside local `.tmp/`. Keep error-path scratch files under that same `.tmp/` directory and remove only this operation's temporary files when no longer needed.
 
 **Confirm before writing when the pull isn't directly asked for.** If a workflow ends up pulling as a side-effect of a different action, surface the impending write with a short confirm like "Sync Proof doc to `<localPath>`?" A silent overwrite is surprising.

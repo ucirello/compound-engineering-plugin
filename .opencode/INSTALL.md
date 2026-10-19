@@ -8,13 +8,7 @@ Add Compound Engineering to the `plugins` array in your global or project `openc
 }
 ```
 
-On OpenCode 1.x, the config key is `plugin` (singular):
-
-```json
-{
-  "plugin": ["compound-engineering@git+https://github.com/EveryInc/compound-engineering-plugin.git"]
-}
-```
+This entrypoint requires OpenCode V2; OpenCode 1.x is not supported.
 
 Restart OpenCode after changing the config. The plugin registers the Compound Engineering skills and `/commands` directly; no Bun installer or generated skill copy is required.
 
@@ -36,4 +30,6 @@ From this checkout, point OpenCode at the package path:
 }
 ```
 
-Restart OpenCode after changing the package source. Opening this checkout as an OpenCode project also works without any config entry: OpenCode auto-discovers `.opencode/plugins/compound-engineering.js`.
+Restart OpenCode after changing the package source. Opening this checkout as an OpenCode project loads `.opencode/plugins/rocketclaw.ts` through the shipped root `opencode.json` (the entrypoint is also auto-discoverable).
+
+The shipped project configuration sets `experimental.subagent_depth` to `3`. Installing the package as a plugin does not merge its bundled configuration into a consuming project. Consumers must explicitly adopt that setting in their own project configuration, preserving any higher value and unrelated settings. A `.opencode/opencode.json(c)` configuration overrides direct project configuration, so check that it does not defeat the intended depth.

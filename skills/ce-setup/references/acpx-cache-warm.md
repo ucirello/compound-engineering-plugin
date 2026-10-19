@@ -1,8 +1,8 @@
 # Warm the npm cache for cross-model peers
 
-Cross-model peers run the pinned acpx through `npx`, and acpx launches its codex and claude adapters the same way. Each peer run asks npm to prefer cached copies, so a package already in the npm cache starts in about a second, while a missing one has to be downloaded first. Warming fetches the pinned acpx and those adapters into the cache now, over the network, so the first peer run does not pay for the download.
+This optional compatibility operation fetches pinned acpx and its codex and claude adapters into the user's npm cache. Active peer and implementation routes resolve configured model choices with `opencode.models` and execute through permitted OpenCode-native subagents/shell; they never dispatch through these adapters. Keep this cache support only for users who intentionally use the compatibility packages outside those active routes. Temporary working directories belong under the absolute workspace root's `.tmp/`, or local `.tmp/` outside a JJ repository, with no OS-global fallback.
 
-Ask once, saying it downloads the pinned acpx and its adapters from the npm registry into the user's npm cache, and that npm runs any install scripts those packages declare, as a first peer run would. Run it only after the user approves; if they decline, fetch nothing.
+Ask once, saying it downloads the pinned acpx and its adapters from the npm registry into the user's npm cache, and that npm runs any install scripts those packages declare. Run it only after the user approves; if they decline, fetch nothing. Warming does not launch a peer or validate an active native route.
 
 On approval, run the health script with `--warm-acpx` in place of `--version VERSION`, using the same `SKILL_DIR` as Step 2:
 

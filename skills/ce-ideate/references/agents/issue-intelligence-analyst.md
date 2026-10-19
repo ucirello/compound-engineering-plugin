@@ -19,7 +19,7 @@ These are a floor plus a goal, not an algorithm. You are smart enough to read th
 
 Detect the reachable access method by **category**, never by assuming a specific binary exists:
 
-- **GitHub** — the `gh` CLI, or a GitHub MCP server (tools matching `mcp__github__*`).
+- **GitHub** — the `gh` CLI, or a GitHub MCP server (tools matching `mcp__github__*`). For every repository-scoped CLI call, use the target workspace's absolute root and its JJ backend: `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh ...)`. Resolve remotes with `(cd "$workspace_root" && jj git remote list)`. Outside a repository use an explicitly verified owner/repository rather than guessing local context. All persisted scratch, including error paths, belongs under the caller's local `.tmp` scratch directory.
 - **Linear** — a Linear MCP server, or the `orca linear` CLI.
 - **Jira** — a Jira MCP server, or a documented Jira CLI.
 

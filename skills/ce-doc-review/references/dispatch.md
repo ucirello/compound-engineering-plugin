@@ -1,6 +1,10 @@
 # Dispatching the reviewers
 
-Dispatch generic subagents with **bounded parallelism** using the platform's subagent primitive (e.g., `Agent` in Claude Code, `spawn_agent` in Codex) where available; otherwise run the work inline or serially. Omit the `mode` parameter so the user's configured permission settings apply.
+Dispatch generic subagents with **bounded parallelism** using OpenCode's native subagent primitive. This skill explicitly requests reviewer delegation. When the host permits delegation at the user OR loaded-skill request, this satisfies the skill-requested exception: do not demand another user approval. Merely loading a skill without dispatch instructions grants nothing. An unconditional higher-priority prohibition, actual denial, or missing tool remains binding; never bypass it through shell or another harness. Omit the `mode` parameter so the user's configured permission settings apply.
+
+Check model-selection permission separately. If host policy requires an explicit user model request for an override, omit the optional `model` argument even when config or this skill recommends a tier. Use suitable inherited-model reviewers; disclose any unmet tier or fixed-route requirement. Same-model reviewers are distinct reviewers, not cross-model independence.
+
+Check effective nesting capacity separately using runtime depth/configuration evidence and actual dispatch errors. The package's project default `experimental.subagent_depth: 3` is not proof of this host's effective limit or remaining capacity. Distinguish depth exhaustion from permission denial, missing tools, model-argument rejection, and temporary concurrency backpressure. Never retry a denied operation or route around depth exhaustion. Inline/serial analysis may be disclosed as supplementary evidence, but cannot replace independent selected reviewers: if independence cannot be supplied by a permitted parent-coordinator handoff, report incomplete coverage without synthesis, fixes, or a success handoff.
 
 Respect the harness's active-subagent limit: dispatch only as many selected reviewers as it accepts and queue the remainder. Treat active-agent/thread/concurrency-limit spawn errors as backpressure, not reviewer failure: the harness is full, so wait for a slot rather than marking the reviewer failed. Keep rejected reviewers queued while active work finishing, or a supported release of an agent, can free capacity, and retry when a slot frees. When capacity cannot recover, use the incomplete-stop condition in Phase 2 (dispatch) rather than retrying indefinitely. Record a reviewer as failed only after a successful dispatch times out or fails, or when dispatch fails for a non-capacity reason that survives correcting the invocation.
 
@@ -8,7 +12,7 @@ Respect the harness's active-subagent limit: dispatch only as many selected revi
 
 For each selected reviewer, read `references/personas/<reviewer-name>.md` and pass its full content as `{persona_file}`. Do not dispatch standalone agents by type/name and do not rely on platform-level custom-agent registration.
 
-**Model tiering lives here, not in prompt assets.** Local prompt files have no frontmatter and carry no model metadata. Apply these dispatch-time preferences when the platform exposes a known model override; otherwise omit the override and inherit the parent model rather than guessing a platform-specific model name:
+**Model tiering lives here, not in prompt assets.** Local prompt files have no frontmatter and carry no model metadata. These are preferences, not override authorization. Only when host policy permits model selection, use `opencode.models` to resolve a known exact model and supported tier; otherwise omit the override and use a suitable inherited model, reporting unmet requirements rather than guessing:
 
 - `coherence-reviewer`: cheapest capable extraction/reasoning tier.
 - `security-lens-reviewer`, `feasibility-reviewer`, `product-lens-reviewer`, `adversarial-document-reviewer`: inherit the parent model unless the harness has an established high-capability review tier.
@@ -42,6 +46,8 @@ Round 1 — no prior decisions.
 ## Compound Pack constraints
 
 Before dispatch, resolve any Compound Packs declared in config by running this skill's resolver as one command:
+
+Run from the target workspace's absolute root. The retained pack-source resolver is not a dispatch or workspace bridge; its bounded shallow Git source transport remains isolated from JJ workspace lifecycle. See https://docs.jj-vcs.dev/latest/git-experts/ and https://docs.jj-vcs.dev/latest/cli-reference/. Ensure workspace-local `.tmp/` is ignored in `.gitignore`; cache overrides must remain beneath it. Any repository-scoped `gh` call uses `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh ...)`.
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";

@@ -1,6 +1,6 @@
 # Experiment Worker Prompt Template
 
-This template is used by the orchestrator to dispatch each experiment to a subagent or Codex. Variable substitution slots are filled at spawn time.
+This template is used by the orchestrator to dispatch each experiment to an OpenCode-native subagent on the configured provider route. Variable substitution slots are filled at spawn time.
 
 ---
 
@@ -69,7 +69,7 @@ Recent experiments and their outcomes (for context -- avoid re-trying approaches
 4. Do NOT run the measurement harness (the orchestrator handles this)
 5. Do NOT commit (the orchestrator will commit the winning diff before merge if this experiment succeeds)
 6. Do NOT modify files outside the mutable scope
-7. When done, run `git diff --stat` so the orchestrator can see your changes
+7. When done, run `jj diff --stat` from the experiment workspace's absolute root so the orchestrator can see your changes
 8. If you discover you need an unapproved dependency, note it and stop
 
 Focus on implementing the hypothesis well. The orchestrator will measure and evaluate the results.
@@ -96,8 +96,8 @@ Focus on implementing the hypothesis well. The orchestrator will measure and eva
 
 ## Notes
 
-- This template works for both subagent and Codex dispatch. No platform-specific assumptions.
-- For Codex dispatch: write the filled template to a temp file and pipe via stdin (`cat /tmp/optimize-exp-XXXXX.txt | codex exec --skip-git-repo-check - 2>&1`).
+- This template works for native subagents on all supported configured provider routes. No platform-specific assumptions.
+- Dispatch through OpenCode-native subagents with the filled prompt and the verified workspace root. Resolve configured model intent through `opencode.models`; follow the permission and capacity rules in `references/workspaces.md`. Any prompt file belongs under the source workspace's `.tmp/`.
 - For subagent dispatch: pass the filled template as the subagent prompt.
 - Keep `{recent_experiment_summaries}` concise -- 2-3 lines per experiment, last 10 only. Do not include the full experiment log.
 - The worker should NOT read the full experiment log or strategy digest. It receives only what the orchestrator provides.

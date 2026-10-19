@@ -76,27 +76,11 @@ One run, and the log shows precisely which layer drops the value — secrets →
 
 ---
 
-## Git Bisect for Regressions
+## JJ Revision Bisection for Regressions
 
-When a bug is a regression ("it worked before"), use binary search to find the breaking commit:
+When a bug is a regression ("it worked before"), resolve known-good and bad revisions using `jj log`, inspect their ancestry, and choose a midpoint from that range. In a disposable isolated workspace prepared under the main skill's isolation contract, run `(cd "$probe_workspace_root" && jj new <verified-midpoint>)` and the reproduction from that same absolute root. Record tested revision/results and narrow the range until the causal change is identified; inspect merge parents separately for nonlinear history. Never move the user's working copy for probes.
 
-```bash
-git bisect start
-git bisect bad                    # current commit is broken
-git bisect good <known-good-ref> # a commit where it worked
-# git bisect will checkout a middle commit — test it
-# mark as good or bad, repeat until the breaking commit is found
-git bisect reset                  # return to original branch when done
-```
-
-For automated bisection with a test script:
-
-```bash
-git bisect start HEAD <known-good-ref>
-git bisect run <test-command>
-```
-
-The test command should exit 0 for good, non-zero for bad.
+Shell may automate those same JJ operations with absolute workspace cwd. Test exit 0 means good; distinguish genuine reproduction failures from untestable revisions/infrastructure errors. Store results in the source workspace's `.tmp/` outside any workspace scheduled for removal. Retire probes only under the main skill's authorized `jj workspace remove` safeguards. See https://docs.jj-vcs.dev/latest/cli-reference/ .
 
 ---
 
@@ -214,7 +198,7 @@ When the symptom is "slow" rather than "wrong", logs and code reading mislead: i
 
 - Establish a numeric baseline before touching anything — a timing harness around the slow operation, a profiler run, a query plan (`EXPLAIN ANALYZE`). The baseline is Phase 1's reproduction check for a perf bug: the number is the red, and the fix is verified by re-measuring the same thing, not by reasoning that the change should be faster.
 - Attribute before optimizing: a profile or per-stage timings that show where the time actually goes. Optimizing an unmeasured suspect is the perf version of shotgun debugging.
-- If the slowness is a regression, bisect against the measurement (see Git Bisect above) rather than reading diffs for something that looks expensive.
+- If the slowness is a regression, bisect against the measurement (see JJ Revision Bisection above) rather than reading diffs for something that looks expensive.
 
 ---
 

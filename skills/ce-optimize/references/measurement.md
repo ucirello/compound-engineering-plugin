@@ -8,27 +8,31 @@ When `<root>/solutions/` holds at least one markdown file, read `references/agen
 
 ### 0.4 Run Identity Detection
 
-Check if `optimize/<spec-name>` branch already exists:
+Resolve the absolute `workspace_root` using `jj workspace root`. Run every JJ command from the target workspace's absolute root, not using `jj -R` as a cwd substitute. Repository-scoped GitHub commands use `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh ...)`. Store temporary files under `$workspace_root/.tmp/`, ensure `.tmp/` is ignored, and never fall back to OS temporary storage.
+
+Check if the `optimize/<spec-name>` bookmark already exists:
 
 ```bash
-git rev-parse --verify "optimize/<spec-name>" 2>/dev/null
+(cd "$workspace_root" && jj bookmark list "optimize/<spec-name>")
 ```
 
-**If branch exists**, check for an existing experiment log at `.context/compound-engineering/ce-optimize/<spec-name>/experiment-log.yaml`.
+**If the bookmark exists**, check for an existing experiment log at `.context/ce-optimize/<spec-name>/experiment-log.yaml`.
 
 Present the user with a choice via the platform question tool:
 - **Resume**: read ALL state from the experiment log on disk (do not rely on any in-memory context from a prior session). Recover any measured-but-unlogged experiments by scanning worktree directories for `result.yaml` markers. Then apply the SKILL.md body's resume rule to decide what is skipped and which approval checks run again.
-- **Fresh start**: archive the old branch to `optimize-archive/<spec-name>/archived-<timestamp>`, clear the experiment log, start from scratch
+- **Fresh start**: preserve the old revision with an archive bookmark `optimize-archive/<spec-name>/archived-<timestamp>`, copy and read back the old experiment log outside any disposable workspace, then start a fresh log and change. Do not overwrite existing archive references.
 
-### 0.5 Create Optimization Branch and Scratch Space
+### 0.5 Create Optimization Bookmark and Scratch Space
 
 ```bash
-git checkout -b "optimize/<spec-name>"  # or switch to existing if resuming
+(cd "$workspace_root" && jj bookmark create "optimize/<spec-name>" --revision @)
 ```
+
+Run creation only when the bookmark does not exist. On resume verify its exact saved revision first; never recreate or overwrite it. Keep a clean new working change above the current best for orchestration, and record immutable revision IDs for all measured bytes. A bookmark does not automatically advance as new JJ changes are created: move it explicitly with `jj bookmark set "optimize/<spec-name>" --revision <verified-integrated-revision>` only after successful integration and confirmation.
 
 Create scratch directory:
 ```bash
-mkdir -p .context/compound-engineering/ce-optimize/<spec-name>/
+mkdir -p .context/ce-optimize/<spec-name>/
 ```
 
 ---
@@ -37,7 +41,7 @@ mkdir -p .context/compound-engineering/ce-optimize/<spec-name>/
 
 **This phase stops the run until the user approves the baseline and parallel readiness. Phase 2 does not start before that.**
 
-**Bundled scripts.** Phases 1 and 3 call helper scripts that ship in this skill's `scripts/` directory (`measure.sh`, `decide.mjs`, `parallel-probe.sh`, `experiment-worktree.sh`). The Bash tool's working directory is the user's project, not the skill directory, so a bare `scripts/<name>` path will not resolve. Invoke each by the skill's own absolute path. Every runnable block below already sets `SKILL_DIR` inline (shell state does not persist between Bash tool calls, so each block must carry it). Replace the `<absolute path …>` placeholder with the directory you loaded this `ce-optimize` SKILL.md from before running. The shape:
+**Bundled scripts.** Phases 1 and 3 retain measurement and decision helpers (`measure.sh`, `decide.mjs`, `parallel-probe.sh`); workspace management is agentic using `references/workspaces.md`. The shell tool's working directory is the user's project, not the skill directory, so a bare `scripts/<name>` path will not resolve. Invoke each by the skill's own absolute path. Every runnable block below sets `SKILL_DIR` inline. Replace the placeholder with the loaded skill directory. The shape:
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing this SKILL.md>";
@@ -46,7 +50,7 @@ bash "$SKILL_DIR/scripts/<name>"
 
 ### 1.1 Clean-Tree Gate
 
-The SKILL.md body states this gate. Run `git status --porcelain`, filter the output against `scope.mutable` and `scope.immutable`, and apply the body's rule to the result. Name the dirty in-scope files, ask the user to commit or stash them, and do not continue until they are clean.
+The SKILL.md body states this gate. From the absolute workspace root, inspect `jj status`, `jj diff --name-only`, and conflicts; filter repository-relative paths against `scope.mutable` and `scope.immutable`. Name dirty in-scope files, ask the user to preserve them in a separate JJ change or finish them, and do not continue until they are clean. Never reset or discard unrelated work. On resume verify the saved revision and bookmark before selecting it with `jj new <verified-revision>` in a clean workspace. For a fresh start, preserve an archive bookmark and copy/read back the old log before replacing it; never delete the only recovery evidence.
 
 ### 1.2 Build or Validate Measurement Harness
 
@@ -115,11 +119,7 @@ Read the JSON output. Present any blockers to the user with suggested mitigation
 
 ### 1.5 Worktree Budget Check
 
-Count existing worktrees:
-```bash
-SKILL_DIR="<absolute path of the directory containing this SKILL.md>";
-bash "$SKILL_DIR/scripts/experiment-worktree.sh" count
-```
+Count registered JJ workspaces with `(cd "$workspace_root" && jj workspace list)`, including harness-owned isolation. Follow `references/workspaces.md` for creation and cleanup.
 
 If count + `execution.max_concurrent` would exceed 12:
 - Warn the user
@@ -130,7 +130,7 @@ If count + `execution.max_concurrent` would exceed 12:
 
 **MANDATORY CHECKPOINT.** Before presenting results to the user, write the initial experiment log with baseline metrics to disk:
 
-1. Create the experiment log file at `.context/compound-engineering/ce-optimize/<spec-name>/experiment-log.yaml`
+1. Create the experiment log file at `.context/ce-optimize/<spec-name>/experiment-log.yaml`
 2. Include all required top-level sections from `references/experiment-log-schema.yaml`: `spec`, `run_id`, `started_at`, `baseline`, `experiments`, and `best`
 3. Seed `experiments` as an empty array and seed `best` from the baseline snapshot (use `iteration: 0`, baseline metrics, and baseline judge scores if present) so later phases have a valid current-best state to compare against
 4. Optionally seed `hypothesis_backlog: []` here as well so the log shape is stable before Phase 2 populates it

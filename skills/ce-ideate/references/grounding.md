@@ -8,11 +8,12 @@ Before generating ideas, gather grounding. The dispatch set depends on the mode 
 
 **Surprise-me grounding depth.** In surprise-me mode, grounding goes deeper than specified mode — apply the 0.2 table's `1 grounding` row, and pass issue themes as first-class input rather than a footnote when issue intelligence runs. Specified mode keeps the shallower scan: the user's named subject anchors what is relevant.
 
-**Pre-resolve the scratch directory.** Generate a `<run-id>` once (8 hex chars) and reuse it for the V15 cache and the Phase 2/4 checkpoints so they share one per-run directory. Scratch lives beneath the effective user's private CE root — `/tmp/compound-engineering-<uid>` when it is usable, else the validated `$TMPDIR` fallback the block below selects — never `.context/`. Run this to validate the owner-private root, create the run directory, and capture its absolute path:
+**Pre-resolve the scratch directory.** Generate a `<run-id>` once (8 hex chars) and reuse it for the V15 cache and the Phase 2/4 checkpoints so they share one per-run directory. Scratch lives beneath local `.tmp/rocketclaw`, never `.context/` or OS-global temporary storage. Ensure `.tmp/` is ignored in the repository's `.gitignore`. Run this to validate the owner-private root, create the run directory, and capture its absolute path:
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+workspace_root="$(jj workspace root 2>/dev/null)" || workspace_root="$(pwd -P)";
+if [ -L "$workspace_root/.tmp" ]; then echo "unsafe .tmp symlink" >&2; exit 1; fi;
+SCRATCH_ROOT="$workspace_root/.tmp/rocketclaw";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
@@ -32,7 +33,7 @@ Run grounding agents in parallel in the **foreground** (do not background — re
 
 **Repo mode dispatch:**
 
-1. **Quick context scan** — dispatch a general-purpose subagent using the platform's cheapest capable model when the harness exposes a known override; otherwise inherit. Per the routing test above, any named file already classified as evidence goes on the prompt's research-artifacts line rather than into `User-named references`. Dispatch with this prompt:
+1. **Quick context scan** — dispatch a general-purpose subagent using the platform's cheapest capable model only when a known override is permitted by the host's model-selection policy; otherwise inherit and disclose unmet tier requirements. Per the routing test above, any named file already classified as evidence goes on the prompt's research-artifacts line rather than into `User-named references`. Dispatch with this prompt:
 
    > **Grounding scope:** use the supplied project context and go directly to current patterns bearing on the focus, pain points, leverage points, applicable workflow constraints, and in surprise-me mode representative files plus recent activity. If the focus cannot be scoped, use one targeted root or workspace probe.
    >
@@ -86,7 +87,7 @@ Always-on for both modes. Skip when the user said "no external research", "skip 
 
 Reuse prior web research within a session via a sidecar cache — see `references/web-research-cache.md` for the cache file shape, reuse check, append behavior, and platform-degradation rules. Read it the first time the `web-researcher` local prompt would be dispatched in this run (and on every subsequent dispatch where the cache might apply).
 
-When dispatching web research, read `references/agents/web-researcher.md` and seed a generic subagent with that prompt. Pass the focus hint, a brief planning context summary (one or two sentences), and the mode. Do not pass codebase content — the prompt operates externally. Use the platform's mid-tier model when a known override exists; otherwise omit the override and inherit.
+When dispatching web research, read `references/agents/web-researcher.md` and seed a generic subagent with that prompt. Pass the focus hint, a brief planning context summary (one or two sentences), and the mode. Do not pass codebase content — the prompt operates externally. Use the platform's mid-tier model only when a known override is permitted by the host's model-selection policy; otherwise omit the override and inherit, disclosing unmet tier requirements.
 
 #### User-Supplied Research Artifacts
 
@@ -119,15 +120,17 @@ Consolidate all dispatched results into a short grounding summary using these se
 
 Sub-agent dispatch is tiered by task shape, never hardcoded to a model name:
 
-- **Extraction tier** — evidence scouts and other retrieval/quoting work. Use the platform's cheapest capable model when the harness exposes a known override; escalate to the generation tier when the repo is large or the stack obscure.
-- **Generation tier** — evidence-driven ideation frames and basis verification. Use the platform's mid-tier model when the harness exposes a known override.
+- **Extraction tier** — evidence scouts and other retrieval/quoting work. Use the platform's cheapest capable model when a known override is allowed by host model-selection policy; otherwise inherit. Escalate to the generation tier when the repo is large or the stack obscure, subject to that same policy.
+- **Generation tier** — evidence-driven ideation frames and basis verification. Use the platform's mid-tier model when a known override is allowed by host model-selection policy; otherwise inherit.
 - **Ceiling tier** — ceiling ideation frames, cross-cutting synthesis, and final arbitration. Inherit the orchestrator's model by omitting the model parameter.
 
-If model names are unknown, omit the override and inherit rather than guessing.
+Resolve configured model choices and tiers through OpenCode `opencode.models`; execute with native subagents (and shell only for ordinary commands), not another harness's dispatcher. Configuration remains the source of desired routes. If model names are unknown, omit the override and inherit rather than guessing.
 
 **Degradation rule.** When the platform's subagent primitive does not support per-agent model selection, dispatch everything on the inherited model and keep the read budgets and dossier caps — cost control then comes from structure, not tiering.
 
-For every native dispatch in this skill, classify rejection by whether an agent launched: correct a pre-launch argument rejection once, leave capacity-limited work queued, and send any other failure to that phase's stated degraded path.
+**Dispatch permissions and capability.** This skill explicitly requests the agents specified here and in its references. Under a host rule permitting user-OR-skill-requested delegation, that satisfies the skill exception without another approval. A genuine higher-priority prohibition, missing tool, or actual denial still applies. Delegation permission does not authorize model selection: if a model override requires an explicit user model request, omit the optional `model` argument and use a suitable inherited model. Preserve configured tier intent and disclose unmet requirements; separate same-model agents do not establish cross-model independence.
+
+For every native dispatch in this skill, verify available nesting depth independently of permission. Classify actual errors as argument rejection, permission denial, model-override rejection, missing tool, or depth/capacity limit. Correct an allowed pre-launch argument mistake once; do not retry a denied operation or evade limits through shell or another harness. Queue capacity-limited work only when capacity can become available; use the phase's permitted inline fallback otherwise and disclose lost independence or coverage. A required unavailable different-model pass remains incomplete, never fully verified.
 
 Two overrides raise the whole ideation fleet to the ceiling tier: surprise-me mode and the `go deep` depth override (Phase 0.5).
 

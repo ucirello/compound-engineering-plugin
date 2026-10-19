@@ -25,14 +25,14 @@ The summary must contain:
 
 ### 4.3 Preserve and Offer Next Steps
 
-The optimization branch (`optimize/<spec-name>`) is preserved with all commits from kept experiments.
+The optimization bookmark (`optimize/<spec-name>`) is preserved with all JJ revisions from kept experiments. References below to the optimization branch mean this bookmark; use JJ for local history and workspace operations.
 The experiment log and strategy digest remain in local `.context/...` scratch space for resume and audit on this machine only; they do not travel with the branch because `.context/` is gitignored.
 
 Present these options after the summary:
 
 1. **Run `ce-code-review`** on the cumulative diff (baseline to final), on the optimization branch. Do not commit or push from this step.
 2. **Run `ce-compound`** to document the winning strategy as an institutional learning.
-3. **Create PR** from the optimization branch to the default branch.
+3. **Create PR** from the optimization bookmark to the verified default branch, using `ce-commit-push-pr` and its existing authorization rules. Repository-scoped `gh` calls must run from the absolute target root with `GIT_DIR=$(jj git root)`; push the verified bookmark using JJ, never guess a remote or head.
 4. **Continue**: re-enter Phase 3, state re-read first.
 5. **Done**: leave the branch for manual review.
 
@@ -47,8 +47,8 @@ Clean up scratch space:
 ```bash
 # Keep the experiment log for local resume/audit on this machine
 # Remove temporary batch artifacts
-rm -f .context/compound-engineering/ce-optimize/<spec-name>/strategy-digest.md
+rm -f .context/ce-optimize/<spec-name>/strategy-digest.md
 ```
 
 Do NOT delete the experiment log if the user may resume locally or wants a local audit trail. If they need a durable shared artifact, summarize or export the results into a tracked path before cleanup.
-Do NOT delete experiment worktrees that are still being referenced.
+Do NOT delete experiment workspaces that are still being referenced. All retirement follows `references/workspaces.md`: preserve evidence/recovery and verify integration, ownership, authorization, deregistration, and directory disappearance using JJ-owned removal, never force deletion. Keep best/archive/recovery bookmarks separately.

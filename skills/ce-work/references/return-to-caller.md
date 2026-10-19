@@ -19,15 +19,15 @@ Return:
 - `requested_effort`: the reasoning effort requested for the external worker, or `null` when none was requested or execution was native
 - `fallback_reason`: `null` when none, otherwise the observed route-unavailable or substitution reason
 - `run_id`: durable external run identifier, or `null` for native execution
-- `source_kind` and `source_digest`: what the controller recorded as the implementation source (`plan` plus its digest in Return-to-Caller Mode; standalone bare-prompt runs use `prompt`)
-- `unit_receipts`: route, model, detached-process, integration, verification, canonical-commit, and cleanup state for each attempted unit
+- `source_kind` and `source_digest`: what the host-owned manifest recorded as the implementation source (`plan` plus its digest in Return-to-Caller Mode; standalone bare-prompt runs use `prompt`)
+- `unit_receipts`: requested/actual route, model, native worker terminal state, transport/scope inspection, integration, authoritative verification, canonical revision, ignored-state divergence and cleanup state for each attempted unit; unavailable mandatory cross-model/review coverage stays explicitly incomplete
 - `plan_checkpoint`: the disclosed checkpoint commit when the selected plan was the only canonical dirt, otherwise `null`
 - `blockers`
-- `recovery_path`: the run/workspace location the controller preserved and checked, when recovery remains; otherwise `null`
+- `recovery_path`: the run/workspace location the host preserved and checked, when recovery remains; otherwise `null`
 - `settled_decision_conflicts`: conflicts with `session-settled:`-labeled KTDs or Key Decisions encountered during implementation — each entry names the labeled entry, the evidence, and how it was routed (proceeded-and-flagged vs blocker); empty when none
 - `behavior_change`: whether behavior-bearing code changed
 - `standalone_shipping_skipped: true`
 
-Return `status: complete` only when behavior-bearing work has verification evidence or a deliberate exception. Before returning it, re-open the plan and re-check its active units, Verification Contract, and Definition of Done against the diff, because context may have been compacted to a summary that dropped detail. Remove code left over from approaches that did not pan out. If a previous return-to-caller run implemented code but omitted evidence, a later same-plan return-to-caller run should use the idempotency check to inspect the existing work, complete the evidence, and return without reimplementing.
+Return `status: complete` only when behavior-bearing work has verification evidence or a deliberate exception. A durably initialized cross-model run additionally requires terminal unit receipts, reconciled host-owned canonical revisions and a stored successful plan-wide verification receipt; missing receipts or mandatory independence/coverage never count as complete. Completed recovery returns stored receipts observation-only and does not rerun checks. Before a fresh implementation return, re-open the plan and re-check active units, Verification Contract and Definition of Done against the diff, because context may have dropped detail. Remove code left over from approaches that did not pan out. If previous work omitted evidence, inspect it without reimplementing and report missing historical red/characterization evidence honestly; a completed run's missing required receipt is a recovery blocker, not authority to rerun verification.
 
 Engine selection (`references/execution-engines.md`) still applies in this mode, but only for implementation. Whichever engine runs must not open a PR, run the standalone shipping steps, or skip the checks the caller controls.

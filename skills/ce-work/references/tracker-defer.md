@@ -33,6 +33,8 @@ The caller decides how to show the result to the user. The non-interactive mode 
 
 The agent determines the project's tracker from whatever documentation is obvious. Primary source: the project's active instructions and conventions already in its context — no need to open or name specific instruction files. Read a file directly only when the relevant instructions aren't already in context: a subdirectory-scoped instruction file governing the area you're working in, or when you're a fresh subagent that wasn't given the project's instructions. Supplementary signals (when primary documentation is ambiguous): `CONTRIBUTING.md`, `README.md`, PR templates under `.github/`, visible tracker URLs in the repo.
 
+For every repository-scoped `gh` probe, issue creation, or follow-up in this reference, run from the target absolute workspace root with `GIT_DIR` exported from JJ: `(cd "$workspace_root" && export GIT_DIR=$(jj git root) && gh ...)`. The export covers all `gh` calls in that subshell. Store request bodies, responses, fallback files and error logs only under ignored local `.tmp/`, never OS temporary storage.
+
 A tracker can be reached through an MCP tool (e.g., a Linear MCP server), a CLI (e.g., `gh`), or a direct API. All are acceptable. The detection output is a tuple with two availability flags. One is for the named tracker specifically and drives label confidence in Interactive mode. The other is for the full fallback chain and drives whether Defer is offered at all:
 
 ```

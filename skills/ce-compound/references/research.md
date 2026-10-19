@@ -30,8 +30,8 @@ You classify the learning and draft its body in this context, because both depen
 **Run ID and run dir (before dispatching the finder):** generate a unique run identifier and create the run directory. This scopes every Phase 1 artifact file to the same directory so the orchestrator can Read them back in Phase 2.
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+workspace_root="<absolute target workspace root>";
+SCRATCH_ROOT="$(cd "$workspace_root" && jj workspace root)/.tmp";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
@@ -65,7 +65,7 @@ Pass the JSON's `roots` (pack `id` + absolute `dir`, plus `url`/`ref` when git-s
 
 **Dispatch.** Launch the `Related Docs Finder` in the background and do not wait on it here. Its prompt states the problem in a few lines: what broke or what was learned, the module and file names, any error text, and the fix. Its keyword search starts from that, and it cannot see this conversation. Then start session history (the body's next step), and classify and draft while the finder and any session-history synthesis run, so the wall-clock cost is the longest of the three rather than their sum.
 
-Classify a rejected dispatch by whether an agent launched: correct a pre-launch argument rejection once, leave capacity-limited work queued, and if another launch failure survives correction, run that role in the parent context with the same contract and artifact path rather than dropping it.
+Use OpenCode-native subagents for these explicitly requested roles; discover allowed model choices through `opencode.models`, keeping configured routes and tiers as intent. Under a user-or-loaded-skill delegation rule, these explicit dispatch instructions authorize delegation without a second approval. An unconditional higher-priority prohibition, unavailable tool, or actual permission denial still controls. Delegation permission does not authorize a model override: when an explicit user model request is required but absent, omit the optional model argument and use a suitable inherited model. Same-model reviewers are separate reviewers, not cross-model independence; report any unmet required route or different-model coverage as incomplete. Check effective runtime nesting capacity separately. Classify the actual launch error as depth/capacity, permission, model-argument rejection, or missing tool. Correct a permitted pre-launch argument error once, but never retry a denied operation or evade depth limits through shell or another harness. Where this role's contract permits inline work, use the same contract and artifact path in the parent; disclose lost independence and incomplete coverage instead of claiming completion.
 
 **Every subagent gets its contracts inline.** A fresh subagent resolves a relative path against the user's project, not this skill, so a task prompt that names `references/schema.yaml` or `references/yaml-schema.md` hands it a path that does not exist. Paste the contents of every skill-local file a subagent's task depends on into that task prompt.
 
@@ -137,6 +137,6 @@ Classify a rejected dispatch by whether an agent launched: correct a pre-launch 
 
    **GitHub issue search:**
 
-   Prefer the `gh` CLI for searching related issues: `gh issue list --search "<keywords>" --state all --limit 5`. If `gh` is not installed, fall back to the GitHub MCP tools (e.g., `unblocked` data_retrieval) if available. If neither is available, skip GitHub issue search and note it was skipped in the output.
+   Prefer the `gh` CLI for searching related issues: `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh issue list --search "<keywords>" --state all --limit 5)`, with `workspace_root` the absolute target workspace root. If `gh` is not installed, fall back to the GitHub MCP tools (e.g., `unblocked` data_retrieval) if available. If neither is available, skip GitHub issue search and note it was skipped in the output.
 
 </parallel_tasks>

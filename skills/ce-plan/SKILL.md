@@ -14,6 +14,8 @@ argument-hint: "[optional: feature description, requirements doc path, plan path
 
 **Research, decide, and write the plan — never implement.** Do not write production code, run tests, or learn from execution-time results. Directional pseudo-code and grammar sketches may communicate design; changing code to see what happens belongs in `ce-work`.
 
+**Repository context:** use JJ for repository inspection (https://docs.jj-vcs.dev/latest/git-experts/ and https://docs.jj-vcs.dev/latest/cli-reference/). Resolve the absolute target workspace root once and run subsequent JJ commands with that absolute working directory, `(cd "$workspace_root" && jj ...)`, not merely `jj -R`. Use workspace-relative file arguments. Repository-scoped `gh` requires `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh ...)`. Keep all scratch, cache, and error-path artifacts under ignored workspace-local `.tmp/`; outside a repository use local `.tmp/` without a global fallback. This planning workflow does not create or remove workspaces; delegate execution lifecycle to the applicable execution skill.
+
 ## Mandatory Completion Contract
 
 A run is complete when its output contract's done condition is met. Every normal interactive branch that produces a plan artifact or checkpoint is incomplete until the user has been asked what to do next. A request that already authorizes the next action is that answer. For a Durable software implementation-plan run that continues past the resume check, that means the Phase 5.4 menu has been presented and the selected action has actually fired. For Direct, the change stated and the handoff offered; for a Chat brief, the brief and its one-line save-or-`ce-work` offer in chat. Neither presents the Phase 5.4 menu. Non-software plans and approach-level plans end with the handoff their reference workflow defines. A run that only answers a question may end after the answer unless its reference requires a save or share step.
@@ -53,7 +55,7 @@ Phases run in order unless a reference routes out or short-circuits. Read a phas
 ### Phase 5: Review, Write, Deepen, and Hand Off
 
 7. Read `references/final-review.md` before the pre-write review; it defines Phase 5.1 through 5.3.2. On an interactive run from a brainstorm, the user sees the Phase 5.1.5 scoping synthesis in chat before the write: a confirmation to wait on, or its one-line auto-proceed announcement.
-8. **Model elevation.** Immediately before authoring, read `references/reasoning-elevation.md`, resolve the choice at this boundary, and follow it. Do not author until activation resolution has completed and any selected dispatch or transparent fallback has settled.
+8. **Model elevation.** Immediately before authoring, read `references/reasoning-elevation.md`, resolve the choice at this boundary, and follow its OpenCode-native model/subagent route, separate delegation/model permissions, nesting constraints, and transparent fallback. Do not author until activation resolution has completed and any selected dispatch or transparent fallback has settled.
 9. In pipeline mode, evidence that invalidates a decision settled earlier in the session stops the write. Return the exact token `settled-decision-invalidated`, the decision, and the reason; do not resolve it silently.
 10. Write the plan before presenting options, then complete the confidence path `final-review.md` defines.
 

@@ -36,8 +36,8 @@ agent-browser type @e1 "text"
 agent-browser press Enter
 
 # Capture evidence
-agent-browser screenshot out.png
-agent-browser screenshot --full out-full.png
+agent-browser screenshot <absolute-workspace-root>/.tmp/out.png
+agent-browser screenshot --full <absolute-workspace-root>/.tmp/out-full.png
 
 # Navigation and waits
 agent-browser back

@@ -4,10 +4,10 @@ Which orchestration shape fits each phase, and what breaks when you pick the wro
 
 Two primitives are assumed, both platform-neutral:
 
-- **A dispatch primitive** that launches an independent agent with its own context window and returns a result to the orchestrator (in one host it is a subagent-spawning tool; in another a job runner). Only two properties matter: fresh context per agent, and a result the orchestrator can read.
+- **An OpenCode-native subagent dispatch primitive** that launches an independent agent with its own context window and returns a result to the orchestrator. Apply `SKILL.md`'s separate delegation, model-selection, and nesting checks; discover allowed models with `opencode.models`, retaining configured routes and tiers as intent. Never substitute another harness's dispatcher. Two essential properties are fresh context per agent and a result the orchestrator can read; required independence and coverage must also remain satisfied.
 - **A concurrency cap** the host enforces on how many agents run at once (often around 10). Dispatches above the cap queue rather than fail, so a 31-unit fan-out is three waves, not one. Plan the wave count; do not assume flat cost.
 
-Classify a rejected dispatch by whether an agent launched. Correct a pre-launch argument rejection once, and leave capacity-limited work queued. Any other launch failure follows the phase's own failure direction. In the corpus audit, the proposal and defense contexts must be independent for the audit to mean anything, so a launch failure there is a blocker: stop the audit rather than running the missing side inline.
+Classify a rejected dispatch by whether an agent launched and the actual error. Correct a malformed pre-launch argument once only when permitted; a rejected model override is not permission to retry a forbidden model. Use a suitable inherited model if allowed and report unmet required tiers or cross-model coverage. Do not retry a permission denial or evade a nesting limit; leave transient concurrency-capacity work queued only when capacity can actually become available. Any other launch failure follows the phase's own failure direction. In the corpus audit, the proposal and defense contexts must be independent for the audit to mean anything, so a launch failure there is a blocker: stop the audit rather than running the missing side inline.
 
 ## The shapes
 

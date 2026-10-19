@@ -13,17 +13,17 @@ Think in terms of the deploy window: old code on new schema, new code on old dat
 Run this **first** when `db/schema.rb` or `db/structure.sql` appears in the diff. Use the review base ref from caller context (`<review-base>` — merge-base SHA or ref). **Never assume `main`.**
 
 ```bash
-git diff <review-base> --name-only -- db/migrate/
+(cd "$workspace_root" && jj diff --from <review-base> --to <reviewed-head> --name-only db/migrate/)
 ```
 
 Then diff each dump file that is actually in the PR diff (one or both may apply):
 
 ```bash
 # When db/schema.rb is in the diff:
-git diff <review-base> -- db/schema.rb
+(cd "$workspace_root" && jj diff --from <review-base> --to <reviewed-head> db/schema.rb)
 
 # When db/structure.sql is in the diff:
-git diff <review-base> -- db/structure.sql
+(cd "$workspace_root" && jj diff --from <review-base> --to <reviewed-head> db/structure.sql)
 ```
 
 Cross-reference every change in each in-scope dump against migrations **in this PR's diff**:
@@ -32,15 +32,15 @@ Cross-reference every change in each in-scope dump against migrations **in this 
 - Every new column/table/index in the dump must come from a PR migration
 - **Drift:** columns, tables, indexes, or version bumps not explained by PR migrations
 
-When drift is present, emit a **P1** finding on the affected dump path (`db/schema.rb` or `db/structure.sql`) with `autofix_class: manual`, concrete unrelated objects listed, and `suggested_fix`:
+When drift is present, emit a **P1** finding on the affected dump path (`db/schema.rb` or `db/structure.sql`) with `autofix_class: manual`, concrete unrelated objects listed, and the following suggested fix for an explicitly authorized human/resolver to perform after preserving unrelated work. These are recommendations, never commands for this read-only reviewer to execute:
 
 ```bash
 # schema.rb:
-git checkout <review-base> -- db/schema.rb
+(cd "$workspace_root" && jj restore --from <review-base> db/schema.rb)
 bin/rails db:migrate
 
 # structure.sql (regenerate after restoring and migrating):
-git checkout <review-base> -- db/structure.sql
+(cd "$workspace_root" && jj restore --from <review-base> db/structure.sql)
 bin/rails db:migrate
 ```
 

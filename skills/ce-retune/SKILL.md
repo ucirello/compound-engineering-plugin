@@ -28,6 +28,12 @@ If any is missing, **stop and say so**, naming what to build. Do not fall back t
 
 State the target model and the harness you found before continuing.
 
+## Execution and repository context
+
+Use OpenCode-native `opencode.models` discovery and subagents for the explicitly requested independent audit and cut agents; use shell for local measurement commands, not another harness's dispatch bridge. Configuration files remain the source of intended models and tiers. Interpret delegation permission separately from model-selection permission and nesting capacity: under a user-or-loaded-skill permission rule, this skill's explicit dispatch instructions suffice without another approval. An unconditional prohibition or actual denial still applies. If model overrides require an explicit user model request, omit the optional model argument and use suitable inherited-model agents; disclose unmet tiers and never claim same-model agents provide cross-model independence. Check effective nesting capacity; distinguish depth/capacity errors from denied permission, rejected model arguments, and unavailable tools. Do not evade these constraints with shell or another harness. The independent audit has no inline fallback: report incomplete coverage and stop if its required agents cannot run.
+
+Run repository commands from the target workspace's absolute root, for example `(cd "$workspace_root" && jj status)`, not by relying on `jj -R`. Repository-scoped GitHub calls use `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh ...)`. Keep all temporary files, including failure-path evidence, under that workspace's `.tmp/` and ensure `.tmp/` is ignored in `.gitignore`; without a JJ repository use local `.tmp/`. Use JJ for repository operations; see https://docs.jj-vcs.dev/latest/git-experts/ and https://docs.jj-vcs.dev/latest/git-command-table/ . The read-only backend history inspection for message composition in `references/cut-passes.md` is a narrow Git fallback.
+
 ## The phases
 
 They run in order, and each names the reference it cannot start without. Read `references/workflow-shapes.md` before dispatching any phase: the wrong orchestration shape is the common failure. Fan out by disjoint file ownership, never by item. Items cross files, and agents that share a file lose each other's edits.

@@ -4,13 +4,13 @@ This reference owns checkout safety, server startup, reachability, and browser h
 
 ## Resolve the workspace
 
-If the user named a PR or branch, first locate whether its branch is already checked out in a worktree. Enter that existing worktree when the harness can; if it cannot, report the blocker and stop. Only use the harness's checkout capability in the current workspace when no other worktree owns the target. With no argument, stay in the current checkout.
+If the user named a PR or bookmark, first resolve the exact repository, remote, bookmark, and revision and inspect registered JJ workspaces with `(cd "$workspace_root" && jj workspace list)` from the current workspace's absolute root. Detect harness-provided isolation first. Enter and adopt an existing workspace for the target through the harness's supported session capability; preserve its existing name, even if it is not date-prefixed, and do not rename or recreate it to enforce naming or colocation. If adoption is unsupported, report the blocker and stop. Only use the harness's supported JJ revision-selection capability in the current workspace when no other workspace owns the target, and only after verifying there is no unrelated tracked, ignored, untracked, or conflicted work to disturb. With no argument, stay in the current JJ workspace. An empty `@` directly above the verified target is already aligned; do not treat JJ's normal working-copy change as a detached Git checkout.
 
-Confirm the resulting branch is neither the repository's default branch nor detached. Report and stop when a safe feature-branch workspace cannot be reached; do not create another worktree behind the harness or move uncommitted user changes.
+Confirm the resulting revision belongs to the intended feature work, not the repository's default bookmark. Report and stop when a safe feature workspace cannot be reached; do not create another workspace behind the harness or move uncommitted user changes. This workflow reuses isolation; it does not create or retire workspaces. Use JJ from the target workspace's absolute root, for example `(cd "$workspace_root" && jj status)`; `jj -R` is not a working-directory substitute. Repository-scoped GitHub calls must use `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh ...)`. See the [JJ Git migration guide](https://docs.jj-vcs.dev/latest/git-experts/), [command table](https://docs.jj-vcs.dev/latest/git-command-table/), and [workspace reference](https://docs.jj-vcs.dev/latest/cli-reference/#jj-workspace).
 
 ## Resolve the start command
 
-The commands below execute scripts bundled with this skill. For every self-contained shell call, set `SKILL_DIR` to the absolute directory containing the loaded `ce-polish` `SKILL.md`; shell state does not carry between calls.
+The commands below execute scripts bundled with this skill. For every self-contained shell call, set `SKILL_DIR` to the absolute directory containing the loaded `ce-polish` `SKILL.md` and set the tool's working directory to the verified absolute target workspace root; shell state does not carry between calls. This also ensures each helper's `jj workspace root` query runs in that workspace, not in the skill installation directory.
 
 First inspect the repo-root launch configuration:
 
@@ -48,7 +48,7 @@ Startup may proceed only when the tuple has a usable command, working directory,
 
 ## Start and hand off
 
-Inspect the chosen port and select exactly one intended server instance before handoff. Reuse a process already serving that port only when evidence identifies it as the intended project server. Only when no intended instance is selected may the resolved command be launched in the background with the project's working directory and environment; that process becomes the selected instance. Keep its process or session handle, and write its output under a directory created with `mktemp -d "${TMPDIR:-/tmp}/ce-polish-XXXXXX"`.
+Inspect the chosen port and select exactly one intended server instance before handoff. Reuse a process already serving that port only when evidence identifies it as the intended project server. Only when no intended instance is selected may the resolved command be launched in the background with the project's working directory and environment; that process becomes the selected instance. Keep its process or session handle, and write its output under a directory created with `mktemp -d "$workspace_root/.tmp/ce-polish-XXXXXX"`, after creating the workspace-local `.tmp` directory and verifying `.tmp/` is ignored through `.gitignore`. Keep fallback and error output there too; never fall back to OS-global temporary storage.
 
 An occupied port that cannot be attributed to the intended project server remains an unresolved collision. Ask the user whether to stop that process, choose another port, or stop this run; never kill it or launch past it.
 

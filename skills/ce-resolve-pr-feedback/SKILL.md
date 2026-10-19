@@ -2,12 +2,22 @@
 name: ce-resolve-pr-feedback
 description: Judge PR feedback centrally, apply valid fixes, and complete review conversations with publication verified. Use when addressing feedback already left on a PR, preparing local fixes for a caller to publish, or completing a saved feedback batch. Use ce-code-review for reviewing code before feedback exists.
 argument-hint: "[mode:pipeline | mode:return-to-caller | mode:resume] [PR number, comment URL, or blank for current branch's PR] [handoff:<path>]"
-allowed-tools: Bash(gh *), Bash(git *), Bash(bash *), Bash(python3 *), Read, Write
+allowed-tools: Bash(gh *), Bash(jj *), Bash(git log *), Bash(bash *), Bash(python3 *), Read, Write
 ---
 
 # Resolve PR Review Feedback
 
 Judge fresh PR review feedback centrally, then dispatch generic subagents seeded with the bundled fixer prompt only for approved fixes. Publish the fixes before replying and resolving. Resume completes saved judgments without another fix pass.
+
+## Workspace and execution contract
+
+Run every JJ command from the target workspace's absolute root, using `(cd "$workspace_root" && jj ...)`, not `jj -R`. Paths in file lists are workspace-relative, such as `src/example.py`. In every shell invocation that runs repository-scoped `gh` or a bundled GitHub helper, first change to that absolute root and export `GIT_DIR=$(jj git root)`; shell state does not persist across invocations. Preserve explicit GitHub host and base/head repository identities. Use JJ for history, annotation, changes and publication; see https://docs.jj-vcs.dev/latest/git-command-table/ and https://docs.jj-vcs.dev/latest/cli-reference/ . Git is reserved for the read-only message-history inspection specified in Full Mode.
+
+Keep all temporary files, handoff defaults and fallback/error artifacts under `$workspace_root/.tmp`; ensure `.tmp/` is ignored in `.gitignore` before creating them. Give private reply and record files restrictive permissions. Do not allocate OS-global scratch storage.
+
+This skill explicitly requests OpenCode-native generic fixer subagents where its routing calls for them. Under a host rule permitting user- or skill-requested delegation, this request suffices without another approval. Higher-priority prohibitions and actual permission denials still apply. Model selection is separate: resolve configured model intent with `opencode.models` only when selection is permitted; do not supply a model override without the required user authorization. Suitable inherited-model fixers are allowed. Check effective nesting capacity and classify actual dispatch errors as permission, model-argument, missing-tool or depth/capacity failures; never evade them through another harness or shell dispatch. Inline implementation is an allowed fixer fallback, not an independent review. Required cross-model adjudication that cannot run remains incomplete and must be disclosed.
+
+Do not ask again for routine fixes, publication, factual PR maintenance or monitoring handoff already authorized by the request or active workflow. Preserve actual permissions, scope limits, monitoring opt-outs and genuine human decisions. Optional PR-description rewrites outside authorized maintenance retain their approval requirement and cannot block otherwise authorized monitoring.
 
 **Done:** Every selected item has a verdict and verified conversation completion or a reported residual. Completed threads have a visible submitted reply with quoted context and authoritative resolution; `needs-human` threads stay open. Ordinary and pipeline runs publish valid fixes before completion. Return-to-caller preserves its local fix commit and exact pending actions in a readable validated handoff, or records actual no-change completion. Resume verifies fresh publication and returns checkpointed completion or pending saved actions with retry evidence. Pending actions are never reported as resolved.
 

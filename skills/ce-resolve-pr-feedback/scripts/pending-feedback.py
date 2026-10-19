@@ -182,11 +182,33 @@ def prepared_content(record: dict) -> dict:
     }
 
 
+def workspace_root() -> Path:
+    local_root = Path.cwd().resolve()
+    try:
+        result = subprocess.run(["jj", "workspace", "root"], cwd=local_root,
+                                capture_output=True, text=True, check=False)
+    except FileNotFoundError:
+        return local_root
+    return Path(result.stdout.strip()).resolve() if result.returncode == 0 else local_root
+
+
+def scratch_directory() -> Path:
+    root = workspace_root()
+    scratch = root / ".tmp"
+    require(not scratch.is_symlink(), "local .tmp must not be a symlink")
+    scratch.mkdir(mode=0o700, exist_ok=True)
+    require(scratch.resolve().parent == root, "scratch directory must remain workspace-local")
+    return scratch
+
+
 def write_record(path: Path, raw: bytes, *, checkpoint: bool) -> None:
     if checkpoint:
+        scratch = scratch_directory()
+        require(scratch.stat().st_dev == path.parent.stat().st_dev,
+                "checkpoint destination is on another filesystem; atomic replacement is unavailable")
         temporary = None
         try:
-            with tempfile.NamedTemporaryFile(dir=path.parent, prefix=".pending-feedback-", delete=False) as temp:
+            with tempfile.NamedTemporaryFile(dir=scratch, prefix=".pending-feedback-", delete=False) as temp:
                 temporary = Path(temp.name)
                 temp.write(raw)
                 temp.flush()
@@ -205,8 +227,12 @@ def write_record(path: Path, raw: bytes, *, checkpoint: bool) -> None:
 
 
 def github_json(host: str, endpoint: str) -> dict:
+    root = workspace_root()
+    backend = subprocess.run(["jj", "git", "root"], cwd=root,
+                             capture_output=True, text=True, check=True).stdout.strip()
     result = subprocess.run(
         ["gh", "api", "--hostname", host, "--method", "GET", endpoint],
+        cwd=root, env={**os.environ, "GIT_DIR": backend},
         capture_output=True, text=True, check=False,
     )
     require(result.returncode == 0, result.stderr.strip() or f"GitHub GET failed: {endpoint}")
@@ -257,10 +283,13 @@ def main() -> None:
             command_parser.add_argument("--input", required=True)
     args = parser.parse_args()
     if args.command == "preflight":
-        path = Path(args.path).absolute() if args.path else Path(tempfile.mkdtemp(prefix="ce-pending-feedback-")) / "pending.json"
+        scratch = scratch_directory()
+        path = Path(args.path).absolute() if args.path else Path(tempfile.mkdtemp(prefix="pending-feedback-", dir=scratch)) / "pending.json"
         require(not os.path.lexists(path), "handoff destination already exists")
         require(path.parent.is_dir(), "handoff parent directory does not exist")
-        with tempfile.TemporaryFile(dir=path.parent):
+        require(scratch.stat().st_dev == path.parent.stat().st_dev,
+                "handoff destination is on another filesystem; atomic checkpointing is unavailable")
+        with tempfile.TemporaryFile(dir=scratch):
             pass
         print(json.dumps({"handoff": str(path)}))
         return

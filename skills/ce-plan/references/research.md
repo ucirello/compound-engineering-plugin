@@ -4,7 +4,7 @@ Phase 1 of `ce-plan`. Read this before dispatching any research subagent.
 
 ### Phase 1: Gather Context
 
-All specialist research and deepening prompts used in this phase are skill-local prompt assets under `references/agents/`. When dispatching one, read the matching file and seed a generic subagent with that prompt content plus the task-specific context below. Do not dispatch standalone agents by type/name.
+All specialist research and deepening prompts used in this phase are skill-local prompt assets under `references/agents/`. When dispatching one, read the matching file and seed an OpenCode-native generic subagent with that prompt content plus the task-specific context below. Do not dispatch standalone agents by type/name. This skill explicitly requests these researchers and reviewers: a user-or-skill delegation rule permits them without another approval, but an unconditional prohibition or actual denial still applies. Model selection is separate: resolve configured choices with `opencode.models`, but omit optional model overrides when host policy requires an explicit user model request. Use suitable inherited-model reviewers when permitted; report unmet fixed-route or different-model coverage rather than calling it complete. Verify effective nesting capacity separately, classify actual depth/capacity errors accurately, and never bypass limits through shell or another harness. See `reasoning-elevation.md` for native routing and fallback safeguards.
 
 This skill, not the prompt assets, decides which model tier each subagent uses. Local prompt files have no frontmatter. Use the platform's mid-tier model for external/organizational research prompts such as `slack-researcher` and `web-researcher` when the current harness exposes a known override; otherwise omit the override and inherit. Use inherited model for high-judgment architecture, migration, and planning-deepening prompts unless the harness has an established cheaper capable tier.
 
@@ -14,7 +14,7 @@ At every native subagent boundary in this phase, classify a rejected dispatch by
 
 A **Lightweight** Durable plan does not dispatch the research agents below. Ground it from bounded inline reads of the files the request names and their tests, note any `<root>/solutions/` entry whose title matches the topic and, after running **Pack discovery** below, any resolved pack file whose `applies_when` matches the work, and continue to 1.1b; 1.4b's reclassification still applies when those reads surface an external contract surface.
 
-**Pack discovery.** For every Durable plan — before composing the `learnings-researcher` dispatch, or inline on the Lightweight path — resolve the packs declared in CE config by running this skill's resolver as one command:
+**Pack discovery.** For every Durable plan — before composing the `learnings-researcher` dispatch, or inline on the Lightweight path — resolve the packs declared in configuration by running this skill's resolver as one command. Pack-source cloning is the retained Git-only transport exception, not a workspace-management route. Ensure workspace-local `.tmp/` is ignored; cache overrides must also remain beneath it:
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
@@ -36,8 +36,8 @@ Pass the project's active instructions and the planning context summary to `repo
 When this phase dispatches a researcher, create one scratch directory first and reuse that absolute path for every researcher this run. Pass each researcher the absolute path of its own file. It writes its document there and returns a gist plus that path. Read a dossier when its gist can change a decision. Do not load every dossier into context. Later dispatches in this phase reuse the directory. If a later dispatch is the first one, create the directory then.
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+workspace_root="<verified absolute workspace root from jj workspace root, or absolute local project root>";
+SCRATCH_ROOT="$workspace_root/.tmp/rocketclaw";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;

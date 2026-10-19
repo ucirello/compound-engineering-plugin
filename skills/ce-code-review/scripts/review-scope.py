@@ -86,8 +86,18 @@ AGENT_SURFACE_PATTERN = re.compile(
 
 
 def git(*args: str) -> subprocess.CompletedProcess[str]:
+    # JJ owns state; the read-only backend supplies raw/numstat machine output
+    # that JJ's diff formats do not expose with the same numeric contract.
+    root = repo_root()
+    backend = subprocess.run(["jj", "git", "root"], cwd=root,
+                             capture_output=True, text=True, check=False)
+    env = dict(os.environ)
+    if backend.returncode != 0:
+        return subprocess.CompletedProcess(["git", *args], 1, "", backend.stderr)
+    env["GIT_DIR"] = backend.stdout.strip()
     return subprocess.run(
-        ["git", *args], capture_output=True, text=True, check=False
+        ["git", *args], cwd=root, env=env,
+        capture_output=True, text=True, check=False
     )
 
 
@@ -125,15 +135,11 @@ def normalize_docs_root(docs_root: str | None) -> str:
 
 @functools.lru_cache(maxsize=None)
 def repo_root() -> Path:
-    """The repository root, matching how docs_root is resolved everywhere else.
-
-    docs_root is repo-relative (``<repo-root>/<docs_root>``), so the corpus
-    check must resolve against the git toplevel, not the current working
-    directory. ce-code-review can run from a subdirectory (``git diff`` still
-    works there), where ``Path.cwd()`` would join docs_root under the subdir and
-    wrongly report the corpus absent. Fall back to cwd when git can't answer.
+    """Resolve the JJ workspace root so paths stay workspace-relative even
+    when the skill is invoked from a subdirectory. Fall back locally outside JJ.
     """
-    result = git("rev-parse", "--show-toplevel")
+    result = subprocess.run(["jj", "workspace", "root"], cwd=Path.cwd().resolve(),
+                            capture_output=True, text=True, check=False)
     if result.returncode == 0 and result.stdout.strip():
         return Path(result.stdout.strip()).resolve()
     return Path.cwd().resolve()
@@ -164,10 +170,10 @@ PACKS_RESOLVER_TIMEOUT = 30.0
 
 
 def declared_packs() -> tuple[bool | None, int]:
-    """Whether the local CE config declares Compound Packs, from the config alone.
+    """Whether the local configuration declares Compound Packs, from config alone.
 
     Runs the sibling resolver in `--declared-only` mode, which parses the
-    `packs:` list from both CE config layers and shape-checks each entry with no
+    `packs:` list from both configuration layers and shape-checks each entry with no
     git or cache work. Its `declared` is true when any entry parsed or the block
     is malformed -- a broken declaration is still one the learnings pass must
     surface in Coverage. ``None`` means the helper could not tell (resolver
@@ -294,7 +300,14 @@ def main() -> int:
         print(json.dumps(fail_closed("invalid head endpoint", repo), sort_keys=True))
         return 0
 
-    diff_args = [args.base]
+    # Snapshot/resolve JJ's actual working-copy revision, not a possibly stale
+    # colocated Git HEAD/index, before read-only numeric backend inspection.
+    tip = subprocess.run(["jj", "log", "-r", "@", "--no-graph", "-T", "commit_id"],
+                         cwd=repo_root(), capture_output=True, text=True, check=False)
+    if tip.returncode != 0:
+        print(json.dumps(fail_closed("JJ working-copy resolution failed", repo), sort_keys=True))
+        return 0
+    diff_args = [args.base, tip.stdout.strip()]
     if args.head:
         merge_base = unique_merge_base(args.base, args.head)
         if merge_base is None:

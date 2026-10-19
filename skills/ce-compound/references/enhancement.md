@@ -8,7 +8,7 @@ This phase is interactive-only: a non-interactive caller has no human-in-the-loo
 
 <parallel_tasks>
 
-Based on problem type, optionally dispatch generic subagents seeded with local prompt assets from `references/agents/` to review the documentation. Do not dispatch standalone agents by type/name.
+Based on problem type, optionally dispatch generic subagents seeded with local prompt assets from `references/agents/` to review the documentation. Do not dispatch standalone agents by type/name. Apply the delegation permission, model-selection permission, runtime nesting, fallback, and incomplete-coverage rules in `references/research.md`; these are explicit skill-requested reviewer dispatches, not permission to override higher-priority prohibitions.
 
 - **performance_issue** → `references/agents/performance-oracle.md`
 - **security_issue** → `references/agents/security-sentinel.md`

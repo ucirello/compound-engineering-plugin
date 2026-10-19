@@ -23,7 +23,7 @@ The orchestrator (main conversation) performs ALL of the following in one sequen
    - `no gap` when active project instructions point agents to the knowledge store
    - `gap noted — instruction-file tip emitted` when active project instructions exist but do not mention it
    - `not applicable — no active project instructions` when no project instructions are active; emit no discoverability tip
-6. **Mechanical claims check**: run `scripts/validate-doc-claims.py` against the written doc exactly as in `references/assembly.md` Phase 2.45 step 1 (same `SKILL_DIR` anchor, same adjudicate-not-auto-fix rule; read `references/grounding-validation.md` for the adjudication table when it flags anything). Lightweight skips only the semantic validator subagent, not this deterministic check.
+6. **Mechanical claims check**: run `scripts/validate-doc-claims.py` against the written doc exactly as in `references/assembly.md` Phase 2.45 step 1 (same absolute `SKILL_DIR` anchor, workspace-root command cwd, manual fallback, and adjudicate-not-auto-fix rule; read `references/grounding-validation.md` for the adjudication table when it flags anything). Lightweight skips only the semantic validator subagent, not this deterministic check.
 7. **Frontmatter parser-safety check**: validate the written doc exactly as in `references/assembly.md` Phase 2 step 8, using the same bundled-script existence guard and manual fallback checklist. Fix any violation and repeat the check; do not report success until the written frontmatter is parser-safe.
 8. **Skip specialized agent reviews** (`references/enhancement.md`) and the semantic grounding validator (`references/assembly.md` Phase 2.45 step 2) to conserve context
 

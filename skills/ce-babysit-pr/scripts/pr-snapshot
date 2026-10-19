@@ -291,24 +291,62 @@ def _iso(dt):
     return dt.isoformat()
 
 
+_WORKSPACE_ROOT = None
+_GIT_DIR = None
+
+
+def _workspace_context():
+    """Resolve JJ context once; -R alone would not set workspace-relative cwd."""
+    global _WORKSPACE_ROOT, _GIT_DIR
+    if _WORKSPACE_ROOT is None:
+        invocation_root = os.path.abspath(os.getcwd())
+        root = subprocess.run(
+            ["jj", "workspace", "root"], cwd=invocation_root,
+            capture_output=True, text=True, encoding="utf-8", check=True,
+        ).stdout.strip()
+        _WORKSPACE_ROOT = os.path.realpath(root)
+        _GIT_DIR = subprocess.run(
+            ["jj", "git", "root"], cwd=_WORKSPACE_ROOT,
+            capture_output=True, text=True, encoding="utf-8", check=True,
+        ).stdout.strip()
+    return _WORKSPACE_ROOT, _GIT_DIR
+
+
+def _command_environment():
+    workspace_root, git_dir = _workspace_context()
+    scratch = os.path.join(workspace_root, ".tmp")
+    if os.path.islink(scratch):
+        raise SystemExit("workspace .tmp must not be a symlink")
+    os.makedirs(scratch, mode=0o700, exist_ok=True)
+    env = os.environ.copy()
+    env["GIT_DIR"] = git_dir
+    for key in ("TMPDIR", "TMP", "TEMP"):
+        env[key] = scratch
+    return workspace_root, env
+
+
 def _run(cmd):
     # gh honors CLICOLOR_FORCE / GH_FORCE_TTY even for --json output, and a host that exports them
     # (observed under orca) makes every JSON read unparsable. Pin plain output regardless of caller env.
-    env = os.environ.copy()
+    workspace_root, env = _command_environment()
     env["NO_COLOR"] = "1"
     env.pop("CLICOLOR_FORCE", None)
     env.pop("GH_FORCE_TTY", None)
-    return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", env=env)
+    return subprocess.run(cmd, cwd=workspace_root, capture_output=True, text=True,
+                          encoding="utf-8", env=env)
 
 
 def _run_git(cmd):
-    env = os.environ.copy()
+    # Narrow read-only ls-remote fallback: JJ fetch would mutate local repository
+    # state and cannot replace an independent remote-ref query after REST 404.
+    workspace_root, env = _command_environment()
     env["GIT_TERMINAL_PROMPT"] = "0"
     env["GCM_INTERACTIVE"] = "never"
     env["GIT_ASKPASS"] = ""
     env["SSH_ASKPASS"] = ""
     return subprocess.run(
-        cmd, capture_output=True, text=True, encoding="utf-8", env=env, timeout=30,
+        cmd, cwd=workspace_root, capture_output=True, text=True,
+        encoding="utf-8", env=env, timeout=30,
     )
 
 
@@ -1399,7 +1437,7 @@ def _empty_trajectory():
 
 def _load_trajectory(state):
     """Load the trajectory, tolerating a partial or non-dict value from an older on-disk
-    state.json (persisted in /tmp across script versions) — backfill missing keys so a new
+    state.json (persisted in workspace-local .tmp across script versions) — backfill missing keys so a new
     field never KeyErrors an old state, and a null/garbage value never crashes."""
     tj = state.get("trajectory")
     if not isinstance(tj, dict):
@@ -3631,6 +3669,11 @@ def main():
     w.set_defaults(func=cmd_watch)
 
     args = p.parse_args()
+    workspace_root, _ = _command_environment()
+    scratch = os.path.realpath(os.path.join(workspace_root, ".tmp"))
+    args.state_dir = os.path.abspath(args.state_dir)
+    if os.path.commonpath([scratch, os.path.realpath(args.state_dir)]) != scratch:
+        p.error("--state-dir must be under the target workspace's local .tmp")
     if (args.cmd in ("snapshot", "watch")
             and args.invocation_budget_seconds is not None
             and args.invocation_budget_seconds <= 0):

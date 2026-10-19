@@ -20,12 +20,12 @@ Either way, a question that calls for a user decision calls the tool or falls ba
 
 ## Artifact Root
 
-Resolve `<root>` **only** in the no-path interactive branch, which discovers the most recent plan under `<root>/plans/`. Every other run reads the document at the path it was handed. So an absolute-path or non-interactive review — `/tmp/plan.md`, possibly outside any repo — never depends on a repo root or a CE config it does not need.
+Resolve `<root>` **only** in the no-path interactive branch, which discovers the most recent plan under `<root>/plans/`. Every other run reads the document at the path it was handed. So an absolute-path or non-interactive review — `/absolute/path/plan.md`, possibly outside any repo — never depends on a repo root or a config it does not need.
 
 <!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only (`<repo-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
 - **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
@@ -50,7 +50,7 @@ Skip dispatch only when the completed-review reuse condition in `references/docu
 
 The team is `coherence-reviewer` and `feasibility-reviewer` always, plus each activated conditional persona. Announce the team with a per-persona justification before any dispatch.
 
-Dispatch generic subagents with **bounded parallelism** through the platform's subagent primitive. Seed each one with the full content of its `references/personas/<reviewer-name>.md`. Never dispatch a standalone agent by type or name.
+This skill explicitly requests generic reviewer subagents with **bounded parallelism** through OpenCode's native subagent primitive. Apply `references/dispatch.md`'s separate delegation-permission, model-selection-permission, and effective nesting-depth checks before dispatch. A user-or-skill delegation rule permits these reviewers without another approval; it does not authorize model overrides or bypass prohibitions or depth limits. Seed each one with the full content of its `references/personas/<reviewer-name>.md`. Never dispatch a standalone agent by type or name.
 
 A capacity rejection is backpressure, not reviewer failure: wait and retry. If capacity cannot recover and selected reviewers remain undispatched, collect and clean up any started cross-model jobs as `references/cross-model-review.md` describes, then stop as incomplete without synthesis, fixes, or a success handoff. Preserve collected outcomes and report which reviewers completed, failed, or could not run, and why.
 

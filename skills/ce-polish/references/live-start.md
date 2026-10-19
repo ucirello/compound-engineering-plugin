@@ -30,9 +30,12 @@ Start or attribute the dev server per `references/run.md`, "Start and hand off",
 Create the run directory the helper owns under the private scratch root (it will hold bearer tokens and the full session log, so the shipped preamble's ownership, symlink, and permission checks are required); everything the session writes lives under it:
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)"; [ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)"; [ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && chmod 700 "$SCRATCH_ROOT" || { echo "unsafe scratch root: $SCRATCH_ROOT" >&2; exit 1; };
+workspace_root="<verified absolute JJ workspace root>"
+SCRATCH_ROOT="$workspace_root/.tmp"; [ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] && chmod 700 "$SCRATCH_ROOT" || { echo "unsafe scratch root: $SCRATCH_ROOT" >&2; exit 1; };
 LIVE_ROOT="$(mktemp -d "$SCRATCH_ROOT/ce-polish-live-XXXXXX")" && chmod 700 "$LIVE_ROOT" && echo "$LIVE_ROOT"
 ```
+
+Verify `.tmp/` is ignored through the workspace's `.gitignore` before writing tokens or logs. If local scratch creation or any ownership check fails, stop and report it; do not use a global temporary fallback. Preserve these session logs when retiring any workspace by copying required evidence outside it and reading it back first.
 
 Start the endpoint with the browser-facing origin of the verified actual URL resolved above (`--app-origin` is the exact scheme, host, and port the page loads from; it is the CORS allow-list, and a running helper refuses a restart with a different one). If the URL changes after this point, `stop` the endpoint and start a fresh root; do not hand over a URL whose origin differs from the one the endpoint was given.
 

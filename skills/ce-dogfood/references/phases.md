@@ -11,9 +11,11 @@ Parse the arguments you were invoked with: a PR number, a branch name, or blank 
    - **Branch name:** the target is that branch.
    - **Blank:** the target is the current branch.
 2. **Refuse to run on the trunk — branch/blank targets only.** If a *branch-name or blank* target resolves to the trunk (`main`/`master`/the detected default), stop — there is no diff to dogfood. A **PR is always diffable** (it has a base), so this check never applies to a PR target; never refuse a `ce-dogfood <number>` invocation just because the PR's head branch happens to be named `main`.
-3. **Decide isolation by what you're testing; let `ce-worktree` own the worktree mechanics.** Do not re-derive worktree detection or creation here — `ce-worktree` handles existing-isolation detection, the harness-native tool, attaching to a ref, and the "already checked out" constraint, and reports its decision back. The only call this skill makes is *whether to ask for isolation at all*:
-   - **Blank / current-branch target:** do **not** isolate — dogfood in place. You are already on the branch under test, the fix-commits belong on it, and git cannot check the same branch out in a second worktree anyway. (If you happen to already be in a worktree, that is fine — you are simply dogfooding here.)
-   - **A PR or a different named branch:** this is an existing ref to test without disturbing your current checkout. Offer isolation (platform's blocking question tool). On **yes**, invoke `ce-worktree` to isolate **that target ref** — it attaches a worktree to the ref (or, if already isolated, checks it out in place; or reports "already checked out at `<path>` — work there" when the ref is live elsewhere). Act on `ce-worktree`'s verdict; the primary checkout is never switched. On **no**, check the target out in place (`gh pr checkout <number>` for a PR, `git checkout <branch>` for a branch), confirming first if uncommitted changes would be disturbed.
+3. **Decide isolation by what you're testing; let `ce-worktree` own the workspace mechanics.** Do not re-derive workspace detection or creation here — `ce-worktree` handles existing-isolation detection, the harness-native tool, and verified target selection, and reports its decision back. The only call this skill makes is *whether to ask for isolation at all*:
+   - **Blank / current-bookmark target:** do **not** isolate — dogfood in place. Resolve the current identity from bookmarks on `@` and, when `@` is empty, `@-`; if ambiguous, ask rather than inventing a branch. Fix changes belong to the verified target. Existing workspace isolation is reused unchanged.
+   - **A PR or a different named bookmark:** offer isolation (platform's blocking question tool). On **yes**, invoke `ce-worktree` for **that target identity**, preserving PR number, source repository and source bookmark. Detect existing isolation first and honor harness ownership/session adoption. For new workspaces, capture the local creation date once and persist `YYYYMMDD-<meaningful-kebab-case-slug>` across retries/resumes, including midnight boundaries; derive the slug from the task, PR (`20261008-pr-214`) or revision (`20261008-review-efcb657`). Normalize caller names without double-prefixing, check registrations and destinations, and suffix collisions with `-2`, `-3`, etc. Use that same identity for the workspace name and destination basename under the existing absolute local `.tmp/` layout. Request the supported harness-native colocated JJ workspace capability and required name; unsupported naming/colocation is a compatibility blocker, not permission for a Git fallback. Otherwise `ce-worktree` creates from the source's absolute root with `(cd "$workspace_root" && jj workspace add --colocate --name "$workspace_name" --revision "$verified_base" "$absolute_destination")`, and verifies `(cd "$absolute_destination" && jj git colocation status)`. Never rename/recreate existing isolation to enforce new-name rules. Act on its safe verdict; never switch the primary workspace on an accepted isolation request.
+   - On **no**, resolve the exact target commit using JJ fetch/bookmark inspection; for a PR, verify head repository, remote, bookmark and commit with repository-scoped `gh pr view`, fetching its verified head rather than using `gh pr checkout`. Run `(cd "$workspace_root" && jj new "$verified_head")` only after inspecting tracked changes, conflicts and ignored/untracked files; preserve unrelated work and stop for the existing safe decision path if changing target would disturb it. Never reset/discard or guess a target.
+   - Workspace cleanup remains owned by `ce-worktree` and the harness lifecycle, not implied by finishing QA. If authorized to retire run-owned isolation, stop workers, move the active session and cwd to a surviving absolute root, verify registered name/path/ownership and required integration, preserve recovery references and copy/read back evidence outside the target. Inspect tracked changes, conflicts and ignored/untracked content (the removal snapshot does not protect ignored/untracked files). Remove only disposable content with `(cd "$surviving_root" && jj workspace remove "$verified_workspace_name")`; verify both deregistration and directory disappearance. On warnings or failure retain remaining state and report, never force-delete or use Git cleanup. `jj workspace forget` is only for unregistering while preserving files; bookmark deletion is separate and must preserve best/archive/recovery and still-needed references.
 4. **Resume if a prior run exists.** Look for an existing report at `<root>/dogfood-reports/*-<branch-slug>-dogfood.md` (see the branch-slug rule under Resumability). If one is found with unfinished scenarios, ask whether to resume it or start fresh. To resume, rebuild the task list from its matrix: `Pass`/`Fixed`/`Skipped` stay done; `Pending` and `in_progress` become the remaining auto-runnable work. The two `Blocked` states are **not** auto-runnable — `Blocked (needs human verify)` and `Blocked (human decision)` are waiting on a person, so surface them to the user and ask how to proceed rather than silently re-queuing them.
 
 ### Resumability (stop and return at any point)
@@ -27,32 +29,16 @@ Because tasks are session-scoped but the report doc is on disk, the report is th
 
 ### Phase 1: Analyze Changes
 
-Derive the trunk ref once, then pull the full diff against it and read it. Do not hard-code `main` — a repo whose default branch is `master` (or anything else) would fail with `fatal: ambiguous argument 'main...HEAD'`.
+Resolve `workspace_root` to the target workspace's absolute root. Every JJ command runs there, not merely with `-R`; file lists must be workspace-relative (e.g. `src/example.py`). Every repository-scoped `gh` call, including Phase 0, uses `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh ...)`.
+
+Derive the trunk once from the PR's verified base repository/ref, or the repository default via scoped `gh repo view --json defaultBranchRef`; verify its local or remote bookmark using `jj bookmark list`, fetching the exact remote with `jj git fetch` when needed. Common `main`/`master` candidates are acceptable only after verification; never silently default to a nonexistent ref. Resolve one unambiguous trunk revision and target revision (including current working-copy changes for in-place QA), then compute their common ancestor with `jj log -r 'heads(::(<verified-trunk>) & ::(<verified-target>))'`. Stop on missing/ambiguous targets. Use that verified ancestor as the diff base:
 
 ```bash
-# Resolve the trunk to a ref that actually exists. Start from the detected
-# default name (origin/HEAD, then gh), then fall back to common names. For each
-# candidate prefer a local branch; else use the remote-tracking ref QUALIFIED as
-# origin/<branch> — an unqualified name resolves via refs/remotes/<name>, NOT
-# refs/remotes/origin/<name>, so a remote-only trunk would otherwise miss. This
-# qualification applies to the detected default too (PR/CI checkouts often have
-# only origin/main, no local main).
-DEFAULT=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's@^origin/@@')
-DEFAULT=${DEFAULT:-$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name 2>/dev/null)}
-TRUNK=""
-for cand in "$DEFAULT" main master; do
-  [ -n "$cand" ] || continue
-  if git show-ref --verify --quiet "refs/heads/$cand"; then
-    TRUNK=$cand; break
-  elif git show-ref --verify --quiet "refs/remotes/origin/$cand"; then
-    TRUNK="origin/$cand"; break
-  fi
-done
-TRUNK=${TRUNK:-main}
-
-git diff --name-only "$TRUNK...HEAD"   # what changed
-git diff "$TRUNK...HEAD"               # how it changed
+(cd "$workspace_root" && jj diff --from "$verified_base" --to "$verified_target" --name-only)
+(cd "$workspace_root" && jj diff --from "$verified_base" --to "$verified_target")
 ```
+
+JJ operation guidance: https://docs.jj-vcs.dev/latest/git-command-table/ and https://docs.jj-vcs.dev/latest/cli-reference/#jj-workspace .
 
 Build a mental model of every change: new features, modified behavior, new routes/views/components, touched data flows. Note anything that produces user-visible behavior — that is what the matrix must cover.
 
@@ -123,11 +109,11 @@ Work the task list **one item at a time**. For each scenario, mark the task `in_
    agent-browser snapshot -i
    agent-browser click @e1
    agent-browser fill @e2 "value"
-   agent-browser screenshot "$(mktemp -d "${TMPDIR:-/tmp}/ce-dogfood-XXXXXX")/<scenario>.png"   # scratch dir, not the repo root
+    agent-browser screenshot "$scratch_dir/<scenario>.png"   # workspace-local .tmp scratch directory
    agent-browser errors      # check console/page errors
    ```
 
-   Write transient screenshots to OS temp (e.g. `mktemp -d "${TMPDIR:-/tmp}/ce-dogfood-XXXXXX"`), never the repo root. Only copy a screenshot into the report's location if you intend to embed it in the final report.
+   Initialize `scratch_dir` under the workspace's ignored `.tmp/` as specified in the skill boundaries; use it for screenshots and all fallback/error artifacts, never OS-global temporary storage. Only copy a screenshot into the report's location if you intend to embed it in the final report.
 
 3. **Judge** both correctness and experience: right data, right destination, sensible content, no console errors, and does it feel aligned with the product? Then judge the scenario against each pack criterion attached to it in Phase 2: state whether the behavior you drove honors the rule or contradicts it, quoting the rule's text and what the browser showed. A contradicted criterion is a failure-class result carrying its citation, exactly like a functional failure; an honored one is recorded as honored.
 4. **Walk it as each persona.** Re-run the journey in your head from each primary persona's perspective (from Phase 1, pack personas included) and ask where they'd feel a **paper cut** — a small friction that wouldn't fail a functional test but degrades the experience: a confusing label, an extra click, an unexpected jump, a slow-feeling step, missing feedback, copy that doesn't match how that persona thinks. A scenario can be functionally `Pass` yet still carry paper cuts. Note each paper cut, which persona feels it, and its severity; a paper cut felt by a pack persona carries that persona's citation.
@@ -148,7 +134,7 @@ When a scenario fails — a functional failure or a contradicted pack criterion 
 1. Investigate the root cause. If it's non-obvious, use `ce-debug`.
 2. Apply the fix in the code.
 3. **Add an automated regression test** that fails before the fix and passes after, so the bug can't return. This is the default for behavioral and code bugs. When an automated test is genuinely impractical — a pure copy, spacing, or visual fix with no behavioral assertion to make — substitute a documented browser-replay or screenshot check and **state in the report why no automated test was meaningful**. Do not invent a hollow test just to satisfy the step.
-4. Commit the fix with a clear message (use `ce-commit`). One logical fix per commit.
+4. Record the fix as a JJ change through `ce-commit`, which owns message composition and its full Go-guide/history comparison requirements; do not compose a message here or prescribe message syntax. One logical fix per change.
 5. Re-run the failing scenario in the browser to confirm it now passes; then continue the matrix.
 6. If the bug carried a reusable lesson, capture it with `ce-compound`. A fix that honored a pack rule teaches nothing new — the rule already says it; cite the rule in the report instead of capturing a duplicate.
 

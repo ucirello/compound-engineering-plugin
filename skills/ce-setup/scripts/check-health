@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Compound Engineering environment health check.
+# RocketClaw environment health check.
 # Reports optional tool capabilities and repo-local config safety in one pass.
 
 set -o pipefail
@@ -17,10 +17,7 @@ deps=(
   "ffmpeg|NONINTERACTIVE=1 HOMEBREW_NO_AUTO_UPDATE=1 brew install -q ffmpeg|https://ffmpeg.org/download.html|media chunking and screenshot extraction for Riffrec analysis"
 )
 
-# Cross-model peers run `npx acpx@<pin>`, which launches the codex and claude
-# adapters below. The version must match ACPX_VERSION in the peer workers; the
-# adapter specs are the ranges that acpx version launches. One line each: the
-# pin-bump canary rewrites them in place.
+# Optional legacy compatibility cache only; active model routes use OpenCode.
 ACPX_VERSION="0.19.5"
 ACPX_ADAPTER_SPECS="@agentclientprotocol/codex-acp@^1.1.5 @agentclientprotocol/claude-agent-acp@^0.81.2"
 
@@ -104,8 +101,8 @@ resolve_real_best_effort() {
 # docs_root_source, docs_root_error, and docs_root_local_ignored.
 resolve_docs_root() {
   local repo_root="$1"
-  local local_cfg="$repo_root/.compound-engineering/config.local.yaml"
-  local tracked_cfg="$repo_root/.compound-engineering/config.yaml"
+  local local_cfg="$repo_root/.rocketclaw/config.local.yaml"
+  local tracked_cfg="$repo_root/.rocketclaw/config.yaml"
   local value="" source="" repo_real real local_docs probe
 
   docs_root_error=""
@@ -143,7 +140,7 @@ resolve_docs_root() {
   esac
   [ "$real" = "$repo_real" ] && { docs_root_error="resolves to the repository root itself"; return; }
   case "$real/" in
-    "$repo_real/.git/"*) docs_root_error="resolves inside .git/"; return ;;
+    "$repo_real/.git/"*|"$repo_real/.jj/"*) docs_root_error="resolves inside repository metadata"; return ;;
   esac
   if [ -e "$real" ] && [ ! -d "$real" ]; then
     docs_root_error="names an existing non-directory"; return
@@ -359,25 +356,25 @@ read_work_engine_effort_keys() {
   ' "$config_file"
 }
 
-# Same prerequisite the peer workers check before launching acpx. Sets
+# Optional compatibility cache prerequisite. Sets
 # node_version and, when unmet, node_problem.
 check_node_prerequisite() {
   local major minor
   node_version=""; node_problem=""
   if ! command -v node >/dev/null 2>&1; then
-    node_problem="node not found; cross-model peers need Node 22.13 or newer"; return 1
+    node_problem="node not found; optional cache warming needs Node 22.13 or newer"; return 1
   fi
   node_version="$(node -p 'process.versions.node' 2>/dev/null | tr -d '\r')"
   node_version="${node_version#v}"
   major="${node_version%%.*}"; minor="${node_version#*.}"; minor="${minor%%.*}"
   case "$major$minor" in
-    ''|*[!0-9]*) node_problem="cannot read the Node version; cross-model peers need Node 22.13 or newer"; return 1 ;;
+    ''|*[!0-9]*) node_problem="cannot read the Node version; optional cache warming needs Node 22.13 or newer"; return 1 ;;
   esac
   if [ "$major" -lt 22 ] || { [ "$major" -eq 22 ] && [ "$minor" -lt 13 ]; }; then
-    node_problem="Node $node_version is too old; cross-model peers need Node 22.13 or newer"; return 1
+    node_problem="Node $node_version is too old; optional cache warming needs Node 22.13 or newer"; return 1
   fi
   if ! command -v npx >/dev/null 2>&1; then
-    node_problem="npx not found; cross-model peers run acpx through npx"; return 1
+    node_problem="npx not found; optional cache warming uses npx"; return 1
   fi
 }
 
@@ -393,9 +390,11 @@ if [ "$warm_acpx" = "yes" ]; then
     exit 1
   fi
   warm_failed=0
-  # Run from an empty directory, as the peer workers do: npx resolves packages
+  # Run from an empty directory: npx resolves packages
   # from its working directory's node_modules and .npmrc first.
-  warm_dir="$(mktemp -d "${TMPDIR:-/tmp}/ce-acpx-warm-XXXXXX")" || { warn "Cannot warm the npm cache: no temporary directory"; echo ""; exit 1; }
+  workspace_root="$(jj workspace root 2>/dev/null || pwd -P)"
+  mkdir -p "$workspace_root/.tmp" || exit 1
+  warm_dir="$(mktemp -d "$workspace_root/.tmp/acpx-warm-XXXXXX")" || { warn "Cannot warm the npm cache: no local temporary directory"; echo ""; exit 1; }
   for spec in "acpx@$ACPX_VERSION" $ACPX_ADAPTER_SPECS; do
     if (cd "$warm_dir" && npx --yes --package="$spec" -- node --version >/dev/null); then
       ok "cached $spec"
@@ -410,7 +409,8 @@ if [ "$warm_acpx" = "yes" ]; then
 fi
 
 has_brew=$(command -v brew >/dev/null 2>&1 && echo "yes" || echo "no")
-in_repo=$(git rev-parse --is-inside-work-tree >/dev/null 2>&1 && echo "yes" || echo "no")
+workspace_root="$(jj workspace root 2>/dev/null)"
+in_repo=$([ -n "$workspace_root" ] && echo "yes" || echo "no")
 
 # Retired Bun-era Codex tool map (#1099). The block is present only when a
 # standalone BEGIN line is followed by a standalone END line.
@@ -484,18 +484,19 @@ project_issues=0
 antigravity_configured="no"
 
 if [ "$in_repo" = "yes" ]; then
-  repo_root=$(git rev-parse --show-toplevel 2>/dev/null)
-  local_config_path="$repo_root/.compound-engineering/config.local.yaml"
-  tracked_config_path="$repo_root/.compound-engineering/config.yaml"
+  repo_root="$workspace_root"
+  local_config_path="$repo_root/.rocketclaw/config.local.yaml"
+  tracked_config_path="$repo_root/.rocketclaw/config.yaml"
   resolve_docs_root "$repo_root"
   [ "$docs_root_status" = "invalid" ] && project_issues=$((project_issues + 1))
   legacy_cfg="missing"
-  [ -f "$repo_root/compound-engineering.local.md" ] && legacy_cfg="present"
+  [ -f "$repo_root/rocketclaw.local.md" ] && legacy_cfg="present"
 
   local_cfg="missing"
   if [ -e "$local_config_path" ]; then
     local_cfg="present"
-    if git check-ignore -q "$local_config_path" 2>/dev/null; then
+    # JJ has no equivalent ignore-rule query; use the read-only Git backend.
+    if (cd "$repo_root" && GIT_DIR=$(jj git root) git check-ignore -q .rocketclaw/config.local.yaml 2>/dev/null); then
       repo_cfg_gitignore="ok"
     else
       repo_cfg_gitignore="missing"
@@ -505,7 +506,7 @@ if [ "$in_repo" = "yes" ]; then
   # Trailing slash is load-bearing: without it an existing directory-only rule
   # is missed before the directory exists, and a configured repo reads as bare.
   scratch_gitignore="missing"
-  if git -C "$repo_root" check-ignore -q .context/compound-engineering/ 2>/dev/null; then
+  if (cd "$repo_root" && GIT_DIR=$(jj git root) git check-ignore -q .context/ 2>/dev/null && GIT_DIR=$(jj git root) git check-ignore -q .tmp/ 2>/dev/null); then
     scratch_gitignore="ok"
   fi
 
@@ -649,7 +650,7 @@ if [ "$in_repo" = "yes" ]; then
 
   script_dir="$(cd "$(dirname "$0")" && pwd)"
   template="$script_dir/../references/config-template.yaml"
-  example="$repo_root/.compound-engineering/config.example.yaml"
+  example="$repo_root/.rocketclaw/config.example.yaml"
   if [ ! -f "$example" ]; then
     example_cfg="missing"
   elif [ -f "$template" ] && ! diff -q "$template" "$example" >/dev/null 2>&1; then
@@ -674,27 +675,9 @@ if [ "$in_repo" = "yes" ]; then
   done
 fi
 
-# Same runtime and helper the peer workers resolve before launching the
-# antigravity route. Reported only when the user configured it or installed it.
-antigravity_row="skip"
-antigravity_problem=""
-antigravity_runtime="$(command -v agy_acp_server.par 2>/dev/null)"
-if [ "$antigravity_configured" = "yes" ] || [ -n "$antigravity_runtime" ]; then
-  capability_total=$((capability_total + 1))
-  antigravity_helper="${ANTIGRAVITY_HARNESS_PATH:-$(dirname "${antigravity_runtime:-.}")/localharness_external}"
-  if [ -z "$antigravity_runtime" ]; then
-    antigravity_problem="agy_acp_server.par not found on PATH; install Antigravity's ACP runtime"
-  elif [ ! -x "$antigravity_helper" ]; then
-    antigravity_problem="localharness_external not found at ${antigravity_helper}; install it from the same release as the runtime"
-  fi
-  if [ -z "$antigravity_problem" ]; then
-    capability_ok=$((capability_ok + 1))
-    antigravity_row="ok"
-  else
-    capability_missing=$((capability_missing + 1))
-    antigravity_row="missing"
-  fi
-fi
+# Model availability is resolved agentically with opencode.models, not another
+# harness's runtime or helper. Configuration validation above is not a live
+# capability or review-coverage check.
 
 # =====================================================
 #  Output
@@ -723,20 +706,14 @@ for result in "${results[@]}"; do
 done
 
 if [ "$node_row" = "ok" ]; then
-  ok "node -- cross-model peers (Node $node_version, npx)"
+  ok "node -- optional compatibility cache warming (Node $node_version, npx)"
 else
-  warn "node -- unavailable: cross-model peers"
+  warn "node -- unavailable: optional compatibility cache warming"
   detail "$node_problem"
   detail "https://nodejs.org/en/download"
 fi
 
-if [ "$antigravity_row" = "ok" ]; then
-  ok "antigravity -- Gemini cross-model peer (runtime and helper found)"
-elif [ "$antigravity_row" = "missing" ]; then
-  warn "antigravity -- unavailable: Gemini cross-model peer"
-  detail "$antigravity_problem"
-  detail "https://github.com/agentclientprotocol/registry/blob/main/antigravity-acp/agent.json"
-fi
+detail "Resolve configured peer/work models with opencode.models; dispatch only through permitted native subagents. Health checks do not prove route availability."
 
 if [ "$legacy_codex_map" = "yes" ]; then
   section "Codex instructions"
@@ -749,20 +726,20 @@ if [ "$in_repo" = "yes" ]; then
   section "Project config"
 
   if [ "$legacy_cfg" = "present" ]; then
-    warn "Obsolete compound-engineering.local.md exists"
+    warn "Obsolete rocketclaw.local.md exists"
     project_issues=$((project_issues + 1))
   else
-    ok "No obsolete compound-engineering.local.md"
+    ok "No obsolete rocketclaw.local.md"
   fi
 
   if [ "$tracked_cfg" = "present" ]; then
-    ok ".compound-engineering/config.yaml exists"
+    ok ".rocketclaw/config.yaml exists"
   else
-    skip "No repo config yet (.compound-engineering/config.yaml)"
+    skip "No repo config yet (.rocketclaw/config.yaml)"
   fi
 
   if [ "$local_cfg" = "present" ]; then
-    ok ".compound-engineering/config.local.yaml exists"
+    ok ".rocketclaw/config.local.yaml exists"
     if [ "$repo_cfg_gitignore" = "ok" ]; then
       ok "Local config is gitignored"
     else
@@ -770,14 +747,14 @@ if [ "$in_repo" = "yes" ]; then
       project_issues=$((project_issues + 1))
     fi
   else
-    skip "No local override yet (.compound-engineering/config.local.yaml)"
+    skip "No local override yet (.rocketclaw/config.local.yaml)"
   fi
 
   if [ "$scratch_gitignore" = "ok" ]; then
-    ok "CE scratch space is gitignored"
+    ok "Local scratch space is ignored"
   else
-    skip "CE scratch space is not gitignored"
-    detail "Skills that keep local scratch write it under .context/compound-engineering/"
+    skip "Local scratch space is not fully ignored"
+    detail "Skills that keep local scratch write it under .context/"
   fi
 
   if [ "$docs_root_status" = "default" ]; then
@@ -786,14 +763,14 @@ if [ "$in_repo" = "yes" ]; then
     ok "Artifact root: ${docs_root_value}/ (from ${docs_root_source})"
   elif [ "$docs_root_status" = "invalid" ]; then
     warn "Invalid docs_root '${docs_root_value}' in ${docs_root_source}: ${docs_root_error}"
-    detail "CE artifacts will not be written until docs_root is corrected or removed."
+    detail "Artifacts will not be written until docs_root is corrected or removed."
   fi
   if [ -n "$docs_root_local_ignored" ]; then
     skip "Local docs_root '${docs_root_local_ignored}' is ignored; set docs_root only in config.yaml"
   fi
 
   if [ "$work_engine_cfg" = "native" ]; then
-    ok "CE Work implementation engine: native (${work_engine_detail})"
+    ok "Work implementation engine: native (${work_engine_detail})"
     if [ -n "$work_engine_preferences_note" ]; then
       if [ "$work_engine_preferences_note_level" = "warn" ]; then
         warn "$work_engine_preferences_note"
@@ -802,11 +779,11 @@ if [ "$in_repo" = "yes" ]; then
       fi
     fi
   elif [ "$work_engine_cfg" = "prefer" ] || [ "$work_engine_cfg" = "require" ]; then
-    ok "CE Work implementation engine: ${work_engine_cfg} -> ${work_engine_detail}"
+    ok "Work implementation preference (availability unverified): ${work_engine_cfg} -> ${work_engine_detail}"
   elif [ "$work_engine_cfg" = "unavailable" ]; then
-    warn "CE Work implementation engine unavailable: ${work_engine_detail}"
+    warn "Work implementation engine unavailable: ${work_engine_detail}"
   elif [ "$work_engine_cfg" = "invalid" ]; then
-    warn "CE Work implementation engine: ${work_engine_detail}"
+    warn "Work implementation engine: ${work_engine_detail}"
   fi
   [ -n "$work_engine_migration_note" ] && warn "$work_engine_migration_note"
   for effort_note in ${work_engine_effort_notes[@]+"${work_engine_effort_notes[@]}"}; do
@@ -817,7 +794,7 @@ if [ "$in_repo" = "yes" ]; then
   if [ "$example_cfg" = "ok" ]; then
     ok "Example config is current"
   elif [ "$example_cfg" = "missing" ]; then
-    warn "Example config missing (.compound-engineering/config.example.yaml)"
+    warn "Example config missing (.rocketclaw/config.example.yaml)"
     project_issues=$((project_issues + 1))
   elif [ "$example_cfg" = "outdated" ]; then
     warn "Example config outdated (new settings available)"
@@ -908,7 +885,7 @@ for e in errors:
   fi
 else
   section "Project config"
-  skip "Not inside a git repository"
+  skip "Not inside a JJ workspace"
 fi
 
 echo ""

@@ -1,19 +1,19 @@
 # Grounding Validation (Phase 2.45)
 
-Read this when Phase 2.45 runs. The doc just written becomes permanent, trusted knowledge. Future agents will act on its claims without re-verifying them. This phase checks the claims against reality before they compound: a deterministic mechanical pass (bundled script) plus a semantic pass (one read-only validator subagent). Neither pass is a hard stop. You judge every flag, because solution docs legitimately cite deleted paths and pre-fix states.
+Read this when Phase 2.45 runs. The doc just written becomes permanent, trusted knowledge. Future agents will act on its claims without re-verifying them. This phase checks claims against reality before they compound: a deterministic mechanical pass (bundled `scripts/validate-doc-claims.py`) plus a semantic pass (one read-only validator subagent). Neither pass is a hard stop. You judge every flag, because solution docs legitimately cite deleted paths and pre-fix states.
 
 ## Which tree is the ground truth
 
 Two claim categories verify against different trees:
 
 - **Code-behavior claims** (enum values, status semantics, limits, defaults) verify against the **local working tree**. They describe what this session's work produced and verified here.
-- **Merge-state claims** ("fixed in #1608", "landed", "shipped") verify against **remote truth**. The checkout may predate a merge, so `gh pr view` (or the tracker equivalent) is primary and local git reachability is only the fallback. The script's `INFO: worktree is N commits behind …` line tells you how much to distrust the local tree for this category.
+- **Merge-state claims** ("fixed in #1608", "landed", "shipped") verify against **remote truth**. The checkout may predate a merge, so `gh pr view` (or the tracker equivalent) is primary and local JJ ancestry is only the fallback. Verify the upstream default bookmark rather than guessing it; note when local state predates upstream.
 
-Before running the script, optionally run `git fetch --quiet` (best-effort; skip silently on failure or offline, because the network is never a correctness dependency). When remote state cannot be checked at all, keep the claim, add an as-of qualifier ("as of this writing"), and record degraded verification in the run report.
+Run all JJ commands from the absolute target workspace root: `(cd "$workspace_root" && jj ...)`. Repository-scoped GitHub calls require `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh ...)`. Optionally run `jj git fetch` there first (best-effort; skip silently offline). When remote state cannot be checked at all, keep the claim, add an as-of qualifier ("as of this writing"), and record degraded verification in the run report. Use https://docs.jj-vcs.dev/latest/cli-reference/ and https://docs.jj-vcs.dev/latest/git-command-table/ for command semantics.
 
 ## Step 1: Adjudicate the mechanical flags
 
-The script reports in two tiers and you decide each item. A **FLAG** is a claim it can defend; a **NOTE** is an item it reported without being able to classify, and notes do not affect its exit code. There are three resolutions, **fix**, **annotate**, or **confirm intentional**, and never an automatic rewrite or an automatic pass:
+Check cited paths in the working tree and verified upstream with native file tools and `jj file list -r <verified-revision>` (workspace-relative paths only). Resolve cited commit IDs with `jj log -r <commit-id>`; test ancestry with revset intersections such as `<commit-id> & ancestors(<verified-upstream>)` and `ancestors(@)`. Do not confuse session IDs, content hashes, provider/model IDs, bookmarks, or legitimate template syntax with fabricated citations. Scan relative links against their containing document, and inspect scaffold patterns throughout prose and code blocks. A **FLAG** is a defensible inconsistency; a **NOTE** is uncertain classification. There are three resolutions, **fix**, **annotate**, or **confirm intentional**, and never an automatic rewrite or automatic pass:
 
 | Flag | Likely meaning | Resolution |
 |------|----------------|------------|
@@ -22,27 +22,28 @@ The script reports in two tiers and you decide each item. A **FLAG** is a claim 
 | path deliberately gone (doc says removed/renamed) | Historical citation | Confirm the surrounding prose marks it as historical ("removed by this fix", "pre-fix state"); add that marker if absent |
 | SHA does not resolve, cited as a commit | Fabricated or from another repo | Replace with the PR number, or drop |
 | NOTE: unresolved hex, no commit context | The script cannot tell a session id or content hash from a commit; it is reporting, not accusing | Read the line: if it was never a commit citation, nothing to do; if it was, verify it |
-| SHA reachable from HEAD only | Local-only commit; SHA will change on rebase/squash merge | Replace with the PR number |
+| SHA reachable from @ only | Local-only commit; SHA will change on rebase/squash merge | Replace with the PR number |
 | SHA reachable from upstream only | Checkout predates the merge | Keep, with a temporal qualifier; verify the landed claim via `gh` |
 | SHA exists but unreachable | Rebased-away commit | Replace with the PR number |
 | scaffold ("Learning 3", `{{…}}`) | Drafting-context leak | Always fix; rewrite as a real path or link |
 | relative link unresolved | Wrong target | Fix the path |
 
-If the script cannot be resolved on this platform, apply its checks manually at the same scope: scan the body for cited paths that do not exist, hex words presented as commits anywhere in the body (in commands and code blocks as much as in prose), `Learning(s) N` / `{{…}}` scaffold, and broken relative links. Note in the run output that the check was manual. Do not silently skip.
+Run the bundled validator in every mode as prescribed by `references/assembly.md`. If unavailable, apply its checks manually: scan the body for cited paths that do not exist, hex words presented as commits anywhere in the body (in commands and code blocks as much as in prose), `Learning(s) N` / `{{…}}` scaffold, and broken relative links. Record manual fallback in the run output. Do not silently skip.
 
-After any body edit from this step or Step 2, re-run the script until it reports clean or every remaining flag is confirmed intentional.
+After any body edit from this step or Step 2, rerun the validator (or its manual fallback) until clean or every remaining flag is confirmed intentional.
 
 ## Step 2: Semantic validator subagent (Full and non-interactive; skipped in lightweight)
 
-Dispatch **one generic read-only subagent** covering the written solution doc plus any `CONCEPTS.md` entries added or edited this run. Phase 2.4's entries are claims too; a glossary entry written from a session-level summary is exactly how wrong semantics enter the vocabulary. Use the same mid-tier model class as other reviewer subagents when the platform exposes one. Build its prompt from this template:
+Dispatch **one generic read-only subagent** covering the written solution doc plus any `CONCEPTS.md` entries added or edited this run. Phase 2.4's entries are claims too; a glossary entry written from a session-level summary is exactly how wrong semantics enter the vocabulary. Prefer the same configured mid-tier class as other reviewers only when model selection is permitted; apply `references/research.md`'s delegation, inherited-model, nesting, and incomplete-coverage rules. Build its prompt from this template:
 
 ```
 You are a grounding validator for documentation about to enter a permanent
 knowledge store. You are read-only: never edit files. Inspect with Read,
-Grep, Glob, git (non-mutating), and gh when available.
+Grep, Glob, jj (non-mutating), and gh when available. Run commands from the
+absolute target workspace root, and set GIT_DIR=$(jj git root) for gh.
 
 Inputs: the doc content below, the CONCEPTS.md entries below (if any), and
-this staleness context: <INFO line from the mechanical script, or "none">.
+this staleness context: <verified local/upstream relationship, or "unknown">.
 
 Check every factual claim in three categories:
 
@@ -55,8 +56,8 @@ Check every factual claim in three categories:
 
 2. MERGE-STATE CLAIMS — assertions that a change landed ("fixed in",
    "merged", "shipped in", "resolved by #N"). Primary check: gh pr view
-   <n> --json state,mergedAt,baseRefName (remote truth). Fallback: git
-   reachability from the upstream default branch. Verdict: verified,
+   <n> --json state,mergedAt,baseRefName (remote truth). Fallback: JJ
+   ancestry from the verified upstream default bookmark. Verdict: verified,
    contradicted (e.g. PR open, not merged), or unverifiable (offline / no
    gh) — mark unverifiable as "degraded", do not guess.
 

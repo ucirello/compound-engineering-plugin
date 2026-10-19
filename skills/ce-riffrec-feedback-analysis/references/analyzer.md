@@ -4,6 +4,8 @@ All non-setup paths use the bundled analyzer through this one invocation shape. 
 
 Set `SKILL_DIR` to the absolute directory containing the loaded `ce-riffrec-feedback-analysis` `SKILL.md`. Resolve Python by executing each candidate so a Windows Store stub is not mistaken for a working interpreter:
 
+Run from the target workspace's absolute root. Analyzer staging and rollback snapshots use that workspace's `.tmp/` (or the current absolute project directory's `.tmp/` outside JJ); ensure `.tmp/` is ignored in `.gitignore`. Do not use OS-global temporary storage, including on failure paths. Output must share a filesystem with this staging directory for atomic promotion; otherwise stop and request a local output destination without modifying existing output.
+
 ```bash
 SKILL_DIR="<absolute path of the directory containing this SKILL.md>";
 INPUT_PATH="<absolute input path>";

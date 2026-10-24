@@ -4,6 +4,10 @@ Read this before mapping changed files to routes (workflow step 3). It carries t
 
 ## Map changed files to routes
 
+First capture the scope from the target workspace's absolute root (`workspace_root`). For a PR number, run `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh pr view "$pr_number" --json files -q '.files[].path')`. Preserve the PR's reported file scope.
+
+For `current` or an empty argument, resolve `@` as the head; for a named bookmark, resolve that exact bookmark without substituting another revision. Determine and verify the intended target base from the task and repository configuration (do not assume `main`). Capture immutable base and head commit IDs, then resolve their common ancestor with `(cd "$workspace_root" && jj log --no-graph -r 'heads(::<verified-base-id> & ::<verified-head-id>)' -T 'commit_id ++ "\n"')`. Require exactly one common ancestor; an absent or ambiguous base/head/ancestor is a preflight blocker, not permission to guess. With its captured ID, obtain paths using `(cd "$workspace_root" && jj diff --from "<verified-common-ancestor-id>" --to "<verified-head-id>" --name-only)`. This preserves branch-only scope rather than comparing unrelated base-side changes. Keep workspace-relative paths unchanged. See the [JJ command reference](https://docs.jj-vcs.dev/latest/cli-reference/) and [Git command migration table](https://docs.jj-vcs.dev/latest/git-command-table/).
+
 Map each changed file to the route(s) that render it, then build the list of URLs to test. The table below is a starting point of common patterns, not an exhaustive rule set — apply judgment for the project's actual layout:
 
 | File Pattern | Route(s) |
@@ -24,6 +28,7 @@ Map each changed file to the route(s) that render it, then build the list of URL
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
+cd "<absolute target workspace root>" || exit 1
 PORT=$(bash "$SKILL_DIR/scripts/resolve-port.sh");
 if lsof -i ":${PORT}" -sTCP:LISTEN -t >/dev/null 2>&1; then
   echo "Server running on port ${PORT}";

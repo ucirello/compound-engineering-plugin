@@ -1,54 +1,64 @@
 ---
 name: ce-worktree
-description: Set up isolated git worktrees — create a new branch for fresh work, or attach a worktree to an existing branch, PR, or commit. Use when starting isolated work or isolating an existing ref.
+description: Set up isolated colocated JJ workspaces for fresh work or an existing bookmark, PR, or revision. Use when starting isolated work or isolating an existing ref.
 ---
 
-# Worktree Isolation
+# Workspace Isolation
 
-Ensure the current work happens in an isolated workspace, without disturbing the user's main checkout. Most coding harnesses now create a worktree by default at session start, so the common case is that **isolation already exists**.
+Ensure work happens in an isolated workspace without disturbing the user's primary checkout. **Done when:** the caller is working in verified existing or newly created isolation, its absolute path, registered workspace name, revision and relevant bookmarks have been reported, or a blocker has been reported instead.
 
-**Done when:** the caller is working in an isolated tree — existing or newly created — and its path and branch have been reported, or a blocker has been reported instead.
+**Order: detect existing isolation → prefer harness-native colocated JJ creation → native JJ creation only when no harness primitive exists.** Never create workspace state the harness cannot see. Use the latest JJ, never the Git executable or a Git-only fallback. Reference: https://docs.jj-vcs.dev/latest/cli-reference/#jj-workspace and https://docs.jj-vcs.dev/latest/git-command-table/.
 
-**Order of operations: detect existing isolation -> prefer a native worktree tool -> fall back to plain git.** Never create a worktree the harness cannot see.
-
-**Two modes, set by the caller's need:**
-
-- **New work (default).** No ref named — create a fresh branch from a base (trunk). This is what `ce-work` and `ce-code-review` use when the user picks the worktree option.
-- **Isolate an existing ref.** The caller names a PR head, branch, or commit — attach the worktree to that ref instead of creating a new branch. **A branch can be checked out in only one worktree at a time.** If the named ref is already checked out anywhere (most commonly as the primary checkout's current branch), do **not** create a second worktree — report that it is already checked out at `<path>` and let the caller act (work there in place; or, only if a clean separate tree is essential, create a *detached* worktree at the same commit).
+All JJ commands must run with their working directory set to the target workspace's absolute root: `(cd "$workspace_root" && jj ...)`; `jj -R` is not a cwd substitute. Keep temporary files, receipts and failure evidence under local `.tmp/`, and ensure `.tmp/` is ignored in `.gitignore` before creation. Do not use global temporary directories.
 
 ## Step 0: Detect existing isolation
 
-Compare the **resolved absolute** git dir against the **resolved absolute** common git dir. Git mixes absolute and relative forms depending on the current directory (from a subdirectory of a normal checkout, `--git-dir` comes back absolute while `--git-common-dir` may be relative), so a raw string compare yields a false "already isolated":
+Resolve the current absolute root with `jj workspace root`, then inspect `jj workspace list`, the current working-copy revision and bookmarks, and harness session/workspace metadata from that root. Determine whether the current workspace is already the caller's isolated session workspace; do not infer isolation merely from the existence of `.git` or from a workspace name. A nested repository is not evidence of linked isolation. If ownership or isolation is ambiguous, report it rather than creating another workspace.
+
+If already isolated, **work in place** and report its verified existing name and path. Do not nest, rename or recreate it to enforce the new naming or colocation rules. Inspect `jj git colocation status` there; report an unmet colocation requirement through the safe decision path below without silently modifying existing isolation. For an existing-ref request, verify the exact target first. Preserve dirty/conflicted or unrelated work; only move a clean workspace to the verified target when authorized, using `jj new <verified-target>` rather than a reset. If already at that target (including an empty `@` directly above it), do not move unnecessarily.
+
+## Step 1: Resolve the mode and stable identity
+
+- **New work (default):** resolve the repository's actual default/trunk bookmark and remote, falling back to a verified local base when appropriate. Refresh the selected remote bookmark with `jj git fetch --remote <verified-remote> --branch <verified-bookmark>`. Fetch failure is non-fatal only if a valid local base is available; disclose stale/local use, never silently substitute an unrelated revision. Resolve and capture the exact base commit before creation.
+- **Existing bookmark, tag or revision:** resolve the supplied ref to exactly one verified commit. Preserve the source bookmark's name. JJ permits multiple workspaces based on the same revision; report an existing matching workspace and reuse it when appropriate, rather than imposing Git's one-branch-one-worktree restriction.
+- **PR:** from the source root use `GIT_DIR=$(jj git root) gh pr view <number> --json headRefName,headRefOid,headRepository,headRepositoryOwner,isCrossRepository` to verify the head repository, bookmark and exact commit. Fetch that exact source with native JJ remote/fetch operations and verify the resulting commit matches the PR head. Preserve the existing PR/source bookmark and its remote mapping for the fix/push loop, including forks; do not guess `origin`, substitute another ref, or invoke a checkout bridge. If the verified head cannot be retrieved, report a blocker.
+
+For **every newly created workspace**, including a name supplied by a caller:
+
+1. Capture the local creation date **once** as `YYYYMMDD`. Derive a meaningful kebab-case slug from the task, PR or revision: `20261008-fix-email-validation`, `20261008-pr-214`, `20261008-review-efcb657`. Normalize caller-supplied slugs; an already date-prefixed identity must not receive a second prefix. On resume reuse the recorded creation date and identity, not today's date.
+2. Use **one identity** for both the registered JJ workspace name and destination directory basename. Keep the caller's existing absolute local `.tmp/` parent layout; the default parent is `<absolute-source-root>/.tmp/workspaces/`. Do not change a required parent layout merely to choose a name.
+3. Check **both** registered workspace names and destination paths. On collision with unrelated state, append `-2`, `-3`, etc. to the dated identity, checking both again. Never overwrite, and never use timestamps, PIDs or random identifiers. If a prior attempt already created the recorded workspace, verify its ownership, path, revision and colocation and resume it; do not treat it as a fresh collision.
+4. Persist the selected date, identity, absolute source/destination, verified base/head and ownership receipt outside the destination in local `.tmp/` **before creation**. Preserve them across retries, resumes and midnight boundaries. If a race creates unrelated state, stop and reconcile before selecting and recording the next numeric suffix; do not automatically retry a failed operation.
+
+## Step 2: Create and adopt
+
+Prefer the harness's native workspace capability (for example OpenCode's worktree creation and session-move tools) **only when it supports colocated JJ creation, the exact selected name and required destination**. Request and verify these properties, including name = destination basename. Unsupported naming, colocation or placement is a compatibility blocker, not permission to bypass harness ownership or fall back to a Git-only tool. Respect harness cleanup authority.
+
+Only when no native workspace primitive exists and Step 0 found no isolation, create directly from the absolute source root:
 
 ```bash
-git rev-parse --absolute-git-dir                     # absolute git dir for this worktree
-(cd "$(git rev-parse --git-common-dir)" && pwd -P)   # absolute shared (common) git dir
+(cd "$workspace_root" && jj workspace add --colocate --name "$workspace_name" --revision "$verified_base" "$absolute_owned_destination")
+(cd "$absolute_owned_destination" && jj git colocation status)
 ```
 
-**Equal** -> normal checkout; continue to Step 1.
+Verify the workspace registration, exact absolute path, selected revision, required dated identity and colocation before proceeding. For fresh work retain/create a meaningful task bookmark when the caller needs a publishable bookmark; its name is independent of the workspace identity. Do not rename PR/source bookmarks to match the directory. Move the active harness session to the new workspace using its supported session-adoption operation before working there, and use that absolute root for subsequent commands. Report path, name, revision and bookmarks. A shell `cd` alone does not move a harness session.
 
-**Different** -> a linked worktree *or* a submodule. Distinguish with `git rev-parse --show-superproject-working-tree`:
+## Failure decision path
 
-- **Non-empty** -> submodule; treat it as a normal checkout and continue to Step 1.
-- **Empty** -> **already isolated**. Report the worktree path (`git rev-parse --show-toplevel`) and current branch, then **work in place** — a worktree-from-worktree lands in the wrong tree and is invisible to the harness that made the current one. In isolate-an-existing-ref mode, check that ref out here (unless it is already current) rather than nesting a worktree.
+On creation, verification, permission, sandbox, unsupported naming or session-adoption failure, the requested isolation is not established. Preserve any partial state and receipt and report the specific blocker. Do **not** proceed in the current checkout, retry alternate paths automatically, bypass permissions, or claim success. Ask whether to work in the current checkout or stop to resolve the issue, using the host's listed blocking question capability. If listed but unloaded, use native tool discovery to load it; do not search for another harness's tool name. If no matching tool exists or an actual question call errors, present numbered options in chat and wait. Never skip confirmation.
 
-## Step 1: Prefer the harness's native worktree tool
+## Retiring an owned workspace
 
-If the harness provides a native worktree primitive — for example an `EnterWorktree` / `WorktreeCreate` tool, a `/worktree` command, or a `--worktree` flag — use it and stop. Native tools place, track, and clean up the worktree so the harness can manage it. A behind-the-back `git worktree add` creates phantom state the harness cannot see, navigate to, or clean up.
+Completion alone does not authorize cleanup. Respect the caller's cleanup authorization and the harness's lifecycle contract; never manually remove harness-owned state behind its back.
 
-## Step 2: Git fallback
+1. Stop workers and other users of the target. Verify the exact registered name, absolute path and run ownership against the receipt; do not remove unrelated, ambiguous or still-referenced state.
+2. Inspect tracked changes, conflicts and ignored/untracked content from the target's absolute root. A removal snapshot protects working-copy state, **not ignored files or files left untracked**. Preserve non-disposable content. Prove integration into the intended surviving revision/bookmark when the workflow requires it. Preserve best/archive/recovery bookmarks and needed recovery references; bookmark deletion is a separate decision.
+3. Copy required evidence and recovery information outside the target into surviving local `.tmp/` storage and read it back. Leave the target directory and move any active harness session to a verified surviving workspace before removal. If any safeguard cannot be satisfied, retain the workspace and report the blocker.
+4. For authorized retirement **and deletion of files**, use JJ's lifecycle from that surviving absolute root:
 
-Only when there is no native tool **and** Step 0 found no existing isolation.
+   ```bash
+   (cd "$surviving_workspace_root" && jj workspace remove "$verified_workspace_name")
+   ```
 
-1. **Run from the repo root:** `cd "$(git rev-parse --show-toplevel)"`. The paths below are repo-root-relative, but the skill runs from the user's current directory — without this, `.worktrees/<branch>` and the `.gitignore` edit land in a subdirectory (e.g. `src/.worktrees/...`).
-2. Choose a meaningful branch name from the work description (e.g. `feat/login`, `fix/email-validation`) — never an opaque auto-generated one. Base: origin's default branch, else `main`.
-3. **Ensure `.worktrees/` is gitignored before creating anything:** `git check-ignore -q .worktrees/` — **with the trailing slash**, so an existing directory-only `.worktrees/` rule is honored even before the directory exists (without the slash the probe misses it and dirties a correctly-configured repo). Not ignored -> add a `.worktrees/` line to `.gitignore`.
-4. Refresh the base with `git fetch origin <from-branch>`. This is **non-fatal** — no `origin` remote, a differently-named remote, or a local-only branch is not an abort; continue with the local ref.
-5. Create the worktree, per mode:
-   - **New work:** `git worktree add -b <branch-name> .worktrees/<branch-name> origin/<from-branch>` (use the local `<from-branch>` ref if `origin/<from-branch>` does not exist).
-   - **Existing branch or tag:** `git worktree add .worktrees/<slug> <target-ref>`.
-   - **PR:** check it out on a **local branch** — `git fetch origin pull/<n>/head:pr-<n>` then `git worktree add .worktrees/pr-<n> pr-<n>`. Never a detached `FETCH_HEAD`: that orphans the fix loop's commits instead of updating the PR. (For push-tracking back to the PR, create it detached — `git worktree add --detach .worktrees/pr-<n>` — then `cd` in and run `gh pr checkout <n>`, which is fork-safe.)
-   - If git reports the ref is already checked out elsewhere, apply the one-branch-one-worktree rule above — do not force a second worktree.
-6. `cd` into it, then report the path and branch.
-
-If `git worktree add` fails with a sandbox or permission error, the requested isolation does not exist. Do **not** proceed in the current checkout — the user chose isolation specifically to avoid it. Report the failure and ask, offering options such as "work in the current checkout" vs "stop and resolve the permission issue", using the host's blocking question tool already in the current tool list (match by capability, not by a host-specific name). Presence in the current tool list is proof the tool exists; never call a user-facing question tool to discover whether it exists. If a matching tool is listed but unloaded, use the host's tool-discovery primitive to load that capability — do not search for another host's tool name. Only when no such tool is in the list or a real question call errors, present the numbered options in chat and wait for the reply. Never skip the confirmation, and do not retry alternative paths automatically.
+   JJ owns colocated metadata cleanup; never run a separate Git cleanup command. Use `jj workspace forget <verified-workspace-name>` **only** when the intended operation is unregistering while preserving files, never as a prelude to directory deletion.
+5. Verify **both** deregistration with `jj workspace list` from the surviving root **and** disappearance of the exact directory. A zero exit status is insufficient: file-deletion failures can be warnings. On failure or incomplete cleanup retain remaining state and recovery references, report the blocker, and never force-delete or fall back to Git removal.

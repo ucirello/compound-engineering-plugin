@@ -1,7 +1,7 @@
 ---
 name: ce-simplify-code
 description: "Simplify code for clarity, reuse, quality, and efficiency while preserving behavior, and prune tests and comments that carry no value. Use after implementation and before review, or to audit tests or comments in any part of a repo; use ce-debug for bugs."
-argument-hint: "[blank for current branch changes, or describe what to simplify or audit] [mode:pipeline] [proof-test:<path>]"
+argument-hint: "[blank for current JJ changes, or describe what to simplify or audit] [mode:pipeline] [proof-test:<path>]"
 ---
 
 Simplify code for clarity, reuse, quality, and efficiency, and prune tests and comments that carry no value, while preserving exact behavior. Prioritize readable, explicit code over compact code — fewer lines is not the goal.
@@ -18,10 +18,10 @@ Strip a `mode:pipeline` token and every `proof-test:<path>` token from the input
 Resolve the scope in this order:
 
 1. **User-named scope** is authoritative; do not widen it. In standalone mode it may be the whole repo, an area, or a path.
-2. **Otherwise, in git**, use the current branch versus its base. Without a usable base, use staged and unstaged changes (`git diff HEAD`).
-3. **Outside git or without a diff**, use files the user named or that were edited earlier in the conversation.
+2. **Otherwise, in JJ**, resolve and capture the work's actual base and head revisions from the caller or repository bookmarks and history; review that exact range with `(cd "$workspace_root" && jj diff --from "$verified_base" --to "$verified_head")`. Include the working-copy change when it belongs to the work. Without a usable base, use the current working-copy change, `(cd "$workspace_root" && jj diff)`, and disclose the narrower coverage rather than claiming the full range was reviewed.
+3. **Outside JJ or without a diff**, use files the user named or that were edited earlier in the conversation.
 
-In pipeline mode the scope is what the caller passed, else the branch diff. Within it, prune only tests and comments the current work added or changed.
+In pipeline mode the scope is what the caller passed, else the verified JJ range. Within it, prune only tests and comments the current work added or changed. Run every JJ command from the target workspace's absolute root (`workspace_root`), including reviewers' history checks; never invoke Git directly. Use local `.tmp/` for any temporary review artifacts. See the [JJ command reference](https://docs.jj-vcs.dev/latest/cli-reference/).
 
 If none of the above produces a non-empty scope, pipeline mode reports "nothing to simplify" and returns. Standalone mode asks the user what to simplify, as `references/standalone-report.md` describes.
 
@@ -31,7 +31,7 @@ When the platform's task-tracking capability is available, show the review, appl
 
 ## Step 2: Launch review agents in parallel
 
-Dispatch generic subagents via the platform's subagent primitive (`Agent`/`Task` in Claude Code, `spawn_agent` in Codex) where available; otherwise run the reviews inline or serially. For each reviewer, read its prompt asset from this skill's directory and pass the **full file content** as the subagent's prompt, together with the resolved scope (the full diff or file set), the mode, any proof test, the user's constraints, and the project standards governing the scope (or their file paths):
+This skill explicitly requests parallel reviewer delegation. Dispatch generic subagents via OpenCode's native subagent capability where permitted and available; otherwise run the reviews inline or serially as allowed by `references/reviewer-dispatch.md`. For each reviewer, read its prompt asset from this skill's directory and pass the **full file content** as the subagent's prompt, together with the resolved scope (the full diff or file set), the mode, any proof test, the user's constraints, and the project standards governing the scope (or their file paths):
 
 - `references/personas/code-reuse-reviewer.md`
 - `references/personas/code-quality-reviewer.md`
@@ -45,9 +45,9 @@ Do not paraphrase these rubrics from memory. Read each file and pass it verbatim
 
 Read `references/reviewer-dispatch.md` before dispatching; it covers a full harness, releasing review agents, and the permission mode.
 
-**Model selection.** Use the platform's balanced mid-tier model for these reviewers when the current harness exposes a known override. In Claude Code this is the Sonnet class. In Codex, apply this tier only when the active dispatch primitive exposes an explicit model or custom-agent selector; task wording alone does not select a different model. Otherwise omit the override and inherit the parent model -- a working pass on the parent model beats a broken dispatch.
+**Model selection.** The default intent is a balanced mid-tier reviewer model (the Sonnet class in Claude Code). Resolve available models with `opencode.models` and use OpenCode-native selection only when the host permits a model override and the dispatch primitive supports it; task wording alone does not select a model. In Codex compatibility contexts, this likewise requires an explicit model or custom-agent selector. If the host requires an explicit user model request, configuration or this skill's tier preference alone does not authorize passing the optional `model` argument. Omit the override and use suitable inherited-model reviewers when permitted; disclose any unmet model requirement.
 
-If the user's or project's active instructions or the live prompt name a model for this subagent, use that model instead of the default tier above. They can name it by the subagent's tier, by its prompt-asset name, or for the subagents being dispatched. Without such an instruction, a model configured for this subagent's role takes precedence over the default tier.
+Subject to that model-selection permission, if the user's or project's active instructions or the live prompt name a model for this subagent, use that model instead of the default tier above. They can name it by the subagent's tier, by its prompt-asset name, or for the subagents being dispatched. Without such an instruction, a model configured for this subagent's role takes precedence over the default tier. Configuration remains the source of desired routing, not authority to bypass host policy. Same-model reviewers are separate reviewers, not cross-model independence; report any required different-model or fixed-route pass that cannot run as incomplete.
 
 ## Step 3: Fix issues
 

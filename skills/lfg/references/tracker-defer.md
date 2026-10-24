@@ -49,6 +49,10 @@ Detection is reasoning-based. Do not maintain an enumerated checklist of files t
 
 ---
 
+## Repository context
+
+Run every repository-scoped `gh` invocation from the target workspace's absolute root with `GIT_DIR` supplied by JJ: `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh <arguments>)`. This applies to probes, issue creation and updates, and fallback/error paths below. Do not invoke Git directly. Temporary request bodies belong under the workspace's local `.tmp/`.
+
 ## Probe timing and caching
 
 Availability probes run **at most once per session** and **only when Defer execution is imminent**. Never speculatively at review start, never per-Defer, never per-walk-through-finding. The cached tuple is reused for every Defer action in the same run.

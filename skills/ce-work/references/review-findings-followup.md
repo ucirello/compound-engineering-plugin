@@ -55,6 +55,8 @@ The lead agent decides which findings to act on, groups the work, reviews the di
 
 ### Where each fix runs
 
+This workflow explicitly requests OpenCode-native subagent batches under a user-or-skill delegation rule. Follow `execution-strategy.md` for separate delegation/model-override permissions, inherited-model suitability, nesting capacity, truthful incomplete coverage, and bounded recovery. Unconditional prohibitions and actual denials remain binding; never bypass them or a depth limit through shell/another harness.
+
 Dispatch file-grouped subagent batches when fixes need code you have not read, or when fixes on disjoint files form a real parallel wave. Apply every other fix in this context: one whose code is already in your context from this session's work, or a small region you can read without materially growing this context. The lead agent stays active through tests, commits, and the handoff, so loading many cited files here is the cost delegation avoids.
 
 **Batching (primary rule: group by file):**
@@ -71,7 +73,7 @@ Dispatch file-grouped subagent batches when fixes need code you have not read, o
 - Do not re-run `ce-code-review`
 - Shared-directory fallback: do not stage or commit; return which `#` were applied or skipped and which files changed
 
-**After inline fixes and after each wave:** orchestrator reviews diffs (scope = assigned `#` only), runs tests (`requires_verification: true` on any applied finding → at least targeted tests; multi-file → broader suite), commits (`fix(review): apply findings #…`) unless worktree-isolated subagents merge per Phase 1. Repeat until all batches complete.
+**After inline fixes and after each wave:** orchestrator reviews diffs (scope = assigned `#` only), runs tests (`requires_verification: true` on any applied finding → at least targeted tests; multi-file → broader suite), and creates the canonical JJ change covering the applied finding numbers. Before composing its message, read and apply the full Go excerpts, full-guide read, and runtime multi-commit subject/body comparison in `implementation-loop.md`; repository syntax wins, with no fixed review-message prefix. Isolated subagent results integrate under Phase 1's safeguards. Repeat until all batches complete.
 
 ### Summary (required)
 

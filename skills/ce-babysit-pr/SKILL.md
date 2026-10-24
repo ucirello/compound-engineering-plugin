@@ -16,7 +16,7 @@ Keep an open PR moving toward merge by reacting to three streams as each arrives
 
 - `target` — only the named PR; stop at looks-ready; never merges; offer stack-wide once if a confirmed managed stack needs work.
 - `stack-ready` — once a layer has zero actionable backlog (CI may still run), advance to the next open non-draft upstack layer needing work; lower layers stay probed and the lowest that re-opens pulls the walk back; never merges.
-- `stack-land` — as `stack-ready`, and selecting it **is** land authorization: once the bottom-most open layer is settled, `gh stack merge` it + `gh stack sync`.
+- `stack-land` — as `stack-ready`, and selecting it **is** land authorization: once the bottom-most open layer is settled, land and synchronize it through the guarded native JJ + direct gh lifecycle in `references/stack-commands.md`.
 
 One PR named → `target` (ask once if a confirmed multi-layer stack exists); asked to carry the whole stack → `stack-ready`; asked to land it → `stack-land`. `mode:pipeline` never asks. Restate posture per transition.
 
@@ -32,13 +32,17 @@ One PR named → `target` (ask once if a confirmed multi-layer stack exists); as
 
 ## Step 1: Resolve and arm
 
+Run all commands from the target workspace's absolute root (`workspace_root`). Before repository-scoped `gh` calls, export `GIT_DIR=$(jj git root)` there; repeat this preamble in separate shell calls. Use latest native JJ, never the Git executable. See https://docs.jj-vcs.dev/latest/cli-reference/ and https://docs.jj-vcs.dev/latest/git-experts/.
+
 1. `gh repo view` must succeed, else say GitHub-only, stop.
-2. Resolve the PR from the argument or current branch (`references/setup.md`); none → report, stop.
+2. Resolve the PR from the argument or verified JJ bookmarks (`references/setup.md`). `@` may be an empty change above the PR head: also inspect `@-`, its bookmarks, exact remote branch and associated PR before concluding there is no work. An eligible parent PR continues babysitting; an empty `@` alone never stops it.
 3. Chain classification comes from the snapshot, never the user; resolve posture before semantic work.
-4. **Checkout must be the PR's head branch with matching upstream** before any delegated mutation; default `gh pr checkout <ref>`; no push access or dirty checkout → stop, say so.
+4. **Verify the exact PR head repository, bookmark, remote and commit** before delegated mutation. Align a clean workspace using native JJ per `references/setup.md`, without another approval; an empty `@` directly above the verified pushed head is already aligned. Dirty/conflicted state, denied permissions or uncertain push authority → stop safely, preserve all work and report.
 5. **Sustain mode** (`references/watch-loop.md`): Keep monitoring in the current session until a stop condition is met. Use checkpoint mode only when the user requests it or the harness cannot keep the session active while waiting for the watcher's output. The default self-sustaining in-session watch uses `pr-snapshot watch` and runs one tick per `BABYSIT_WAKE`; never collapse the loop into a script. In checkpoint mode, run one tick and report paused monitoring with the resume invocation from `references/setup.md`. **Pipeline** (`mode:pipeline`): bounded synchronous ticks, structured return (`references/pipeline.md`).
 
 ## Step 2: One tick (ordering invariant)
+
+For any locally composed repair change description, load `references/change-descriptions.md` before composing; delegates retain their own equivalent runtime history/Go-guide requirements. For local `DIRTY` repair use native JJ: fetch the exact verified base bookmark and verify its OID. Preview without changing the live workspace or integrated operation state using `jj --no-integrate-operation new <verified-head> <verified-base>`; retain its printed operation ID and inspect that operation's merge with `jj --at-operation <preview-op> resolve --list` and file/conflict data. Fingerprint conflicted paths and conflict-term blob identities (excluding base OID), then create the claimed authorized merge with `jj new <verified-head> <verified-base>`. Resolve only approved mechanical terms; never rewrite either parent. Preserve a recovery bookmark, validate and describe the owned merge, then move only the exact head bookmark and `jj git push --remote <verified-remote> --bookmark <head-ref>`. Stop on stale remote/lease rejection, never force. Reconcile interrupted work by its recorded change identity; safe abort restores only run-owned changes with unrelated work preserved. These native operations implement the preview/apply/confirm contracts in the currency references; no Git executable or Git staging is involved.
 
 Snapshot first, then in this order:
 

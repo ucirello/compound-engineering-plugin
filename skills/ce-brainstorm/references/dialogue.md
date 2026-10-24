@@ -2,7 +2,7 @@
 
 #### 1.1 Existing Context Scan
 
-**Pack discovery (every tier).** Compound Packs declared in CE config constrain the Product Contract on every repo-backed software path that reaches synthesis — Lightweight, Standard, Deep, and the Phase 0.2 route that skips the scan below for already-clear requirements — so resolve them before the tier split, by running this skill's resolver:
+**Pack discovery (every tier).** Compound Packs declared in RocketClaw config constrain the Product Contract on every repo-backed software path that reaches synthesis — Lightweight, Standard, Deep, and the Phase 0.2 route that skips the scan below for already-clear requirements — so resolve them before the tier split, by running this skill's resolver:
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
@@ -23,8 +23,8 @@ Scan the repo before substantive brainstorming. Match depth to scope:
 *Topic Scan (grounding scout)* — Create and retain the absolute scratch directory with this shell block, substituting the absolute path of this skill's directory and a short unique run slug:
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+SCRATCH_ROOT="$(jj workspace root 2>/dev/null || pwd)/.tmp/rocketclaw";
+[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || { echo "local scratch unavailable" >&2; exit 1; };
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;

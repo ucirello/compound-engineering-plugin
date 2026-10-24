@@ -32,18 +32,31 @@ Fan out by **unit** instead: one agent edits one skill directory and applies the
 
 State the forbidden set in the prompt as paths, not as a rule to infer. An agent told "do not touch shared files" will decide for itself what is shared.
 
-## Isolation: separate worktrees or disjoint paths in one tree
+## Isolation: separate JJ workspaces or disjoint paths in one tree
 
 Disjoint paths in one tree are enough when nothing an agent runs mutates state outside its own paths. That covers most cut passes: edits are text, the manifest is a partition, and a single tree keeps the diff readable and the commit trivial.
 
-Pay for a worktree (or equivalent per-agent checkout) when any of these is true:
+Pay for an isolated JJ workspace when any of these is true:
 
 - Agents run builds, formatters, generators, or anything that writes outside its unit, such as lockfiles, caches, generated output, or a repo-root config.
-- An agent needs to run the suite or the harness to check its own edit. Concurrent runs in one tree race on scratch and on git index state.
-- Agents commit, stage, or use branch operations. One git index shared by parallel agents corrupts staging.
+- An agent needs to run the suite or the harness to check its own edit. Concurrent runs in one tree race on scratch and working-copy state.
+- Agents describe, commit, or use bookmark operations. Shared working-copy mutations race between parallel agents.
 - A pass may need to be abandoned wholesale, and a clean discard is worth more than a shared diff.
 
 Otherwise the isolation cost is real: N checkouts to create, N results to merge, and merge conflicts reintroduced on exactly the files the manifest was designed to keep apart.
+
+Detect existing isolation first. Reuse a verified existing workspace under its existing name without renaming, recreating, or modifying it to impose colocation. Respect harness ownership and lifecycle: use its supported colocated JJ capability where available, request and verify the required name for new `ce-worktree` workspaces, and adopt the resulting absolute root through the harness's session-move capability. Unsupported naming or colocation is a compatibility blocker, not permission for a Git fallback or ownership bypass.
+
+For new isolation, invoke `ce-worktree` or use its native JJ procedure (https://docs.jj-vcs.dev/latest/cli-reference/#jj-workspace). Capture the local creation date once. Derive a meaningful kebab-case slug from the task, PR, or revision; normalize caller-supplied names without double-prefixing. Use `YYYYMMDD-<slug>` as both JJ workspace name and destination basename under the source workspace's local `.tmp/` parent. Examples: `20261008-retune-build-a`, `20261008-pr-214`, `20261008-review-efcb657`. Check registered names and destination paths; on collision append `-2`, `-3`, etc., never overwrite or substitute a PID, timestamp, or random name. Persist the chosen identity and absolute destination before creation and retain them across retries, resumes, and midnight; do not change existing PR/source bookmarks. Resolve and verify the base revision explicitly, then create from the source absolute root:
+
+```sh
+(cd "$workspace_root" && jj workspace add --colocate --name "$selected_name" --revision "$verified_base" "$absolute_owned_destination")
+(cd "$absolute_owned_destination" && jj git colocation status)
+```
+
+Verify the resulting registration, absolute root, expected base, and colocation before execution; do not assume creation defaults. For A/A arms use the same verified commit and different stable identities, and hash the corpus contents rather than workspace metadata.
+
+Retirement requires existing cleanup authorization; completion alone does not authorize deletion. Stop workers, leave the target, and move every active harness session to a surviving workspace before removal. Verify the exact registered name, absolute path, and run ownership; prove integration where required. Preserve best/archive/recovery bookmarks and copy required measurement evidence outside the target, reading it back before removal. Inspect tracked changes, conflicts, and ignored/untracked content: removal snapshots the working copy but does not protect ignored or left-untracked files. Never remove unrelated, ambiguous, still-referenced, or non-disposable content, and respect harness-owned lifecycle authority. From the surviving workspace's absolute root use `(cd "$surviving_workspace_root" && jj workspace remove "$verified_workspace_name")`. Verify both deregistration and directory disappearance, since deletion failures may only warn. On failure retain remaining state and report the blocker, never force-delete or use Git removal. Keep bookmark deletion separate. Use `jj workspace forget` only to unregister while deliberately preserving files.
 
 ## The shared-asset trap
 
@@ -125,5 +138,34 @@ A failure that moves to a later phase is progress and names the next target. A f
 ## Ship (Phase 6)
 
 Commit each pass separately with its own message so the history says which change was made and why, and so release tooling can classify intent. Keep the measurement artifacts.
+
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards.
+
+Before composing each pass message, read the full Go guide and resolve the relevant history head from the actual task and repository. From the target workspace's absolute root, examine several recent subjects AND bodies: `(cd "$workspace_root" && jj log --no-graph -r '::<verified-history-head>' -n 10 -T 'description ++ "\n"')`. Compare prefixes/package names, casing, verb tense, subject/body separation, wrapping, and issue placement. Repository-local instructions and observed syntax always win; apply compatible Go guidance to clarity and structure, not as a replacement syntax. With no history use explicit project/user instructions and Go guidance without inventing precedent. Describe the pass's problem, changes, rationale, and relevant issue/PR without prescribing a fixed prefix or template. Use `jj describe -m "<message composed from the standards above>"` for the owned pass change; retain separate changes per pass.
+
+The following verbatim Go source guidance is illustrative, not a mandatory repository template:
+
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+
+```text
+net/http: handle foo when bar
+
+[longer description here in the body]
+
+Fixes #12345
+```
+
+> Notably, for the subject (the first line of description):
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+
+> For the body (the rest of the description):
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
 
 Then write the finding down where the next person will hit it: the mechanism, the before and after, the measured numbers, and the hypotheses that died. **Record the ones that died.** They are what stops the next attempt from re-running a dead end, and they are the part every write-up omits.

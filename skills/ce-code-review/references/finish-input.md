@@ -8,7 +8,7 @@ A review round finishes outside the context that dispatched it. The **dispatch c
 
 The split exists because a six-lens round routinely uses up the dispatch context before Stage 5b, which is when subagent launches start failing (#1679, #1690). It is always on for the multi-agent path; the quick-review short-circuit never reaches it. No leaf launches a subagent: nested dispatch is unavailable on Gemini CLI, blocked one level down on Cursor, and configurable off on Claude Code and Codex, so the validator stays a parent launch on every host.
 
-**Outcome:** the report leaf produces the same report the dispatch context would have, from the run directory alone, and the dispatch context emits that report verbatim. **Done:** `report.md` (default mode) or `review.json` (`mode:agent`) and `metadata.json` are on disk, every persisted peer job directory is deleted, and the dispatch context has returned the report leaf's output unchanged.
+**Outcome:** the report leaf produces the same report the dispatch context would have, from the run directory alone, and the dispatch context emits that report verbatim. **Done:** `report.md` (default mode) or `review.json` (`mode:agent`) and `metadata.json` are on disk, every native reviewer is terminal and released, and run-owned transient peer material is cleaned up, and the dispatch context has returned the report leaf's output unchanged.
 
 ## The contract: `<run-dir>/finish-input.json`
 
@@ -25,10 +25,10 @@ The dispatch context writes this file after every local reviewer is collected, a
   "scope": {
     "mode": "local-aligned | standalone | pr-remote | branch-remote",
     "base": "<BASE: marker>",
-    "diff_a": "<DIFF_A>", "diff_b": "<DIFF_B or null>",
+    "diff_a": "<DIFF_A>", "diff_b": "<captured DIFF_B full ID, or null only when unavailable>",
     "pr": { "number": null, "url": null, "title": null, "body": null, "base_ref_name": null, "head_ref_oid": null, "head_ref": null, "base_ref": null, "has_prior_comments": false },
-    "branch": "<git branch --show-current at dispatch>",
-    "head_sha": "<git rev-parse HEAD at dispatch>",
+    "branch": "<jj log --no-graph -r @ -T bookmarks at dispatch>",
+    "head_sha": "<captured reviewed head full commit ID>",
     "files": "<run-dir>/files.txt",
     "diff": "<run-dir>/full.diff",
     "tree_is_reviewed_head": true,
@@ -69,7 +69,7 @@ Each leaf reads, from `skill_dir`, `references/finish-review.md` and every refer
 
 ## How the dispatch context launches a leaf
 
-Put the full contents of `finish-input.json` inline in the leaf's prompt, together with the absolute paths of the run directory, this reference, and `references/finish-review.md`, and tell it which stages it owns, to read those two references first, and to record its own stage in the stage log with `scripts/run-log.py` under `skill_dir` (the recipe is in `references/scope.md`, Stage log). Inline the file rather than only naming it: the facts it carries are small, and a subagent that has them in its prompt cannot skip the read. Everything larger (the diff, the per-reviewer artifacts, the compact returns) stays on disk and is read by path. By default both leaves inherit the session model, with no override. If the user's or project's active instructions or the live prompt name a model for this subagent, use that model instead of the default tier above. They can name it by the subagent's tier, by its prompt-asset name, or for the subagents being dispatched. Without such an instruction, a model configured for this subagent's role takes precedence over the default tier. Tell each leaf plainly that it launches no subagents.
+Put the full contents of `finish-input.json` inline in the leaf's prompt, together with the absolute paths of the run directory, this reference, and `references/finish-review.md`, and tell it which stages it owns, to read those two references first, and to record its own stage in the stage log with `scripts/run-log.py` under `skill_dir` (the recipe is in `references/scope.md`, Stage log). Inline the file rather than only naming it: the facts it carries are small, and a subagent that has them in its prompt cannot skip the read. Everything larger (the diff, the per-reviewer artifacts, the compact returns) stays on disk and is read by path. By default both leaves inherit the session model, with no override. If a live user request, project instruction or configuration names a model, preserve it as intent subject to the host model-selection permission rules in dispatch-reviewers.md; omit the optional model argument when that policy requires inheritance. They can name it by the subagent's tier, by its prompt-asset name, or for the subagents being dispatched. Without such an instruction, a model configured for this subagent's role takes precedence over the default tier. Tell each leaf plainly that it launches no subagents.
 
 Apply the agent lifecycle rule in `references/dispatch-reviewers.md` (Agent lifecycle) to each leaf and to the validator.
 
@@ -79,7 +79,7 @@ Where `finish-review.md` routes prose through another skill (`ce-noslop`) and a 
 
 Read `finish-input.json`, then `references/finish-review.md` from `skill_dir`, record `--start merge` in the stage log, and run Stage 5 and Stage 5b steps 1 through 3; record `--end merge --candidates <primary findings>` before returning. Wherever the reference refers to an earlier stage's result, the intent summary, the roster, the plan, the scope, or conversation context, that value is the matching field of the file, and `<root>` is `docs_root`.
 
-Every decision about the cross-model peer is already made. The dispatch context performed the single-reap finish and the fold-in classification `references/cross-model-review.md` defines, with its recovery branches in `references/cross-model-recovery.md` (including any replacement recipient, same-route recovery, or in-process `adversarial-reviewer` dispatch, all of which need a launch or a disclosure only it can make), deleted the job directory, and recorded the result in `peer.outcome`, `peer.artifact`, and `peer.coverage`. When `peer.artifact` is set, fold that file into Stage 5 as reviewer `adversarial-<provider>` under the reference's promotion rule; an in-process fallback's return is already in `raw-returns.json`. Copy `peer.coverage` into Coverage verbatim. This leaf never reads job state, waits on a peer, or starts a route.
+Every decision about the cross-model peer is already made. The dispatch context performed the bounded native collection and the fold-in classification `references/cross-model-review.md` defines, with its recovery branches in `references/cross-model-recovery.md` (including any replacement recipient, same-route recovery, or in-process `adversarial-reviewer` dispatch, all of which need a launch or a disclosure only it can make), retained the required receipt and removed only run-owned transient peer material, and recorded the result in `peer.outcome`, `peer.artifact`, and `peer.coverage`. When `peer.artifact` is set, fold that file into Stage 5 as reviewer `adversarial-<provider>` under the reference's promotion rule; an in-process fallback's return is already in `raw-returns.json`. Copy `peer.coverage` into Coverage verbatim. This leaf never reads job state, waits on a peer, or starts a route.
 
 Write, in the run directory: `synthesized-findings.json` (the final primary, pre-existing, and soft-bucket sets after Stage 5 steps 1 through 7, the triage groups, the hydrated detail, the fold-in outcome and every Coverage sentence Stage 5 produced) and `validator-input.json` (the Stage 5b step 3 batch: the selected findings in order, the skip count and its evidence basis, and the scope context the validator template needs). Return only a receipt: the two paths and the counts of primary and selected findings. Return nothing else; the dispatch context does not read findings.
 

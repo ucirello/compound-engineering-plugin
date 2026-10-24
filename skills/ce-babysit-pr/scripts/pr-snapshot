@@ -298,18 +298,13 @@ def _run(cmd):
     env["NO_COLOR"] = "1"
     env.pop("CLICOLOR_FORCE", None)
     env.pop("GH_FORCE_TTY", None)
-    return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", env=env)
-
-
-def _run_git(cmd):
-    env = os.environ.copy()
-    env["GIT_TERMINAL_PROMPT"] = "0"
-    env["GCM_INTERACTIVE"] = "never"
-    env["GIT_ASKPASS"] = ""
-    env["SSH_ASKPASS"] = ""
-    return subprocess.run(
-        cmd, capture_output=True, text=True, encoding="utf-8", env=env, timeout=30,
-    )
+    root = subprocess.run(["jj", "workspace", "root"], cwd=os.getcwd(), capture_output=True, text=True,
+                          encoding="utf-8", check=True).stdout.strip()
+    backend = subprocess.run(["jj", "git", "root"], cwd=root, capture_output=True,
+                             text=True, encoding="utf-8", check=True).stdout.strip()
+    env["GIT_DIR"] = backend
+    return subprocess.run(cmd, cwd=root, capture_output=True, text=True,
+                          encoding="utf-8", env=env)
 
 
 def _run_checked(cmd, label):
@@ -481,8 +476,8 @@ def fetch_base_ref(owner, name, ref, merge_identity, host=None):
     `baseRefOid` is retained only as historical PR metadata. Current identity comes from both the
     PR's `baseRef.target.oid` and an exact Git-ref read; a usable generated test merge must then
     name that base and the observed PR head as its two parents. Some valid private-repository OAuth
-    sessions return 404 from the REST Git-ref endpoint, so that response falls back to the Git
-    transport while preserving exact-ref matching and non-interactive failure behavior.
+    sessions return 404 from the REST Git-ref endpoint, so that response falls back to an
+    independent exact branch API read, preserving exact-ref matching and failure behavior.
     """
     historical_oid = (merge_identity or {}).get("baseRefOid")
     head_oid = (merge_identity or {}).get("headRefOid")
@@ -519,30 +514,18 @@ def fetch_base_ref(owner, name, ref, merge_identity, host=None):
     ])
     current_oid = (r.stdout or "").strip()
     if r.returncode != 0 and re.search(r"\bHTTP\s+404\b", r.stderr or "", re.IGNORECASE):
-        exact_ref = f"refs/heads/{ref}"
-        remote_url = (f"https://{host or 'github.com'}/"
-                      f"{quote(owner, safe='')}/{quote(name, safe='')}.git")
-        try:
-            # Reuse the gh session (GH_TOKEN or keyring) as git's credential source so a
-            # headless host with no configured Git credential helper is not anonymous here.
-            git_result = _run_git([
-                "git", "-c", "core.askPass=",
-                "-c", "credential.helper=",
-                "-c", "credential.helper=!gh auth git-credential",
-                "ls-remote", "--exit-code", "--refs",
-                remote_url, exact_ref,
-            ])
-        except (subprocess.TimeoutExpired, OSError):
-            git_result = None
-        if git_result is not None and git_result.returncode == 0:
-            matches = []
-            for line in (git_result.stdout or "").splitlines():
-                fields = line.split()
-                if len(fields) == 2 and fields[1] == exact_ref and _valid_oid(fields[0]):
-                    matches.append(fields[0])
-            if len(matches) == 1:
-                current_oid = matches[0]
-                r = git_result
+        branch_result = _run([
+            "gh", "api", *_host_args(host),
+            f"repos/{owner}/{name}/branches/{quote(ref, safe='')}",
+        ])
+        if branch_result.returncode == 0:
+            try:
+                branch = json.loads(branch_result.stdout)
+                oid = branch["commit"]["sha"]
+                if branch["name"] == ref and _valid_oid(oid):
+                    current_oid, r = oid, branch_result
+            except (ValueError, KeyError, TypeError):
+                pass
     if r.returncode != 0 or not _valid_oid(current_oid):
         return base
     base["oid"] = current_oid
@@ -805,25 +788,85 @@ def _manual_relationships(pr, repo, base_ref_name, head_ref_name, owner, name,
     return status, parents, dependents
 
 
+def _native_stack_handoff(pr, url):
+    """Explicit authorized native-stack handoff; never auto-adopt a manual chain."""
+    path = os.environ.get("BABYSIT_NATIVE_STACK_FILE")
+    if not path:
+        return None
+    try:
+        root = subprocess.run(["jj", "workspace", "root"], cwd=os.getcwd(),
+                              capture_output=True, text=True, check=True).stdout.strip()
+        local_tmp = os.path.realpath(os.path.join(root, ".tmp"))
+        resolved = os.path.realpath(path)
+        if (os.path.islink(os.path.join(root, ".tmp"))
+                or os.path.commonpath([local_tmp, resolved]) != local_tmp):
+            raise ValueError("native stack handoff must be workspace-local")
+        with open(resolved, encoding="utf-8") as f:
+            handoff = json.load(f)
+        if handoff.get("authorized_native_stack") is not True:
+            raise ValueError("native stack scope not authorized")
+        entries, seen = [], set()
+        target_identity = _pr_url_identity(url)
+        for layer in handoff["layers"]:
+            identity = _pr_url_identity(layer["url"])
+            if not identity or identity[:3] != target_identity[:3] or identity in seen:
+                raise ValueError("ambiguous native stack identity")
+            seen.add(identity)
+            result = _run(["gh", "pr", "view", layer["url"], "--json",
+                           "number,url,state,isDraft,baseRefName,headRefName,headRefOid,headRepository,headRepositoryOwner"])
+            if result.returncode:
+                raise ValueError("native stack PR probe failed")
+            item = json.loads(result.stdout)
+            head_repo = item.get("headRepository") or {}
+            head_owner = (item.get("headRepositoryOwner") or {}).get("login")
+            actual_repo = f"{head_owner}/{head_repo.get('name')}"
+            if (_pr_url_identity(item.get("url")) != identity or item.get("state") != "OPEN"
+                    or actual_repo.lower() != layer["head_repository"].lower()
+                    or item.get("headRefName") != layer["head_ref"]
+                    or not _valid_oid(item.get("headRefOid"))):
+                raise ValueError("native stack head identity changed")
+            stale = False
+            if entries:
+                parent = entries[-1]
+                if item["baseRefName"] != parent["headRefName"]:
+                    raise ValueError("native stack parent relationship changed")
+                ancestry = subprocess.run(
+                    ["jj", "log", "--no-graph", "-r",
+                     f"{parent['headRefOid']}::{item['headRefOid']}", "-T", 'commit_id ++ "\\n"'],
+                    cwd=root, capture_output=True, text=True)
+                if ancestry.returncode:
+                    raise ValueError("native stack ancestry unavailable; fetch exact heads first")
+                stale = not bool(ancestry.stdout.strip())
+            item.update({"position": len(entries) + 1, "name": item["headRefName"],
+                         "needs_rebase": stale})
+            entries.append(item)
+        chain = _chain_from_entries(entries, pr, "native-jj-handoff", target_url=url)
+        if not chain:
+            raise ValueError("native stack does not contain target")
+        return chain
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.SubprocessError) as error:
+        chain = _default_pr_chain()
+        chain.update({"manager_status": MANAGER_PROBE_ERROR,
+                      "manager_source": "native-jj-handoff", "probe_error": str(error)})
+        return chain
+
+
 def fetch_pr_chain(pr, repo, url, base_ref_name, head_ref_name, owner, name, host=None):
     """Classify manager membership and ordinary dependency relationships without mutation.
 
-    The local manager is the fast/rich path, but its output is accepted only when it contains the
-    requested PR. `gh stack view` has no target argument and may describe a different current stack.
+    Read authoritative host stack metadata directly; never launch a Git-backed stack dispatcher.
+    Ordinary base/head relationships alone do not prove managed membership.
     """
-    local = _run(["gh", "stack", "view", "--json"])
-    if local.returncode == 0:
-        try:
-            chain = _chain_from_stack_view(json.loads(local.stdout), pr, url)
-        except (TypeError, ValueError, json.JSONDecodeError):
-            chain = None
-        if chain:
-            return chain
-
     manager_status, chain, default_branch = _fetch_graphql_stack(pr, owner, name, host)
     if manager_status == MANAGER_CONFIRMED:
         chain["default_branch"] = default_branch
         return chain
+
+    if manager_status == MANAGER_ABSENT:
+        native = _native_stack_handoff(pr, url)
+        if native is not None:
+            native["default_branch"] = default_branch
+            return native
 
     relationship, parents, dependents = _manual_relationships(
         pr, repo, base_ref_name, head_ref_name, owner, name, host, default_branch)
@@ -1399,7 +1442,7 @@ def _empty_trajectory():
 
 def _load_trajectory(state):
     """Load the trajectory, tolerating a partial or non-dict value from an older on-disk
-    state.json (persisted in /tmp across script versions) — backfill missing keys so a new
+    state.json (persisted in local .tmp/ across script versions) — backfill missing keys so a new
     field never KeyErrors an old state, and a null/garbage value never crashes."""
     tj = state.get("trajectory")
     if not isinstance(tj, dict):
@@ -3631,6 +3674,16 @@ def main():
     w.set_defaults(func=cmd_watch)
 
     args = p.parse_args()
+    if hasattr(args, "state_dir"):
+        root = subprocess.run(["jj", "workspace", "root"], cwd=os.getcwd(), capture_output=True,
+                              text=True, check=True).stdout.strip()
+        local_tmp = os.path.realpath(os.path.join(root, ".tmp"))
+        state_dir = os.path.realpath(args.state_dir)
+        if (os.path.islink(os.path.join(root, ".tmp"))
+                or os.path.commonpath([local_tmp, state_dir]) != local_tmp
+                or state_dir == local_tmp):
+            p.error("--state-dir must be contained in workspace-local .tmp/")
+        args.state_dir = state_dir
     if (args.cmd in ("snapshot", "watch")
             and args.invocation_budget_seconds is not None
             and args.invocation_budget_seconds <= 0):

@@ -4,7 +4,7 @@
 
 Work the tasks in dependency order. Mark a task completed only after each of these holds, in this order:
 
-- **Completion signal checked first.** If any part of the unit's completion depends on out-of-repo state (a console setting, DNS record, CMS object, live-system rows), that part has no git-derived completion signal: decide it from the observed state of the deliverable, never from a clean tree or a tracker write. Mark it complete only when that state is already satisfied; execute only when it is observably unsatisfied and re-applying is safe or the user has authorized it; otherwise ask or block. If the unit's entire completion signal is repository-derived and that work is already present and matches the plan's intent (files exist with the expected capability, or the unit's `Verification` criteria are already satisfied by the current code), the work has likely shipped on a prior branch or session. Verify it matches, mark the task complete, and move on. Do not silently reimplement.
+- **Completion signal checked first.** If any part of the unit's completion depends on out-of-repo state (a console setting, DNS record, CMS object, live-system rows), that part has no JJ-derived completion signal: decide it from the observed state of the deliverable, never from a clean tree or a tracker write. Mark it complete only when that state is already satisfied; execute only when it is observably unsatisfied and re-applying is safe or the user has authorized it; otherwise ask or block. If the unit's entire completion signal is repository-derived and that work is already present and matches the plan's intent (files exist with the expected capability, or the unit's `Verification` criteria are already satisfied by the current code), the work has likely shipped on a prior branch or session. Verify it matches, mark the task complete, and move on. Do not silently reimplement.
 - **Evidence chosen before behavior changes.** Find the existing tests for the files you will change (Test Discovery, below). Choose the evidence strategy for this task before changing behavior: use an existing failing test, update or strengthen an existing test, add a new failing test, add characterization coverage, or record a deliberate no-test exception with replacement verification. For behavior-bearing changes, default to test-first or characterization-first when the current code and its tests make that practical, even if the plan has no `Execution note`. When the evidence strategy calls for pre-implementation proof, create/update/strengthen the test or characterization coverage now and verify the expected failure or baseline capture before changing production code.
 - **Built to the plan.** Implement following existing conventions and the unit's `Patterns to follow`. Add, update, or remove any remaining tests needed to match implementation changes.
 - **Nothing that worked is broken.** Run System-Wide Test Check (below). Run tests after changes. If two fixes for the same failing check have not worked, stop patching: name the assumption both fixes relied on and check it, so the next change targets the root cause. When that assumption came from the plan and correcting it stays within the agreed scope, correct it and note what changed; report a blocker only when correcting it would change a settled decision, need authority the run lacks, or need input only the user can give.
@@ -60,25 +60,55 @@ After completing each task, decide whether to commit. Never commit while its tes
 
 If the plan has Implementation Units, use them as a starting guide for commit boundaries — but adapt based on what you find during implementation. A unit might need multiple commits if it's larger than expected, or small related units might land together. Use each unit's Goal to inform the commit message.
 
-**Message convention:** match project commit conventions already in context; else match the recent log pattern; else conventional commits (`type(scope): description`). User override wins.
+**Message standards:** Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards.
+
+Before composing any unit or plan-checkpoint message, read the full Go guide and compare several recent subjects AND bodies from the target workspace's absolute root: `(cd "$workspace_root" && jj log --no-graph -r '::<verified-history-head>' -n 10 -T 'description ++ "\n"')`. Resolve that history head from this task and repository, not a hardcoded default; do not replace the actual review range with this style sample. Establish prefixes/package names, casing, tense, subject/body separation, wrapping, and issue-reference placement. Project/user instructions and the observed repository syntax always win; apply compatible Go guidance to clarity and structure within that pattern. Without history, use explicit instructions plus Go guidance without inventing precedent. No fixed Conventional Commit or package-prefix template is mandated.
+
+The following are verbatim Go source guidance, **not a mandatory repository template**:
+
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+
+```text
+net/http: handle foo when bar
+
+[longer description here in the body]
+
+Fixes #12345
+```
+
+> Notably, for the subject (the first line of description):
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+
+> For the body (the rest of the description):
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
 
 Preserve the full resolved message as data through the selected engine's canonical commit owner. If that owner cannot accept the full message, stop and report the blocker rather than truncate it or bypass the owner's protocol. Cross-model commits follow the controller integration contract in `references/cross-model-execution.md`.
 
-For native host-owned Git commits, write the full resolved message to a file outside the repo with your file-write tool. Pass that file to Git so the shell never interprets message text.
+For native host-owned JJ changes, write the full resolved message to an ignored file under the target workspace's local `.tmp/` with the file-write tool. Pass it as data so the shell never interprets message text.
 
-**Native Git commit workflow:**
+**Native JJ change workflow:**
 ```bash
 # 1. Verify tests pass (use project's test command)
 # Examples: bin/rails test, npm test, pytest, go test, etc.
 
-# 2. Stage only files related to this logical unit (not `git add .`)
-git add <files related to this logical unit>
+# 2. Inspect all automatically snapshotted paths from the absolute workspace root
+(cd "$workspace_root" && jj diff --summary)
 
-# 3. Commit with the resolved message, limited to those same paths
-git commit -F <message-file> -- <files related to this logical unit>
+# 3. Split only this unit's owned paths when unrelated working-copy work exists
+(cd "$workspace_root" && jj split <owned-paths>)
+
+# 4. Verify the resulting unit revision/path inventory, then apply the full message
+(cd "$workspace_root" && jj describe -r "$verified_unit_revision" --message-file "$absolute_message_file")
 ```
 
-**Note:** Incremental commits add no plugin-generated attribution. The final Phase 4 handoff passes `branding:on` so `ce-commit-push-pr` can add generic Compound Engineering branding to the PR.
+If the whole current change is owned, describe it and create the next empty working-copy change with `jj new` after verification; do not split unnecessarily. Never include unrelated pre-work files just because JJ snapshots them. Unit messages describe the completed goal and required issue/PR references using the runtime standards above, without plugin/model/harness attribution.
 
 **Workers:** worker commits follow the **No canonical commits** rule in `references/execution-strategy.md`; only the orchestrator makes canonical commits.
 

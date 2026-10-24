@@ -2,12 +2,18 @@
 
 Which orchestration shape fits each phase, and what breaks when you pick the wrong one.
 
-Two primitives are assumed, both platform-neutral:
+Use OpenCode-native subagents for independent contexts and shell for deterministic local work, never harness-dispatch or workspace-bridge scripts. Two primitives are assumed:
 
 - **A dispatch primitive** that launches an independent agent with its own context window and returns a result to the orchestrator (in one host it is a subagent-spawning tool; in another a job runner). Only two properties matter: fresh context per agent, and a result the orchestrator can read.
 - **A concurrency cap** the host enforces on how many agents run at once (often around 10). Dispatches above the cap queue rather than fail, so a 31-unit fan-out is three waves, not one. Plan the wave count; do not assume flat cost.
 
-Classify a rejected dispatch by whether an agent launched. Correct a pre-launch argument rejection once, and leave capacity-limited work queued. Any other launch failure follows the phase's own failure direction. In the corpus audit, the proposal and defense contexts must be independent for the audit to mean anything, so a launch failure there is a blocker: stop the audit rather than running the missing side inline.
+This skill explicitly requests the independent agents below. Under a host rule permitting delegation when the user OR an applicable loaded skill requests it, this satisfies the skill-requested exception without another approval. An unconditional higher-priority prohibition, missing tool, or actual denial still applies; never bypass it through shell or another harness.
+
+Delegation permission does not grant model-selection permission. Preserve applicable config.yaml, config.local.yaml, and config.example.yml routes and tiers as intent; discover permitted choices with `opencode.models`. If a model override requires an explicit user model request, omit the optional model argument and use a suitable inherited model. Disclose unmet tier or route requirements. Separate same-model agents satisfy separate-context auditing, not cross-model coverage; any required different-model pass that cannot run remains incomplete.
+
+Verify effective nesting capacity from discovered OpenCode configuration and actual runtime errors, separately from delegation permission. Classify a rejection by whether an agent launched; distinguish depth/capacity, permission, model-argument, and missing-tool failures using the actual error. Correct a non-permission pre-launch argument mistake once; do not retry a denial or evade a depth limit. Queue capacity-limited work only where supported. Any other launch failure follows the phase's own failure direction. In the corpus audit, the proposal and defense contexts must be independent, so a launch failure is a blocker: stop the audit and report incomplete coverage rather than running the missing side inline. Other phases may use an allowed inline or parent-coordinator fallback only where their contract preserves required independence and coverage.
+
+All JJ commands must run with cwd set to the target workspace's absolute root, using `(cd "$workspace_root" && jj ...)` in shell or `cwd=workspace_root` in subprocess calls, never `jj -R` as a cwd substitute. Use latest native JJ commands (https://docs.jj-vcs.dev/latest/cli-reference/), never the Git executable or a Git fallback. Put per-run scratch, including error and fallback files, under that workspace's ignored `.tmp/`; keep durable evidence in the project's documentation location.
 
 ## The shapes
 

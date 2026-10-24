@@ -1,6 +1,6 @@
 # Warm the npm cache for cross-model peers
 
-Cross-model peers run the pinned acpx through `npx`, and acpx launches its codex and claude adapters the same way. Each peer run asks npm to prefer cached copies, so a package already in the npm cache starts in about a second, while a missing one has to be downloaded first. Warming fetches the pinned acpx and those adapters into the cache now, over the network, so the first peer run does not pay for the download.
+This optional cache-maintenance capability retains pinned acpx and adapter packages for users' intentional compatibility workflows. Current skill peer/model dispatch uses `opencode.models` and OpenCode-native subagents/shell, never acpx or another harness's dispatcher. Warming only fetches these packages into npm's cache; it is not a prerequisite or evidence of native review readiness.
 
 Ask once, saying it downloads the pinned acpx and its adapters from the npm registry into the user's npm cache, and that npm runs any install scripts those packages declare, as a first peer run would. Run it only after the user approves; if they decline, fetch nothing.
 

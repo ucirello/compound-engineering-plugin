@@ -2,6 +2,8 @@
 
 All non-setup paths use the bundled analyzer through this one invocation shape. The path reference supplies a concrete `INPUT_PATH`. Set `OUTPUT_DIR` only when that path owns an override; otherwise leave it empty so the script owns its default.
 
+Run from the target workspace's absolute root. Ensure `.tmp/` is ignored in its `.gitignore`; outside a JJ repository, use local `.tmp/`. The analyzer keeps staging and recovery snapshots there. Output destinations must be on the same filesystem for atomic promotion; report a cross-filesystem failure without deleting existing evidence or falling back to global temporary storage.
+
 Set `SKILL_DIR` to the absolute directory containing the loaded `ce-riffrec-feedback-analysis` `SKILL.md`. Resolve Python by executing each candidate so a Windows Store stub is not mistaken for a working interpreter:
 
 ```bash

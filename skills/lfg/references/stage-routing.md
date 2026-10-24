@@ -4,12 +4,18 @@ A carrier is the prefix string that passes a stage assignment (which model or ha
 
 LFG is otherwise hands-off and never stops to ask. The single question it may ask is the one in scope rule 3 below, and only on an interactive host.
 
+## Native execution and permission contract
+
+The carriers below preserve user intent and compatibility data; harness names are not permission to launch another harness. Execute planning and implementation through OpenCode-native model discovery (`opencode.models`) and permitted subagents/shell, never a dispatch bridge or another harness CLI. Keep configuration model choices and tiers authoritative when no higher-priority task assignment applies. Resolve model aliases to available exact IDs. Report unavailable required routes as blocked; disclose preference fallbacks and actual model/route truthfully.
+
+This skill explicitly requests the child skills' reviewer delegation. Under a host rule allowing user OR skill requests, that satisfies the skill-requested exception without another approval. An unconditional higher-priority prohibition, actual denial or missing tool still applies. Delegation permission does not grant model-override permission: omit optional `model` arguments unless permitted, use suitable inherited-model reviewers where allowed, and disclose unmet tier/route intent. Same-model reviewers do not establish cross-model independence; an unavailable required independent/different-model pass leaves coverage incomplete. Verify effective nesting capacity separately using the installation/config-discovery procedure; distinguish actual depth/capacity errors from permission denial, rejected model arguments and missing tools. Use only contract-permitted inline or parent-coordinator fallbacks, preserve independence and coverage, and never evade denial or depth limits through another harness.
+
 ## What is routable
 
 Interpret whether the invoking conversation expresses **semantic intent to assign a pipeline stage** — planning or implementation — to a specific model or harness. This is judgment, not keyword or prompt-token matching: an explicit instruction such as "plan with fable" or "use Codex for implementation" creates an assignment, while a plain mention of Codex, Composer, Fable, or another model/harness in feature content, quoted material, comparison text, or a filename does not. Two pipeline stages are routable, each with its own carrier:
 
 - **Planning** routes to `ce-plan` as a `plan_model:<alias>` carrier. This names the **model** that authors the plan (model elevation) and nothing else. Example aliases: `fable`, `opus`. LFG has no way to pass a harness assignment to planning: an assignment that scopes a *harness* to planning ("plan with codex", "plan on cursor") is **not supported**. Stop and report it as a routing-carrier blocker (a stage assignment LFG cannot pass on) rather than encoding a harness name as `plan_model:<harness>`, which `ce-plan` cannot serve and would silently fall back to the session model. Only the implementation stage routes to a different harness.
-- **Implementation** routes to `ce-work` as an `implementation_engine` object (grammar below). This names the harness and model that write the code.
+- **Implementation** routes to `ce-work` as an `implementation_engine` object (grammar below). This preserves requested route/model intent for native execution, not an instruction to launch the named harness.
 
 ## Resolve each directive by scope
 

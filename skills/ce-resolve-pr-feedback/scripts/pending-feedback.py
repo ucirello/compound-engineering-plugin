@@ -182,11 +182,25 @@ def prepared_content(record: dict) -> dict:
     }
 
 
+def local_scratch() -> Path:
+    invocation_root = Path.cwd().resolve()
+    workspace = subprocess.run(["jj", "workspace", "root"], cwd=invocation_root,
+                               capture_output=True, text=True, check=False)
+    root = Path(workspace.stdout.strip()) if workspace.returncode == 0 else invocation_root
+    scratch = root / ".tmp"
+    require(not scratch.is_symlink(), "local scratch must not be a symlink")
+    scratch.mkdir(exist_ok=True)
+    return scratch
+
+
 def write_record(path: Path, raw: bytes, *, checkpoint: bool) -> None:
     if checkpoint:
         temporary = None
         try:
-            with tempfile.NamedTemporaryFile(dir=path.parent, prefix=".pending-feedback-", delete=False) as temp:
+            scratch = local_scratch()
+            require(scratch.stat().st_dev == path.parent.stat().st_dev,
+                    "checkpoint destination must share the local scratch filesystem for atomic replacement")
+            with tempfile.NamedTemporaryFile(dir=scratch, prefix=".pending-feedback-", delete=False) as temp:
                 temporary = Path(temp.name)
                 temp.write(raw)
                 temp.flush()
@@ -205,8 +219,11 @@ def write_record(path: Path, raw: bytes, *, checkpoint: bool) -> None:
 
 
 def github_json(host: str, endpoint: str) -> dict:
+    root = subprocess.run(["jj", "workspace", "root"], capture_output=True, text=True, check=True).stdout.strip()
+    git_dir = subprocess.run(["jj", "git", "root"], cwd=root, capture_output=True, text=True, check=True).stdout.strip()
     result = subprocess.run(
         ["gh", "api", "--hostname", host, "--method", "GET", endpoint],
+        cwd=root, env={**os.environ, "GIT_DIR": git_dir},
         capture_output=True, text=True, check=False,
     )
     require(result.returncode == 0, result.stderr.strip() or f"GitHub GET failed: {endpoint}")
@@ -240,7 +257,7 @@ def inspect_publication(record: dict) -> dict:
         require(proof["comparison_status"] in {"ahead", "identical"} and merge_base.get("sha") == commit,
                 "recorded fix commit is not positively reachable from the fresh PR head")
         proof.update(verified=True, reason="recorded fix commit is reachable from the fresh PR head")
-    except (OSError, ValueError, TypeError) as error:
+    except (OSError, ValueError, TypeError, subprocess.SubprocessError) as error:
         proof["reason"] = str(error)
     return proof
 
@@ -257,7 +274,9 @@ def main() -> None:
             command_parser.add_argument("--input", required=True)
     args = parser.parse_args()
     if args.command == "preflight":
-        path = Path(args.path).absolute() if args.path else Path(tempfile.mkdtemp(prefix="ce-pending-feedback-")) / "pending.json"
+        local_tmp = local_scratch()
+        path = Path(args.path).absolute() if args.path else Path(tempfile.mkdtemp(prefix="pending-feedback-", dir=local_tmp)) / "pending.json"
+        require(path.parent.resolve().is_relative_to(local_tmp.resolve()), "new handoff destination must be under workspace-local .tmp")
         require(not os.path.lexists(path), "handoff destination already exists")
         require(path.parent.is_dir(), "handoff parent directory does not exist")
         with tempfile.TemporaryFile(dir=path.parent):

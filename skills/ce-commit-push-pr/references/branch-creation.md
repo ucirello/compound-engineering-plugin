@@ -1,47 +1,9 @@
-# Branch creation from default branch
+# Feature bookmark creation from the default bookmark
 
-Local `<base>` may have stale commits (another session/worktree advanced it) or commits the user authored intending to branch from later. Local git can't distinguish these — ask when unpushed commits are present.
+Run commands from the absolute workspace root. Fetch the exact base using `jj git fetch --remote <base-remote> --branch <base>` and verify `<base>@<base-remote>` with `jj log`. Inspect `jj log -r '<verified-remote-base>..<local-base-tip>'` for local-only commits.
 
-## Decision flow
+If local-only default-bookmark commits exist, show them and ask whether to carry them into the feature or leave them on the default bookmark; pipeline mode reports this decision as a blocker. Never silently include foreign commits. Carry uses the verified local tip; leave uses the verified remote base. Preserve a recovery bookmark before any rewrite and keep the default bookmark unchanged.
 
-### 1. Fetch fresh remote base
+Create a collision-free feature bookmark with `jj bookmark create <feature-name> -r <verified-selected-tip>`. Preserve owned uncommitted changes by a path-scoped JJ operation only after verifying their prerequisites against that base; excluded/unrelated files stay untouched. If moving work would collide with tracked, untracked, or ignored paths, stop and ask (pipeline: report); never stash, discard, or remove colliding paths.
 
-```bash
-git fetch --no-tags origin <base>
-```
-
-If fetch fails (network, auth, no remote), use the fallback at the bottom.
-
-### 2. Check for unpushed local commits on `<base>`
-
-```bash
-git log origin/<base>..HEAD --oneline
-```
-
-- **Empty output:** set `BASE_REF=origin/<base>` and proceed to step 3.
-- **Non-empty output:** show the commit list and ask (per the "Asking the user" convention in `SKILL.md`):
-
-  > "Local `<base>` has N unpushed commits not on `origin/<base>`. Carry them onto the new feature branch, or leave them on local `<base>`?"
-
-  - **Carry forward** → `BASE_REF=HEAD`. The new branch starts from local HEAD, preserving the commits.
-  - **Leave on `<base>`** → `BASE_REF=origin/<base>`. The new branch starts clean; commits remain on local `<base>`.
-
-  Never default silently — carrying foreign commits into a PR is worse than asking again.
-
-### 3. Create the feature branch
-
-```bash
-git checkout --no-overwrite-ignore -b <branch-name> "$BASE_REF"
-```
-
-If checkout fails because uncommitted or ignored files would be overwritten, stop and ask the user to handle the colliding paths. In `mode:pipeline`, report the blocker without asking. Do not stash or remove the colliding paths.
-
-## Fetch failure fallback
-
-If `git fetch` fails, branch from current local HEAD:
-
-```bash
-git checkout -b <branch-name>
-```
-
-Note in the user-facing summary that base freshness was not verified. Skip the unpushed-commits check — without a fresh `origin/<base>`, the answer is unreliable.
+On fetch failure, a local-tip feature bookmark may preserve the work without claiming freshness. Report freshness unverified; do not infer unpushed commits from stale remote state. Publishing still requires an exact verified base and head and the project publishing gate.

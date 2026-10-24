@@ -15,7 +15,7 @@ Reviewer personas are selected in layers. The persona catalog in `references/per
 - `testing-reviewer` — test files, test infrastructure, mocks, fixtures, or harness behavior changed; or the diff changes meaningful runtime behavior without corresponding test work. Behavioral triggers include new or changed branches, state mutation, API/control-flow behavior, and error handling. Production-file presence alone and non-behavioral edits do not select it.
 - `maintainability-reviewer` — a large or structural diff: substantial refactor, new abstractions, file moves, coupling/type-boundary changes, or at least 200 executable changed lines.
 - `agent-native-reviewer` — an agent-facing feature or surface changed (skills, agents, prompts, tools, MCP, commands, or a product capability expected to be accessible to agents).
-- `learnings-researcher` — there is institutional knowledge to check the change against: `<root>/solutions/` exists and a cheap path/title search finds a plausible match for the changed modules or patterns (the existence of a corpus alone is not enough), or, in local scope, the repo's CE config declares Compound Packs (Stage 1b `declared_packs`). Declared packs need no pre-search; the persona matches their rules itself.
+- `learnings-researcher` — there is institutional knowledge to check the change against: `<root>/solutions/` exists and a cheap path/title search finds a plausible match for the changed modules or patterns (the existence of a corpus alone is not enough), or, in local scope, the repo's RocketClaw config declares Compound Packs (Stage 1b `declared_packs`). Declared packs need no pre-search; the persona matches their rules itself.
 
 **Cross-cutting conditional (per diff):**
 
@@ -29,11 +29,11 @@ Reviewer personas are selected in layers. The persona catalog in `references/per
 
 **Stack-specific conditional (per diff):** `julik-frontend-races-reviewer` (Stimulus/Turbo, DOM events, async UI) and `swift-ios-reviewer` (Swift/SwiftUI/UIKit, entitlements, Core Data, `.pbxproj`).
 
-**CE conditional (migration-specific):** local prompt asset `deployment-verification-agent` — deployment checklist + rollback when the migration gate applies and the change is risky.
+**conditional (migration-specific):** local prompt asset `deployment-verification-agent` — deployment checklist + rollback when the migration gate applies and the change is risky.
 
 ## Review Scope
 
-A full review always spawns correctness, adds project-standards when applicable files exist, then adds only the generic, cross-cutting, stack-specific, and CE conditionals justified by the diff. This file runs only on the full spine; it does not invent irrelevant domains. A Rails auth feature might add security, reliability, and adversarial while still skipping agent-native and learnings when those surfaces are absent.
+A full review always spawns correctness, adds project-standards when applicable files exist, then adds only the generic, cross-cutting, stack-specific, and conditionals justified by the diff. This file runs only on the full spine; it does not invent irrelevant domains. A Rails auth feature might add security, reliability, and adversarial while still skipping agent-native and learnings when those surfaces are absent.
 
 ## Language-Aware Conditionals
 
@@ -80,13 +80,28 @@ Complete this stage **before reading persona prompt assets, `references/dispatch
 
 Both routes share the run directory Stage 1b created; do not create another.
 
-When adversarial was selected and the working tree is the reviewed head (standalone, `base:`, or `local-aligned` scope), read `references/cross-model-review.md` from this skill's directory in full, verify the host as that reference requires, resolve one fixed route and approve it, and make the announcement that reference requires before anything is sent to the peer (its egress announcement, which tells the user what leaves the machine). Before start, write both inputs the reference defines; you, the orchestrator, write them, not the peer. They are the dedicated host-vetted constraints file, and the separate untrusted semantic brief containing intent plus material risk divisions inferred from the current file inventory and diff. Do not embed the diff, mechanically copy every path, or combine the two files. Then start the detached peer job using the reference's exact invocation and persist its job ID, target, requested model/reasoning, and start epoch in working state, recording `--start peer` in the stage log (`references/scope.md`) in that same shell call.
+When adversarial was selected and the reviewed head is local, read
+`references/cross-model-review.md` in full. Resolve the configured intent through
+`opencode.models`, check delegation permission, model-selection permission, and
+remaining nesting separately, disclose the fixed route, write the separate
+trusted constraints and untrusted brief, and launch one native generic reviewer.
+Persist its native launch ID, requested/actual model and effort, start epoch and
+terminal outcome. Record peer stage start/end using `run-log.py`.
 
-- If the runner returns a job ID, the peer covers the adversarial lens for this run. Remove `adversarial-reviewer` from the local roster immediately. Do not read its local persona asset or dispatch it later — except when the owning fold-in rules in `references/cross-model-recovery.md` require the did-not-run fallback or the in-process restore after a failed same-route rate-limit retry.
-- If no job starts because of a dispatch-infrastructure failure (a non-zero exit before any job id, an unresolved `$SKILL_DIR`/script path), read `references/cross-model-recovery.md` at that point and first attempt its bounded same-route hand recovery before accepting the fallback. Re-run the identical resolved route, holding target/model and read scope fixed. Keep retrying only while each failure is a new, plausibly recoverable one and the shared peer deadline holds. If recovery returns a job id, treat it as the branch above (the peer covers the lens; remove `adversarial-reviewer`). Keep `adversarial-reviewer` in the local roster as the fallback, and record the peer skip reason for Coverage, only in two cases: recovery is exhausted (a failure repeats or the deadline is spent), or the peer was never eligible to start (selection condition not met, disabled by checkout config, host un-attestable, no different provider, or CLI missing).
-- In `pr-remote` / `branch-remote`, do not start the peer; keep the selected in-process adversarial reviewer because it can inspect the reviewed refs.
+- Successful launch replaces the local adversarial persona, subject to terminal
+  collection and normalization. A launch acknowledgement alone proves no review.
+- No-launch failure retains the local persona. Classify permission denial, depth,
+  capacity, missing tool and model rejection accurately. Never bypass a denial
+  or depth limit through shell or another harness. Native recovery and bounded
+  same-route retry follow `cross-model-recovery.md`.
+- Remote scopes keep the local reviewer inspecting the captured reviewed refs.
+- A separately seated inherited-model reviewer is valid lens coverage when
+  suitable, but never proof of cross-model independence. Unavailable required
+  fixed/different-model passes are explicitly incomplete.
 
-When a job ID is returned and task tracking is active, add a distinct task that names the independent cross-model adversarial review. Keep it in progress while the detached job runs, then record its terminal outcome when the artifact is collected. Never create this task before a peer starts or leave it behind when the local adversarial fallback runs.
+If task tracking is active, track a launched peer through its actual terminal
+outcome; name it independent only when runtime receipt evidence proves a
+serving family different from the host. Never leave running native work behind.
 
 Do not proceed until the final local roster is settled. This is a hard rule, not a preference: a started peer and the in-process adversarial reviewer must never both receive the same review brief.
 

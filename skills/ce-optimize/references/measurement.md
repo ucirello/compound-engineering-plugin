@@ -13,10 +13,10 @@ A generic subagent is one whose whole brief is the prompt you send it. When the 
 Check if `optimize/<spec-name>` branch already exists:
 
 ```bash
-git rev-parse --verify "optimize/<spec-name>" 2>/dev/null
+(cd "$workspace_root" && jj log --no-graph -r 'optimize/<spec-name>' -T 'commit_id')
 ```
 
-Resolve `<state-root>` by the rule in `references/persistence.md` (The State Root), then check for an existing experiment log at `<state-root>/experiment-log.yaml`. A log found under `.context/compound-engineering/ce-optimize/<spec-name>/` when a durable root is now available is still this run's root; do not move it. A run whose ledger still exists is an existing run even when the branch does not exist in this checkout, so check the log independently of the branch.
+Resolve `<state-root>` by the rule in `references/persistence.md` (The State Root), then check for an existing experiment log at `<state-root>/experiment-log.yaml`. A log found under `.context/ce-optimize/<spec-name>/` when a durable root is now available is still this run's root; do not move it. A run whose ledger still exists is an existing run even when the branch does not exist in this checkout, so check the log independently of the branch.
 
 When an existing run's `run_state.status` is `waiting` and this entry is a wake, a scheduler fire, or a resume invocation of that same run, it is a resume: do not ask. Otherwise present the user with a choice via the platform question tool:
 - **Resume**: read ALL state from the experiment log on disk (do not rely on any in-memory context from a prior session). Recover any measured-but-unlogged experiments by scanning worktree directories for `result.yaml` markers. Then apply the SKILL.md body's resume rule to decide what is skipped and which approval checks run again.
@@ -25,7 +25,7 @@ When an existing run's `run_state.status` is `waiting` and this entry is a wake,
 ### 0.5 Create Optimization Branch and State Root
 
 ```bash
-git checkout -b "optimize/<spec-name>"  # or switch to existing if resuming
+(cd "$workspace_root" && jj bookmark create "optimize/<spec-name>" -r @)  # resume reuses the verified bookmark without discarding work
 ```
 
 Create `<state-root>` if it does not exist:
@@ -39,7 +39,7 @@ mkdir -p "<state-root>"
 
 **This phase stops the run until the user approves the baseline and parallel readiness. Phase 2 does not start before that.**
 
-**Bundled scripts.** Phases 1 and 3 call helper scripts that ship in this skill's `scripts/` directory (`measure.sh`, `decide.mjs`, `parallel-probe.sh`, `experiment-worktree.sh`). The Bash tool's working directory is the user's project, not the skill directory, so a bare `scripts/<name>` path will not resolve. Invoke each by the skill's own absolute path. Every runnable block below already sets `SKILL_DIR` inline (shell state does not persist between Bash tool calls, so each block must carry it). Replace the `<absolute path …>` placeholder with the directory you loaded this `ce-optimize` SKILL.md from before running. The shape:
+**Bundled scripts.** Retain `measure.sh`, `decide.mjs`, and `parallel-probe.sh`. Workspace lifecycle is agent-native through `references/workspaces.md`, not a script. Invoke retained helpers by the loaded skill's absolute path; shell state does not persist between calls. Replace the placeholder below with the directory containing this loaded SKILL.md:
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing this SKILL.md>";
@@ -48,7 +48,7 @@ bash "$SKILL_DIR/scripts/<name>"
 
 ### 1.1 Clean-Tree Gate
 
-The SKILL.md body states this gate. Run `git status --porcelain`, filter the output against `scope.mutable` and `scope.immutable`, and apply the body's rule to the result. Name the dirty in-scope files, ask the user to commit or stash them, and do not continue until they are clean.
+The SKILL.md body states this gate. From the workspace's absolute root inspect `jj status` and `jj diff --summary`, filter against `scope.mutable` and `scope.immutable`, and apply the body's rule. Automatic snapshots do not make unfinished user work disposable. Ask the user to finish or separately preserve in-scope work in a JJ change; never reset or discard it.
 
 ### 1.2 Build or Validate Measurement Harness
 
@@ -136,7 +136,7 @@ Read the JSON output. Present any blockers to the user with suggested mitigation
 Count existing worktrees:
 ```bash
 SKILL_DIR="<absolute path of the directory containing this SKILL.md>";
-bash "$SKILL_DIR/scripts/experiment-worktree.sh" count
+(cd "$workspace_root" && jj workspace list)  # count registrations
 ```
 
 If count + `execution.max_concurrent` would exceed 12:

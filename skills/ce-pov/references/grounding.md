@@ -6,21 +6,23 @@ Read this before dispatching scouts. It defines how the Ground step (SKILL.md Ph
 
 Dispatch is tiered by task shape, never hardcoded to a model name:
 
-- **Extraction tier** — the project-grounding scout and the precedent-&-activity scout: search-and-quote work. Use the platform's cheapest capable model when the harness exposes a known override; otherwise inherit.
-- **Generation tier** — the external-evidence researcher: web/docs retrieval and entailment checking. Use the platform's mid-tier model when a known override exists; otherwise inherit.
+- **Extraction tier** — the project-grounding scout and the precedent-&-activity scout: search-and-quote work. Prefer the configured cheapest capable model only when model selection is permitted; otherwise inherit.
+- **Generation tier** — the external-evidence researcher: web/docs retrieval and entailment checking. Prefer the configured mid-tier model only when model selection is permitted; otherwise inherit.
 - **Ceiling tier** — the final assessment stays with the agent running `ce-pov`, even when another agent delegated the task to it. That agent checks whether the evidence is sufficient, weighs skeptical findings, and produces the required result. Research subagents gather evidence; they do not make this final assessment.
 
-If the user's or project's active instructions or the live prompt name a model for this subagent, use that model instead of the default tier above. They can name it by the subagent's tier, by its prompt-asset name, or for the subagents being dispatched. Without such an instruction, a model configured for this subagent's role takes precedence over the default tier.
+Preserve user model requests and configured role models as routing intent, ahead of default tiers. Resolve permitted choices with `opencode.models`. Delegation and model selection are separate permissions: if the host requires an explicit user model request for overrides, configuration or this skill alone does not authorize passing the optional `model` argument. Use suitable inherited-model scouts and disclose unmet requirements rather than silently claiming a configured route ran.
+
+This skill explicitly requests the scouts below. Under a host rule allowing delegation requested by the user OR an applicable skill, proceed without another approval. An unconditional higher-priority prohibition, actual denial, or unavailable tool still applies. Verify remaining runtime nesting capacity separately using the effective configuration's discovered `experimental.subagent_depth` and current nesting level; package-local defaults are not evidence about the consuming session. Classify actual failures as permission, model argument, depth/capacity, or tool availability. Never evade them through shell or another harness. Inline bounded evidence collection is permitted for scouts, with confidence and coverage limitations disclosed; it does not establish independent peer coverage.
 
 **When per-agent models cannot be chosen.** If the platform's subagent mechanism cannot select a model per agent, dispatch every scout on the inherited model and keep their read budgets. Cost control then comes from the read budgets and the tier-sensitive scout count, not from tiering.
 
-When a scout dispatch is rejected, first check whether an agent launched. If the rejection was a bad argument before launch, correct it once. If the platform is out of capacity, leave the work queued. If a launch still fails after the correction, gather that scout's bounded evidence inline and lower the verdict's stated confidence.
+When a scout dispatch is rejected, first check whether an agent launched. Correct a bad argument once before launch only when permitted. Do not retry denied operations or depth-limit failures. If capacity is temporarily exhausted, leave work queued within the run's bounded budget; otherwise gather that scout's bounded evidence inline and lower the verdict's stated confidence.
 
 Create the scratch dir once, and reuse the echoed path for every scout this run:
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+WORKSPACE_ROOT="<verified absolute project root>";
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
@@ -31,6 +33,8 @@ echo "$SCRATCH_DIR";
 ```
 
 **Scoping applies on both paths.** Use the project's active instructions already in context. If the candidate cannot be scoped from the frame and existing context, allow one targeted root or workspace probe. This holds whether this phase dispatches scouts or resolves the facts with bounded inline reads.
+
+Run JJ commands with cwd at the target workspace's absolute root, never `jj -R` as a substitute. Repository-scoped tracker reads use `(cd "$WORKSPACE_ROOT" && GIT_DIR=$(jj git root) gh ...)`; never invoke the Git executable. See https://docs.jj-vcs.dev/latest/cli-reference/ and https://docs.jj-vcs.dev/latest/git-command-table/.
 
 **Every scout prompt carries the same context.** A fresh subagent does not inherit this conversation, so fill the persona files' `{subject}` / `{scratch-dir}` placeholders at dispatch. Pass each scout the framed question (subject + intent), the named incumbent and the reversibility tier, and the resolved `<scratch-dir>` path, plus any user-supplied links for the external researcher. A scout seeded with only its generic persona grounds "some external thing" and can produce an empty or unfocused dossier.
 

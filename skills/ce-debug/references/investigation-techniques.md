@@ -76,27 +76,13 @@ One run, and the log shows precisely which layer drops the value — secrets →
 
 ---
 
-## Git Bisect for Regressions
+## JJ Binary Search for Regressions
 
 When a bug is a regression ("it worked before"), use binary search to find the breaking commit:
 
-```bash
-git bisect start
-git bisect bad                    # current commit is broken
-git bisect good <known-good-ref> # a commit where it worked
-# git bisect will checkout a middle commit — test it
-# mark as good or bad, repeat until the breaking commit is found
-git bisect reset                  # return to original branch when done
-```
+Resolve and record exact known-good and known-bad revisions with `jj log` from the source workspace's absolute root. Do not alter the user's workspace to test history. Use the isolated workspace procedure in `investigate.md`, retaining its recovery and cleanup safeguards. In that workspace, list the exact candidate ancestry with `jj log --no-graph -r '<good>::<bad>'`; choose a midpoint and run `(cd "$experiment_root" && jj new <verified-candidate>)`, then the reproduction. Narrow the interval from observed good/bad results until the first breaking change is identified. With merges, inspect each relevant parent and report ambiguity rather than assuming a linear order. An inconclusive reproduction is neither good nor bad.
 
-For automated bisection with a test script:
-
-```bash
-git bisect start HEAD <known-good-ref>
-git bisect run <test-command>
-```
-
-The test command should exit 0 for good, non-zero for bad.
+For automated checks, a local shell loop may select verified midpoint revisions and run the same reproduction (0 = good, a known bug failure = bad); distinguish setup errors and flaky outcomes from bad results. Record candidates and results under local `.tmp/`. Leave the source working copy untouched. JJ documentation: https://docs.jj-vcs.dev/latest/cli-reference/ .
 
 ---
 

@@ -131,7 +131,7 @@ autonomously — plan, implement (`ce-work` in `return-to-caller` mode), simplif
 independent code review and applied fixes, commit/push/open PR, and CI watch to
 green. Do not also load `ce-work` directly; `lfg` orchestrates it. `lfg` is
 host-agnostic: it works wherever
-skills run (plus `git`/`gh` for the PR and CI steps, which it guards when absent).
+skills run (plus `jj`/`gh` for the PR and CI steps, which it guards when absent). Run repository-scoped `gh` from the target absolute workspace root with `GIT_DIR=$(jj git root)`.
 
 Where the host exposes no skill-invocation primitive, print the `lfg <plan-path>`
 invocation for the user to run and note that it will plan, build, review, and

@@ -76,7 +76,7 @@ This is where validity is decided. Judge every **new** item here, in your own co
 Working over the full set lets you do what a per-thread subagent can't:
 - **Dedup reads by file** — read a file once and judge all its threads together.
 - **Cross-item reasoning** — cluster findings by root assumption; a source (often a bot) that's wrong in one place is suspect across its siblings; converging requests from independent reviewers are a strong fix signal.
-- **Selective depth** — clear nits need only the comment plus the diff line; deep-read (callers, invariants, `git blame`/PR rationale for author intent) only where a finding is contestable or the code looks deliberate. That deep read on the contestable minority is what catches a confidently-wrong reviewer.
+- **Selective depth** — clear nits need only the comment plus the diff line; deep-read (callers, invariants, `jj file annotate`/PR rationale for author intent) only where a finding is contestable or the code looks deliberate. That deep read on the contestable minority is what catches a confidently-wrong reviewer.
 
 Produce a verdict per item and sort into three lists:
 
@@ -115,7 +115,7 @@ For `pr_comment` / `review_body` fix-list items (no file/line), the fixer identi
 
 **No subagent capability — apply the fixes yourself, sequentially.** When the harness exposes no way to dispatch (or a dispatch fails), work the fix-list in this context one item at a time, using the fixer prompt as your own instructions and producing the same per-item result. This is a supported path, not a shortfall to report as lost coverage: the decision about whether each item is valid already happened in step 3, and fixers only *implement* changes you approved, so running them here costs parallelism and context headroom — never correctness. Keep the dispatch path's discipline: one item at a time, re-read each file before editing it, and stop to re-evaluate if implementing reveals a contradiction (the `blocked` handling applies unchanged). Items you apply in this context by choice follow the same discipline.
 
-This skill therefore does not depend on agent-tool authorization to complete a review. That is deliberate: it runs unattended under `ce-babysit-pr`, where a permission prompt would stall the whole loop, so it needs few tools and can still fix without dispatch.
+Fix implementation does not depend on agent-tool authorization. The separate `ce-pov` adjudication contract still governs any required independent or cross-model judgment: report missing coverage, never claim that inline fix implementation supplied it. Before dispatch follow SKILL.md's separate delegation, model-override and effective-depth checks; preserve actual denial or capacity evidence without retrying through another harness.
 
 ### Per-item result format (fixer or inline)
 
@@ -149,27 +149,27 @@ Each fix runs only targeted tests on its own change. This step runs the project'
 
 3. **Red, failures touch files in the change set** -> one inline diagnose-and-fix pass. Re-run validation. If still red, escalate with a `needs-human` item containing the test output; do **not** commit.
 
-4. **Red, failures touch only files outside the change set** -> treat as pre-existing. Proceed to step 6, but add a footer to the commit message: `Note: pre-existing failure in <test> not addressed by this PR.`
+4. **Red, failures touch only files outside the change set** -> treat as pre-existing. Proceed to step 6, but describe the pre-existing failure and its test in the commit message, using the repository's observed message conventions.
 
 Record the validation outcome (command run, pass/fail counts, any pre-existing failures noted) for the step 9 summary.
 
 ## 6. Commit and Publication
 
-Commit only the change set, preserving unrelated work in the tree and index, with a message referencing the PR:
+Commit only the change set, preserving unrelated working-copy changes, with a message referencing the PR and summarizing the per-item changes. Read [change-descriptions.md](change-descriptions.md) before composing it. Verify the exact PR head repository, bookmark, remote and commit before publication; do not guess a push target or broaden inherited push authority. From the absolute workspace root:
 
 ```bash
-git add [files in the change set]
-git commit -m "Address PR review feedback (#PR_NUMBER)
-
-- [list changes from per-item results]" -- [files in the change set]
+jj commit -m "<message composed from the standards above>" -- <fix-owned paths>
 ```
 
-In `mode:return-to-caller`, capture the combined fix commit SHA and follow [references/return-to-caller.md](return-to-caller.md) to save every judged action and intended checklist tick. Return after saving; do not push or enter steps 7-8 for any part of this batch. A failed commit or save reports the actual local state and incomplete handoff, never completion.
+Capture the newly created fix commit's full immutable commit ID with `jj log --no-graph -r @- -T 'commit_id'` and inspect its owned-path diff; do not record the new empty working-copy tip as the fix. In `mode:return-to-caller`, follow [references/return-to-caller.md](return-to-caller.md) to save every judged action and intended checklist tick. Return after saving; do not push or enter steps 7-8 for any part of this batch. A failed commit or save reports the actual local state and incomplete handoff, never completion.
 
 Ordinary and pipeline execution publish the commit before the remote tail:
 ```bash
-git push
+jj bookmark set "<verified-pr-bookmark>" --revision "<captured-fix-commit-id>"
+jj git push --remote "<verified-head-remote>" --bookmark "<verified-pr-bookmark>"
 ```
+
+Move only the verified PR bookmark whose previous target matches the authorized PR lineage; an unexpected or diverged target is a blocker, not permission to overwrite it. Verify fresh remote PR metadata proves the captured fix is reachable from the actual pushed head before conversation completion. Preserve the captured commit ID and publication evidence for the caller.
 
 ## 7. Reply and Resolve
 
@@ -198,10 +198,10 @@ GH_HOST=<derived-host> bash "$SKILL_DIR/scripts/get-thread-for-comment" PR_NUMBE
 The returned `id` is the authoritative thread ID for resolution, and `root_comment_id` is the numeric ID of the thread's first comment for the REST reply. If the thread ID differs from what `get-pr-comments` returned, use the one from this script.
 
 1. **Reply directly to the root comment over REST** using [scripts/reply-to-pr-thread](../scripts/reply-to-pr-thread). If the bundled script is missing, use the same `POST repos/{owner}/{repo}/pulls/PR_NUMBER/comments/ROOT_COMMENT_ID/replies` endpoint. Do not substitute `addPullRequestReviewThreadReply`, `gh pr review`, or a `/reviews` POST: those operations go through review-submission state, so the reply can sit unsubmitted, while a successful reply must be immediately submitted and visible.
-Feed the body from a private OS scratch file. For a fresh reply, the quoted heredoc below writes multiline Markdown without shell expansion; never use `echo "..."` or `printf` to interpret escape sequences. For a saved reply, write its exact decoded `reply_body` bytes to that file with a tool instead of running the illustrative heredoc, which would add a terminal newline. Preserve all existing line breaks, including terminal ones:
+Feed the body from a private workspace-local `.tmp/` scratch file. For a fresh reply, the quoted heredoc below writes multiline Markdown without shell expansion; never use `echo "..."` or `printf` to interpret escape sequences. For a saved reply, write its exact decoded `reply_body` bytes to that file with a tool instead of running the illustrative heredoc, which would add a terminal newline. Preserve all existing line breaks, including terminal ones:
 ```bash
 SKILL_DIR="<absolute path of the directory containing the ce-resolve-pr-feedback SKILL.md>";
-REPLY_BODY_FILE="<absolute private OS scratch reply file>";
+REPLY_BODY_FILE="<absolute private workspace-local .tmp reply file>";
 cat > "$REPLY_BODY_FILE" <<'EOF'
 > the specific sentence being addressed from the reviewer's comment
 
@@ -248,7 +248,7 @@ GH_HOST=<derived-host> bash "$SKILL_DIR/scripts/resolve-pr-thread" THREAD_ID
 These cannot be resolved via GitHub's API. Reply with a top-level PR comment referencing the original (pass `-R OWNER/REPO` — the parsed base repo — so a fork→upstream reply posts on the watched upstream PR, not the fork namespace):
 
 ```bash
-REPLY_BODY_FILE="<absolute private OS scratch reply file>";
+REPLY_BODY_FILE="<absolute private workspace-local .tmp reply file>";
 cat > "$REPLY_BODY_FILE" <<'EOF'
 > the specific sentence being addressed from the reviewer's comment
 
@@ -274,7 +274,7 @@ The `review_threads` array should be empty (except `needs-human` items).
 
 In resume, verify only the saved actions and report new feedback through its caller result; return to [references/resume.md](resume.md) without entering another fix cycle.
 
-**For fresh-feedback modes, if new threads remain**, check the iteration count -- counting rounds **for this PR**, not just this invocation. An orchestrator such as `ce-babysit-pr` re-invokes this skill fresh each round, so a per-invocation counter never trips; count instead the earlier review-fix commits already on the branch (`git log <base>..HEAD` subjects that address review feedback) plus this run's own cycles.
+**For fresh-feedback modes, if new threads remain**, check the iteration count -- counting rounds **for this PR**, not just this invocation. An orchestrator such as `ce-babysit-pr` re-invokes this skill fresh each round, so a per-invocation counter never trips; count instead the earlier review-fix commits already on the branch (`jj log --no-graph -r '<verified-base>..<verified-pr-head>' -T 'description ++ "\n"'` descriptions that address review feedback) plus this run's own cycles.
 
 - **First or second fix-verify cycle**: Repeat from step 2 for the remaining threads.
 

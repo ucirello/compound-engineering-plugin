@@ -1,596 +1,231 @@
 # Cross-Model POV Panel
 
-This protocol obtains independent peer POVs, reconciles material disagreement,
-and returns one ce-pov decision. ce-pov remains the decision-maker: peers are
-cross-checks, never substitutes or votes. The panel is read-only and
-non-blocking; every branch ends in a panel POV, a solo POV with an availability
-note, or the ordinary POV's explicit blocked-on-missing-context result.
-
-## 1. Resolve the subject, host, and participants
-
-Resolve conversational shorthand before spending: "the approach," "these
-options," and "the three options presented" mean the single unambiguous
-subject identified by the active conversation. Return missing context to the caller when several possible subjects would
-materially change the POV and context cannot distinguish them.
-
-Keep four identities separate for the host and every peer:
-
-- **target** — the user-facing choice (`codex`, `claude`, `grok`, `cursor`,
-  `composer`, `opencode`, or `antigravity`);
-- **harness/intermediary route** — the CLI or intermediary that runs it;
-- **requested model** — an explicit model or the route's declared default; and
-- **served model** — the model the worker's receipt (the route's adapter
-  reporting which model answered) names, otherwise `unverified`.
-
-The requested model is a fact about the request and is always known; the served
-model is a claim about the backend and is known only from a receipt. `unverified`
-means no receipt exists, not that the model is unknown. In anything the user
-reads, name a peer by its target and requested model. Add a serving caveat only
-when a receipt disagrees with the request, or when the route requested no model
-(Cursor default/Auto, OpenCode auto). A receipt-less route with a requested model
-carries `model_actual: unverified` in the panel record and needs no caveat in
-the chat note.
-
-Attest the host from host-provided markers and serving evidence, never from
-another installed CLI or home directory. Set `independence_verified: true` only
-when the peer's served model family is attestably different from the host's.
-Otherwise retain the useful cross-check but label independence unverified; do
-not present it as different-model corroboration. If the host family is unknown,
-automatic discovery excludes any candidate whose independence cannot be
-verified rather than guessing.
-
-Attest the host harness and its serving family as two separate tokens:
-
-```bash
-XHOST_SEEN=;
-if [ "${CLAUDECODE:-}" = "1" ]; then XHOST_SEEN="$XHOST_SEEN claude"; fi;
-if [ -n "${CODEX_SANDBOX:-}${CODEX_SANDBOX_NETWORK_DISABLED:-}${CODEX_SESSION_ID:-}${CODEX_THREAD_ID:-}${CODEX_CI:-}" ]; then XHOST_SEEN="$XHOST_SEEN codex"; fi;
-if [ "${GROK_AGENT:-}" = "1" ] || [ -n "${GROK_SESSION_ID:-}" ]; then XHOST_SEEN="$XHOST_SEEN grok"; fi;
-if [ -n "${OMPCODE:-}" ]; then XHOST_HARNESS=omp; XHOST_FAMILY=unknown;
-elif [ "$XHOST_SEEN" = " claude" ] || [ "$XHOST_SEEN" = " codex" ] || [ "$XHOST_SEEN" = " grok" ]; then XHOST_HARNESS="${XHOST_SEEN# }"; XHOST_FAMILY="$XHOST_HARNESS";
-elif [ -n "$XHOST_SEEN" ]; then XHOST_HARNESS=unknown; XHOST_FAMILY=unknown;
-elif [ -n "${CURSOR_AGENT:-}${CURSOR_CONVERSATION_ID:-}" ]; then XHOST_HARNESS=cursor; XHOST_FAMILY=unknown;
-elif [ -n "${OPENCODE_TERMINAL:-}" ]; then XHOST_HARNESS=opencode; XHOST_FAMILY=unknown;
-else XHOST_HARNESS=unknown; XHOST_FAMILY=unknown; fi
-```
-
-Both tokens come from the same peer-key vocabulary as the targets above, never
-from a provider's corporate name: `<host-serving-family>` (`XHOST_FAMILY`) is
-`codex`, `claude`, `grok`, `composer`, `gemini`, or `unknown`. `<host-harness>`
-(`XHOST_HARNESS`) is `codex`, `claude`, `grok`, `cursor`, `opencode`,
-`antigravity`, `omp`, or `unknown`. The
-snippet is evidence, not the verdict: it resolves the harnesses whose
-environment markers it already names, and where it yields `unknown` on a harness
-you can identify from your own runtime, attest what you know instead. A harness
-the snippet does not name needs no new branch here.
-
-Claude Code, Codex, and Grok each serve their own model family, so the snippet
-takes the family from that harness's marker when it is the only such marker
-present. Another harness can copy one of those markers (oh-my-pi sets
-`CLAUDECODE=1` whatever model serves it), and a session started from inside
-another harness inherits that harness's marker. So the snippet leaves family
-`unknown` under `OMPCODE` or when more than one of those markers is present.
-Pass a family the snippet names. Where it leaves family `unknown`, set it only
-from a model id the runtime publishes as the model serving this session, and
-only when that id maps to `codex`, `claude`, `grok`, `composer`, or `gemini`. A
-requested model, the model's own claim, and the product name are not that id.
-Never infer serving family from the Cursor brand.
-
-Section 4 passes `XHOST_FAMILY` as the worker's first argument and
-`XHOST_HARNESS` as `CROSS_MODEL_HOST_HARNESS`; a provider name such as
-`anthropic`, `openai`, or `xai` in either slot makes the worker refuse the
-job and produce no artifact.
-
-`Cursor` and `Composer` are distinct targets:
-
-- `cursor` uses `cursor-agent` with no forced model, allowing Cursor's configured
-  default/Auto choice. No model was requested, so unless a receipt identifies it,
-  report `Cursor default/Auto; serving model unverified` and
-  `independence_verified: false`.
-- `composer` requests the current compatible Composer model through
-  `cursor-agent`.
-- `grok` prefers the native Grok CLI; Grok through Cursor is a different route
-  and recipient. Section 3 binds which token.
-- `antigravity` runs a Gemini model through Google Antigravity's ACP runtime,
-  and its serving family is `gemini`. A request for a Gemini peer binds this
-  target. `CROSS_MODEL_PEERS` sanctions it only through the literal token
-  `antigravity`, so a skip there names that token. It is never a peer when the
-  host's serving family is `gemini` or its harness is `antigravity`.
-
-Apply exactly one participation branch:
-
-`oracle` is shorthand for the panel behavior, not a keyword gate. An explicit
-request to consult other models, gather independent peer opinions, pressure-test
-with named peers, or reconcile their disagreement enters the same protocol even
-when the request never says `oracle`. A request for ce-pov's take alone does not.
-
-- **Named peers:** exact and uncapped. Announce and run every named target.
-  Explicit names override
-  `oracle` discovery and its cap. Never rewrite named `Cursor` to Composer or
-  replace an explicitly named model with another model.
-- **Bare `oracle`:** select up to two reachable, attestably different-model
-  targets using conversation preference, local configuration, active project
-  conventions, then the default order `codex -> claude -> grok -> antigravity`;
-  announce the selection and run
-  it. Invoking `oracle` authorizes this ordinary read-only consultation against
-  the current project.
-- **Explicit unnamed cross-check:** skip the correction-cost check and use the
-  count rule below; announce the selected peers and run them.
-- **No explicit cross-check:** after ce-pov independently forms its POV, offer
-  only when meaningful downstream work will build on the take before an error
-  would show up, or it feeds a shared, public, security, or data commitment.
-  Adoption Tier 1 is ineligible; Tier 2/3 are eligible. A warm invocation (a
-  mid-session second opinion) never offers.
-
-For the count rule: zero reachable means solo plus one availability line. One
-or more auto-selected peers means one concise progress line naming the selected
-targets before dispatch.
-Cursor default and Composer are never selected automatically; they run when
-named or configured as a preference.
-
-**Prior-opinion subjects.** When the subject is an already-formed position —
-ce-pov's own prior POV or the user's stated view — that position is the subject
-artifact and ships in the payload; peers answer the underlying question with
-their own verdict, and those `independent` voices enter convergence (unlike
-`skeptic` mode, where the critique does not). Any fresh host meta-judgment formed
-after the panel request (the summons) is withheld per Section 4's round-1 sequencing. A user-supplied
-position is handled identically to a host-authored one — shipped as the subject,
-never capitulated to.
-
-## 2. Normalize scope and freeze repository identity
-
-Normalize the allowed read scope once as:
-
-- one repository-relative workspace root; and
-- optional ordered include and exclude path patterns.
-
-Pass that identical representation to every peer prompt and route adapter. The
-default is the repository root. A narrower user- or host-supplied scope is
-binding and is never broadened. Peers launched on the same host inspect existing
-subject files and supporting evidence directly from this shared working tree;
-point them to those files instead of copying their contents into the payload.
-Pass material inline only when it exists solely in the conversation or is
-otherwise unavailable in the workspace.
-
-Treat include and exclude path patterns as cooperative unless the concrete
-adapter turns them into filesystem controls. Never present prompt-only patterns,
-a working directory, or a read-only flag as a confidentiality boundary, and
-never promise that secrets inside the readable scope are inaccessible. Peers may
-search and read within the declared scope but may not mutate the project or
-intentionally inspect outside it. Every route denies the peer's write requests
-and runs the adapter's read-only mode where one exists, but the Codex adapter
-does not enforce its read-only mode, so no route is a write sandbox.
-
-Before initial dispatch, capture one **repository-scope identity**: the committed
-revision plus a digest of dirty and untracked content inside the normalized
-scope. Include it in every peer payload. Revalidate it before every reconcile
-dispatch and before final fold-in. If it changed, never reconcile or fold stale
-voices into the current project: disclose the change and either restart all
-voices on the new identity or return an incomplete panel result.
-
-The caller passes this panel the resolved absolute `$SCRATCH_DIR` created in
-SKILL.md Phase 1. Keep payloads, raw output, logs, and result artifacts there;
-do not reconstruct the scratch root in this reference. Create each payload under
-`umask 077`, then `chmod 600 "$PAYLOAD_PATH"` before dispatch; do not rely on
-the ambient umask or a mode flag alone.
-
-## 3. Resolve and announce one fixed route
-
-Routing is adaptable only inside hard boundaries. The requested target plus
-safety, authority, independence, read scope, and the rules on which external
-recipients may receive project content are durable;
-concrete model IDs, CLI flags, and availability are adapter defaults.
-
-For each peer:
-
-1. Probe current route and model capabilities without giving the process project
-   content or repository access.
-2. Try the declared preferred mapping first.
-3. If that default is observed unavailable, obsolete, or incompatible, choose
-   only the closest compatible equivalent in the same requested target, model
-   family, and reasoning tier. Record the observed local fact and substitute.
-   An explicit user model request cannot become another model. For
-   `antigravity`, the worker's own fallback from `gemini-4-argon` to
-   `gemini-3.8-flash` is the preferred mapping, so the host passes no
-   replacement model for it.
-4. Resolve one concrete target, model choice, harness route, provider, and every
-   intermediary. Confirm every actual recipient is on the allowlist of permitted
-   external recipients.
-5. Announce the selected target and route in ordinary language before dispatch.
-
-The fixed route passed to the worker accepts exactly these tokens; the worker
-refuses anything else (including route-shaped guesses like `codex-cli`):
-
-| Target | Route token(s) |
-|--------|----------------|
-| `codex` | `codex` |
-| `claude` | `claude` |
-| `grok` | `grok-cli` (native CLI) or `grok-cursor` (via Cursor intermediary) |
-| `cursor` | `cursor` |
-| `composer` | `composer` |
-| `opencode` | `opencode` |
-| `antigravity` | `antigravity` |
-
-The host harness does not choose the Grok route. Target `grok` binds `grok-cli` when that CLI is installed. Bind `grok-cursor` only when the user asked for Grok through Cursor, or when the grok CLI is absent and Cursor is a sanctioned recipient.
-
-Binary presence proves only that a route is a candidate. Pre-dispatch capability
-evidence may refine the fixed route only when the current host context makes that
-evidence authoritative. Do not preflight authentication there: the
-provider-capable worker attempt owns authentication truth, and a valid artifact
-is the usability proof. Classify a failed run from its structured diagnostics
-rather than guessing from a generic terminal state.
-
-The dispatched worker runs only the fixed route. It must return failure to the
-host rather than automatically hopping to another provider or intermediary. If
-a retry would add an unexpected recipient or intermediary, resolve it at the
-host, explain the change, and ask before starting a new fixed-route job. An
-active user, project, or organization instruction that separately gates external
-consultation also requires approval. Otherwise the explicit peer, cross-check,
-or `oracle` invocation is the authority to proceed. A named peer that cannot run
-within these rules is reported, never silently replaced or dropped.
-
-The pre-dispatch update should say who will inspect the subject and that the
-review is read-only. Do not recite scope mechanics, promise that repository
-secrets are inaccessible, or describe probe results, CLI versions, model tiers,
-commit hashes, repository identity, route health, job lifecycle, or scratch
-paths. Mention a cooperative scope restriction only when it materially changes
-the user's choice. Refer to the codebase as "this project" or "the repository"
-unless the user supplied a recognizable name.
-
-## 4. Dispatch, wait, reap, and collect
-
-Prepare one complete canonical payload containing the framed question, subject
-shape, normalized read scope, repository-scope identity, mode, paths to subject
-material already in the workspace, and required conversational material that is
-not available there. Let peers inspect and ground against the shared working
-tree. Do not duplicate readable files or add a host-curated architecture summary
-merely to brief the peer.
-
-For an initial `independent` round, exclude ce-pov's position and every other
-voice's conclusion. The proposal, document, or approach set being judged is the
-subject and remains fully available; independence means withholding prior
-judgments about it, not withholding the artifact. The host's own argument —
-candidate-risk enumerations, decisive premises stated as fact, advocacy framing,
-and evaluative option labels — is reconcile-round material, not round-1 material;
-the independent round carries only the framed question, the subject, the read
-scope, and the evidence. Define round-1 evidence by provenance: source-located
-facts and the user's decision-relevant need are round-1 material, while host
-interpretations, risk rankings, and recommended consequences are not (for
-example, "the file at PATH contains X" is round-1 evidence, while "X is the risky
-option" waits for reconcile). Label inlined conversation-only material as such.
-When the user's goal bears on the decision, include the goal, how strongly they
-hold it, and any evidence they gave for it. State in the payload that rejecting every supplied option, or the
-framing itself, is a valid position. When ce-pov authored the subject in-session,
-present the options symmetrically in the payload's own words even though the full
-subject document remains attached. When the subject is itself an already-formed
-position (Section 1), the list of material to withhold above applies only to fresh
-host framing generated in response to the panel request: the position's own
-premises, labels, and advocacy ship intact as the subject artifact, and only host
-meta-judgment formed about it after the panel request waits for reconcile — peers still return their own
-independent verdict. For `skeptic` mode, include
-ce-pov's position because critiquing it is the task. Reconciliation payloads
-follow Section 5 and deliberately include already-formed positions.
-
-Verify that the same complete payload fits every selected route; never truncate
-it per provider. A route that cannot accept it is unavailable under the ordinary
-partial-panel degradation rule.
-
-Use `scripts/cross-model-pov.sh` from this skill's directory to run one resolved
-fixed route per peer, and `scripts/peer-job-runner.py` for detached lifecycle
-control. Pass the actual repository root separately from
-any narrower read root, and pre-create the round output directory as private
-scratch outside the repository. For named peers, start one job per exact target;
-for a selected panel, start one job per selected peer. Start all jobs before
-waiting.
-
-**At the defaults, the peer budget needs nothing from you.** This skill's worker
-stops itself at 600s and the runner supervisor derives a floor of 1230s, so the
-runner window is already longer than the worker's cap and kills nothing healthy.
-
-**Raising `CROSS_MODEL_HARD_SECS` widens the runner window automatically.** The
-runner derives its supervisor hard cap from the ambient knob
-(`max(1230, knob + 30)`). Do not set a numeric `CE_PEER_HARD_SECS` here — and
-clear any ambient one on the start prefix (`CE_PEER_HARD_SECS=`) so a stale
-export cannot undercut the derivation. Do not re-export a *resolved*
-`CROSS_MODEL_HARD_SECS` onto the worker's command line: that converts a
-fallback into an override and strips the worker of its own default.
-
-Each worker writes `<run-dir>/pov-<target>.json`, where `<target>` is the resolved
-route target with `grok-cli`/`grok-cursor` collapsing to `grok`. Pass exactly that
-path as `--result-path` to `peer-job-runner.py start`, so `done` is keyed to the
-artifact and `result <job-id>` reads it without guessing the filename or the
-host's provider key.
-
-**Runner prefix.** Every runner call below starts with these two lines, in the
-*same* tool call as the command, because each tool call is a fresh shell. Set
-`SKILL_DIR` to the absolute directory of **this** skill's `SKILL.md`; the shell's
-working directory is the user's project, not the skill directory. Do not
-hardcode `python3`: on native Windows it resolves to a Microsoft Store stub that
-exits without running Python and still satisfies `command -v`, so the prefix
-probes execution rather than presence.
-
-```bash
-SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
-PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c '' >/dev/null 2>&1 && { echo "$c"; break; }; done)"; [ -n "$PY" ] || { echo "no working Python 3 interpreter on PATH" >&2; exit 1; };
-```
-
-**Host command-sandbox boundary.** The detached worker inherits the permission
-context of the `start` call that launches it. Before executing that exact call,
-treat `CODEX_SANDBOX_NETWORK_DISABLED` as a positive signal that the current
-Codex command sandbox cannot reach the provider; unsetting it does not change
-the sandbox policy. A DNS or authentication failure alone is not proof of that
-condition. Use the narrowest host permission that restores the fixed route's
-provider connection. When Codex exposes only full command escalation, attach
-this request to the exact `peer-job-runner.py start ...` tool call after the
-existing disclosure of which external provider receives the subject:
-
-```json
-{
-  "sandbox_permissions": "require_escalated",
-  "justification": "Allow the disclosed read-only cross-model panel request to reach the fixed external provider."
-}
-```
-
-Disclose that this is not launcher-only isolation: the detached worker inherits
-that launch context for its lifetime, so the adapter's declared read-only/tool
-restrictions — not the Codex command sandbox — bound the peer while the subject
-is sent to the provider. If the grant is denied or unavailable, do not execute `start`; create
-no peer job, drop that voice, and continue with the surviving panel. After
-`start` returns a job id, any network, authentication, or provider failure is a
-started-job outcome and follows the ordinary terminal/recovery rules; keep
-`status`, `wait`, `result`, and `reap` sandboxed because they need no provider
-connection.
-
-Start one job per peer with the runner prefix and this command, filling every
-`<...>` slot. The command is complete: do not read either script's source or a
-peer CLI's help to build it.
-
-```bash
-CE_PEER_HARD_SECS= "$PY" "$SKILL_DIR/scripts/peer-job-runner.py" start --skill ce-pov --run-id "<run-id>" --label "<target>" --result-path "<run-dir>/pov-<target>.json" -- env CROSS_MODEL_HOST_HARNESS="<host-harness>" CROSS_MODEL_REPO_ROOT="<repo-root>" CROSS_MODEL_READ_ROOT="<read-root>" CROSS_MODEL_SCRATCH_PARENT="<scratch-dir>" bash "$SKILL_DIR/scripts/cross-model-pov.sh" "<host-serving-family>" "<fixed-route>" "<payload-path>" "<run-dir>"
-```
-
-- `<host-serving-family>` is `codex`, `claude`, `grok`, `composer`, `gemini`,
-  or `unknown`; `<host-harness>` is `codex`, `claude`, `grok`, `cursor`,
-  `opencode`, `antigravity`, `omp`, or `unknown`. Both are the Section 1 attestation,
-  not a provider name.
-- `<fixed-route>` is the sanctioned route token from Section 3's table;
-  `<target>` is its resolved target, with `grok-cli` and `grok-cursor`
-  collapsing to `grok`.
-- `<payload-path>` is this round's mode-600 payload and `<run-dir>` the
-  pre-created round output directory; `<scratch-dir>` is the Phase 1 scratch
-  root, and `<run-id>` its basename.
-- `<read-root>` is Section 2's normalized workspace root and `<repo-root>` the
-  actual repository root containing it.
-- Add `CROSS_MODEL_INCLUDE_PATHS` / `CROSS_MODEL_EXCLUDE_PATHS` only when
-  Section 2 resolved patterns, and `CROSS_MODEL_MODEL_OVERRIDE_TARGET` /
-  `CROSS_MODEL_MODEL_OVERRIDE` only for a Section 3 same-family substitution.
-
-Record every job id. Then wait for all of them with the runner prefix and this
-command, which polls for up to 30 seconds per call:
-
-```bash
-"$PY" "$SKILL_DIR/scripts/peer-job-runner.py" wait --max-secs 30 --deadline-secs "${CROSS_MODEL_HARD_SECS:-600}" --deadline-grace-secs 10 <job-ids...>
-```
-
-Each call prints one row per job (label, job id, state, seconds since start,
-and the reason for any job that ended without a result), then one line that
-says what to do next:
-
-- `all settled` — no job is still running. Collect results from the rows that
-  say `done`. Every other row is a peer that did not answer; its reason is only
-  the runner's view, so take the cause you report from that job's log, as
-  described below.
-- `waiting: ...` — run the same command again. Do not add a separate shell
-  sleep; `wait` itself provides the bounded polling delay.
-- `deadline passed: reap <job-ids>, then wait once more; ...` — reap every
-  listed job in one call with the runner prefix and the command below, then
-  run the wait command once more. If that final wait prints the same line,
-  stop waiting and treat the jobs still running as timed out.
-
-```bash
-"$PY" "$SKILL_DIR/scripts/peer-job-runner.py" reap <job-ids...>
-```
-
-Job ids or job-directory paths are positional. `--skill`, `--run-id`, and
-`--label` are start-only; never pass them to `wait` or `reap`. The deadline is
-the worker's own cap plus 10 seconds (610s by default). It is counted from the
-last job's start. The command passes the cap from `CROSS_MODEL_HARD_SECS` in
-the host's environment to the runner, which adds the 10 seconds itself and
-rejects a value that is not a plain number of seconds. The workers inherit the
-same environment, so a user who exported a larger value keeps their wider
-window. Never add `CROSS_MODEL_HARD_SECS` to the
-start command's `env` prefix: the worker would see a cap this wait does not.
-Never set a smaller `CROSS_MODEL_HARD_SECS` to finish sooner: some peers routinely need about four minutes, and a shorter cap drops
-them after they have spent their run. Let each wait call run its full slice:
-when your shell tool hands back control before the command exits (a Codex
-shell session still running, a background task), keep reading that command's
-output rather than starting another wait. Between waits, read the result of
-any job whose row says `done` instead of holding it until the rest finish.
-
-Classify every started job from its terminal state; `done` alone does not
-prove a usable artifact exists.
-
-Read artifacts and logs only through the runner's ownership-checked `result`
-interface. Accept only schema-shaped artifacts whose `position` is a settled
-answer to the framed question, with non-empty `reasoning`, a valid `movement`,
-and the route/model receipt tuple. Settledness is the peer's own declaration
-through the schema's required `final` flag, never a reading of its prose: a
-settled `Blocked — …` verdict marked `final: true` is a usable answer, while
-any shaped artifact whose `final` is not true is a placeholder. The worker
-retries a non-final artifact once on the same route with a final-answer
-requirement, inside the same hard window, and if it recurs or no window
-remains drops the voice with `peer skip evidence: non-final position`. Should
-a non-final artifact still reach you, treat it as no usable artifact, not as a
-peer voice. Initial responses require `movement: initial`; reconcile
-responses require `moved` or `held` plus what changed or why the new evidence
-was insufficient.
-
-Attribute a served model only from a receipt, never from the request. Record
-target, actual harness/intermediary route, requested model, served model, and
-`independence_verified` separately. A served model of `unverified` stays
-`unverified` in the record; it does not become "unknown model" in the note,
-because the requested model is known.
-
-Every route runs through acpx, which needs Node 22.13 or newer and `npx`. A
-worker line `transport unavailable (pre-egress, <scope>): <reason>` means the
-peer did not run and nothing reached the provider; report that voice as not run
-with the reason. Scope `shared` (Node, `npx`, or the npm fetch of acpx) fails
-every route the same way, so another route cannot replace it. Scope `route`
-(that route's CLI is missing, an acpx config file replaces its launch command,
-or the model was rejected, with the available models listed) affects only that
-route. A rejected model follows the refused-model rule below; any other
-replacement follows Section 3's recipient rules.
-
-When the requested model itself was refused (the adapter did not offer it, or
-the provider rejected it for this account, which `peer skip evidence (reply):`
-carries when the provider sent it as reply text), only the model failed and
-the route is still usable. If the worker ran its own default model rather than
-one the user named, start one new job for that voice on the same route, with
-no new recipient. Give it Section 3's closest same-family substitute, picked
-from `peer skip evidence (advertised models):` when that line is present. The
-note says which model was rejected. A model the user named is never swapped.
-
-If a job yields no usable artifact, use bounded `peer skip evidence`
-from its log to state an observed quota, authentication, or route failure; never
-invent a cause. Attribute an account authentication failure only after
-provider-capable dispatch is positively established by the launch context or
-provider response; then report the observed failure and login or
-credential-refresh remediation. Without that proof, authentication-shaped peer
-text describes only the peer's execution context: a sandboxed host can produce
-the same signal as a genuine logout, so never report it as the user's account
-being logged out or prompt a login command.
-
-## 5. Detect dissent, verify claims, and reconcile
-
-Only `mode: independent` voices enter convergence. Material dissent means a
-different adoption grade, a different selected approach, or document bottom
-lines that imply different reader actions (`proceed`, `revise-first`, or
-`reject`) or disagree on whether a risk is fatal. Wording, emphasis, confidence,
-or supporting detail with the same decision is concurrence.
-
-The default limit is the independent initial round plus at most two reconcile
-exchanges. A user-supplied pass or round limit overrides it: "one pass" or "one
-round" means no reconcile exchange, while a larger explicit limit replaces the
-default cap. Never reinterpret a smaller user limit as a suggestion.
-
-For each reconcile exchange:
-
-1. Revalidate repository-scope identity. Restart or return incomplete on change.
-2. Have ce-pov reconsider every current position and its evidence.
-3. Identify only disputed project claims that could change the decision. Verify
-   them against the allowed scope and classify each as `verified`,
-   `contradicted`, or `unverifiable`, with source locations when available.
-4. Build one common evidence delta. Send the identical complete delta to every
-   surviving peer—never route-specific truncation—along with the full original
-   subject and every surviving voice's current position and reasoning, capped at
-   five succinct source-attributed evidence bullets per voice.
-5. Re-resolve every fixed route under Section 3, then dispatch a fresh stateless
-   round. The same recipients need no question; an unexpected new recipient or
-   intermediary does. A failed peer is dropped for later rounds; do not reuse its
-   older position as if it participated.
-
-When the initial independent voices materially dissent, run at least one
-reconcile exchange before any stop, unless the user limited the run to one
-pass. Deciding over a dissenter who never saw the counter-evidence is not a
-reasoned convergence.
-
-After fold-in, stop on the first matching enum:
-
-- **`confident`** — ce-pov has a reasoned POV after weighing every survivor;
-- **`no-movement`** — every surviving peer returned `held` and ce-pov is still
-  not confident; or
-- **`limit-reached`** — the effective user-authorized finite limit completed
-  after initial dissent and ce-pov is still not confident.
-
-Convergence is ce-pov's reasoned confidence, not a vote. A three-way split still
-ends in a confident decision or the stalemate disclosure. Route `confident` to
-the **Confident** disclosure below. Route `no-movement` and `limit-reached` to
-the **Stalemate** disclosure; those stops mean bounded reconciliation ended
-without confident convergence, never that ce-pov should infer a settled result.
-
-The cap stops automatic dispatch; it is a checkpoint, not proof that another
-round would be useless. At the checkpoint, decide whether a bounded extension is
-likely to change the result. Recommend a specific number of additional exchanges
-only when ce-pov can name the unresolved decision-relevant question, the new
-evidence or framing the extension would introduce, and why it could move a
-position. Otherwise recommend stopping. Further rounds require user approval
-unless the user supplied the larger limit in advance; each approval establishes
-a new finite cap, never an open-ended loop.
-
-## 6. Decide and disclose
-
-Lead with ce-pov's POV in the active subject shape, followed by a compact panel
-note:
-
-- **Confident:** state whether voices aligned. Concurrence raises confidence but
-  does not eliminate correlated-model blind spots. If ce-pov decided over
-  dissent, name the disagreement and why its result prevailed. Claim peer
-  agreement only for what the peers judged; name any recommendation you added
-  after the panel as your own.
-- **Stalemate:** state ce-pov's current position, each surviving peer's position
-  and movement, every dropped voice's last state, and whether the disagreement
-  is an evidence gap or judgment difference. Recommend when there is a real
-  basis; otherwise say "Either is viable" with the material tradeoffs. At a cap,
-  add **Further rounds:** recommend a specific bounded extension with its new
-  evidence path, or recommend stopping because no additional exchange is likely
-  to change the result.
-- **Partial:** name surviving and dropped targets and the observed failure state
-  (for example quota, authentication, timeout, or a non-final placeholder
-  position that survived the bounded retry).
-- **No survivor:** deliver the solo POV with "cross-model check unavailable or
-  incomplete." When a summons was present but the panel branch never entered
-  (no reachable peers, or the branch was never entered), still state that panel status —
-  which peers were attempted, or that none ran and the observed reason — rather
-  than shipping a bare solo verdict.
-
-Retain target, route, requested model, served model, and independence receipts in
-the panel record, but keep the default chat note decision-relevant: name the
-peer by target and requested model, its position and movement, any observed
-failure, and a serving or independence caveat only where a receipt disagreed, no
-model was requested, or independence affects credibility. Do not dump route or model diagnostics unless they
-materially change the conclusion or the user asks. Never attribute a position to
-a model that did not run.
-
-The panel itself never mutates. After delivery, apply SKILL.md Phase 4's
-four-part conjunction: the original prompt explicitly authorized the named
-downstream action, the result is non-stalemated, the action stays in inherited
-scope, and it is non-destructive and otherwise authorized. All four must pass
-for handoff; otherwise return the judgment without starting downstream work. A calling workflow retains ownership of continuation.
-
-## 7. Skeptic mode and degradation
-
-When asked to challenge ce-pov rather than form an independent POV, set
-`mode: skeptic`. Fold a valid attributed critique into ce-pov once, but do not
-put that voice into convergence. Disclose whether it changed the POV. A failed
-skeptic degrades like any unavailable peer.
-
-A peer never blocks a POV. Mid-round failure drops only that voice; an
-oversized canonical payload drops routes that cannot accept the identical
-payload; no surviving peer yields the solo POV plus the availability note.
-
-Distinguish a route-level failure from a dispatch-infrastructure failure. A
-route that runs and returns no usable artifact is dropped as above. But if the
-dispatch scripts themselves fail unexpectedly — a crash, a non-zero exit before
-any job starts, an unresolved script path — do not drop that peer on the first
-error. Attempt the same resolved route by hand, holding the selected target and
-model, the normalized read scope, and the round's independence rules fixed.
-Keep attempting only while each failure is a new, plausibly recoverable one and
-the panel's aggregate deadline has not passed; stop and fall to the solo POV
-once a failure repeats or the deadline is spent. A hand recovery may not
-substitute a different target, widen read scope, or include a withheld
-position — those make the recovered peer's result untrustworthy, not merely
-unavailable.
-
-## 8. Cleanup
-
-Remove every consumed job directory, round output directory, payload, raw log,
-and result beneath this run's private scratch root on success, failure, timeout,
-interruption, and reap. Never delete outside the current run root. Peer reasoning
-and project context must not outlive their use.
-
-## Participation, announcement, and disclosure (relocated from the body)
-
-A summons (a panel request) is an **affirmative** request to consult or reconcile peers, detected by reasoning over the invocation context — the user's wording or a calling skill's args. Wording that declines consultation ("solo POV, do not cross-check") or merely recounts a past cross-check names the same terms without asking for one, and is not a summons: peers are not dispatched and no project context leaves the run. For an affirmative request, a caller's paraphrase in one channel never cancels a summons still present in another; only a summons erased from every readable channel upstream is unrecoverable here.
-Invoking a named peer, an explicit cross-check, or `oracle` authorizes the panel protocol's normal read-only consultation against this project. Announce the selected peers before dispatch; ask only when a retry adds an unexpected recipient or intermediary, or an active instruction requires separate approval. Peers inspect the shared working tree directly and are told not to edit it. The panel protocol preserves an unbiased initial round, bounds evidence-based reconciliation while honoring user-supplied pass limits, and attributes only receipt-supported independence.
-Any POV delivered after a summons states which peers ran, or that none did and the observed reason; if no panel runs after a summons, keep the verdict content unchanged but add that panel-status line rather than shipping a bare solo verdict. A POV with no summons keeps the solo result unchanged with no panel note.
-Keep the host's own frozen position out of an independent peer's initial context; expose it only when the requested task is to critique that position or when a later reconciliation round compares already-formed views.
+Obtain independent peer POVs, reconcile material disagreement, and return one
+ce-pov decision. Peers are cross-checks, not votes or substitutes for the host's
+judgment. Every branch ends in a panel POV, solo POV with availability note, or
+the ordinary explicit blocked-on-missing-context result. The panel is read-only.
+
+## 1. Participation and permission
+
+Resolve conversational shorthand against the active conversation. Return missing
+context only when competing subjects would materially change the judgment.
+A summons is an affirmative request for a panel, independent opinions, named
+peers, cross-check, or `oracle`, including a calling skill's arguments. A refusal
+or historical mention is not a summons. A paraphrase in one channel does not
+cancel a request still present in another readable channel.
+
+- Named peers are exact and uncapped; never replace or silently drop them.
+- Bare `oracle` selects up to two reachable, attestably different-model peers,
+  using conversation preference, local configuration, project conventions, then
+  the intent order `codex -> claude -> grok -> antigravity`.
+- An explicit unnamed cross-check skips the proactive correction-cost check.
+- Without a summons, form the solo POV first. Offer a panel only when meaningful
+  downstream work will precede detection of an error, or a shared, public,
+  security, or data commitment depends on it. Adoption Tier 1 and warm invocations
+  are ineligible for proactive offers.
+
+This skill explicitly requests reviewer dispatch when this panel is selected.
+Under a host rule permitting subagents requested by the user OR an applicable
+loaded skill, that satisfies the exception; do not demand a second approval.
+It does not override an unconditional higher-priority prohibition, tool absence,
+or actual denial. Merely loading a skill without a dispatch request is not consent.
+
+Delegation permission does not grant model-selection permission. If the host
+requires an explicit user model request for overrides, omit the native optional
+`model` argument when only configuration or skill tiers suggest it. Use a suitable
+inherited-model reviewer when possible, disclose unmet intent, and never call
+same-model reviewers cross-model independence. An unavailable required different
+model or exact fixed route makes that coverage incomplete.
+
+Verify effective delegation depth and remaining nesting capacity separately,
+using discovered runtime configuration and current nesting level as described in
+`grounding.md`; do not assume the package default controls this session. Classify
+actual errors as permission denial, model-argument rejection, depth/capacity limit,
+or missing tool. Never retry a denial or evade a depth limit through shell or
+another harness. A parent-coordinator handoff is allowed only within its authority
+and the same scope, payload, independence, and route contract. Inline solo work
+is useful fallback, never a completed independent peer pass.
+
+## 2. Scope, evidence, and identity
+
+Resolve one absolute repository/workspace root, optional narrower repository-relative
+read root, and ordered include/exclude patterns. Pass identical scope to all peers;
+never broaden it. Prompt scope and read-only instructions are cooperative, not a
+confidentiality sandbox. Deny writes using available native controls, but do not
+promise that readable secrets are inaccessible. Peers inspect subject files in the
+shared working tree rather than receiving copied files or a curated architecture
+summary. Inline only otherwise unavailable conversational material.
+
+Capture one scope identity before dispatch: exact JJ revision plus a deterministic
+digest of scoped file paths and contents, including dirty, untracked, and relevant
+ignored material. Exclude this run's own scratch artifacts consistently. Run JJ
+with cwd at the absolute workspace root. Revalidate before each reconcile and final
+fold-in; on change restart all voices on the new identity or report incomplete,
+never fold stale results into the current project. For a non-repository project,
+use the same scoped content digest and explicitly record no revision.
+See https://docs.jj-vcs.dev/latest/cli-reference/.
+
+Use Phase 1's resolved private local `.tmp/` scratch directory. Create payloads
+with `umask 077`, verify ownership and containment, and chmod payloads to 600.
+Keep payloads, logs, receipts, and results there; never use OS-global temporary
+storage or reconstruct another scratch root.
+
+## 3. Resolve native routes
+
+Read applicable `.rocketclaw/config.yaml` and `config.local.yaml` model/peer
+settings, respecting their existing precedence and explicit user choices. They
+remain the source of routing intent, tiers, budgets, and recipients. Discover exact
+available model IDs with `opencode.models`; execute through native `subagents`,
+using shell only for bounded local evidence and artifact handling, not another
+harness dispatcher. Never launch Codex, Claude, Cursor, Grok, ACP, or another
+OpenCode process as a dispatch bridge.
+
+Preserve configured targets and operational provider identities. `Cursor` means
+its configured default/Auto, not Composer; `Composer` is a distinct requested
+model. Grok native and Grok through Cursor are different recipient routes;
+Antigravity denotes a Gemini route. If a requested harness-specific fixed route
+cannot be represented natively, report it unavailable rather than relabeling a
+different model or silently invoking the old harness. Cursor default and Composer
+are never auto-selected unless configured as a preference or named.
+
+Keep target, actual native route/provider/intermediaries, requested model, served
+model, host harness, and host serving family separate. Attest the host from runtime
+serving evidence, not installed CLIs, home directories, inherited environment
+markers, or model self-claims. A requested model is not a serving receipt. Set
+`independence_verified: true` only when runtime receipts attest a different served
+model family from the host; otherwise retain useful review but disclose unverified
+independence. With unknown host family, exclude unverifiable candidates from
+automatic different-model discovery. Keep absent receipts as `unverified`.
+
+Probe model capabilities without project content. Try configured routing first;
+an observed unavailable default may receive one closest same-target/family/tier
+substitute only when model selection is permitted and no user exact model request
+would be violated. Record the fact and substitution. An explicitly named model
+is never swapped. Verify every actual recipient is permitted. Unexpected new
+recipients or intermediaries require explanation and approval; an active external
+consultation gate still applies. Otherwise an authorized summons needs no repeat
+approval. Announce selected peers and read-only consultation concisely before
+dispatch, without internal scratch, hashes, tier, lifecycle, or probe diagnostics.
+
+## 4. Dispatch, wait, collect, and bounded recovery
+
+Prepare one canonical payload: framed question, subject shape, scope, identity,
+mode, subject paths, and essential unavailable conversation material. Require
+`references/pov-schema.json` and seed `references/agents/pov-peer.md`.
+Every selected peer receives the complete same payload; no route-specific
+truncation. An incompatible payload makes that route unavailable.
+
+For initial `independent` mode, withhold the host's fresh judgment and all other
+voices' conclusions, candidate-risk rankings, advocacy, and evaluative labels.
+Include source-located facts and the user's decision-relevant goal and strength
+of preference; label conversation-only material. Permit rejection of every option
+and the framing. Present host-authored options symmetrically. When an already
+formed host or user position is itself the subject, ship that position intact;
+withhold only fresh meta-judgment formed after the summons. In `skeptic` mode,
+include the host position because critique is the task.
+
+Start all permitted native peer calls before waiting. Record native task IDs,
+target, route, exact requested model, start/deadline, output ownership, and state.
+Use native wait/status/result/cancel facilities; no detached runner. Preserve a
+600-second per-peer default hard budget and any configured larger budget. Never
+shorten a configured budget merely to finish sooner. Bound overall waiting by the
+last start plus its authorized budget and ten-second collection grace. Wait in
+bounded slices, collect finished peers promptly, then cancel only owned pending
+tasks on deadline and collect terminal status once more. Never leave workers
+running during cleanup. Missing native lifecycle capabilities mean unavailable
+coverage, not permission to spawn another harness.
+
+A terminal success alone is not a usable answer. Validate owned results against
+the schema: settled `position`, nonempty reasoning, `final: true`, correct movement,
+and route/model receipt fields. A final blocked verdict is usable; a non-final
+placeholder is not. Retry a non-final result once on the identical route with an
+explicit final-answer requirement, inside the original deadline; then drop it
+with observed `non-final position` evidence. Initial movement is `initial`;
+reconcile movement is `moved` or `held` with explanation.
+
+Read only contained, run-owned artifacts and bounded logs. Attribute served
+models solely from runtime receipts, never peer prose or requested IDs. Diagnose
+quota, authentication, timeout, rejected model, permission, depth, and tool errors
+from actual evidence. Do not infer account logout from sandbox-shaped failures
+or ask for login without provider-capable dispatch evidence. A shared native
+infrastructure failure does not become a model failure.
+
+The coordinator adds or verifies `cross_model_route`, `cross_model_target`,
+`cross_model_harness`, `serving_family`, `model_requested`, `model_actual`, and
+`independence_verified` in the collected panel record against native task metadata.
+These optional schema fields are not permission for a peer to self-attest runtime
+identity. Store absent serving receipts as `unverified` and independence as false.
+
+For recoverable prelaunch argument/infrastructure errors, correct once on the same
+native route, preserving target/model, payload, scope, and independence; stop on a
+repeated failure or aggregate deadline. Never retry denial/depth failure. A rejected
+configured default may receive at most one permitted same-family substitute from
+advertised models; exact user models cannot. No open-ended recovery, recipient
+hopping, withheld-position leakage, or silent coverage claims.
+
+## 5. Dissent and reconciliation
+
+Only independent voices enter convergence. Material dissent changes adoption
+grade, selected approach, proceed/revise-first/reject bottom line, or whether a
+risk is fatal; wording and confidence differences alone are concurrence.
+
+Default: one initial round and at most two reconcile exchanges. Honor explicit
+user limits exactly: one pass means no reconcile; larger limits replace the cap.
+After material initial dissent, run at least one reconcile unless the user limited
+the panel to one pass. For each exchange:
+
+1. Revalidate scope identity; reconsider every surviving position and evidence.
+2. Verify decision-relevant disputed project claims as verified, contradicted, or
+   unverifiable with source locations.
+3. Send every survivor the identical full original subject and common evidence
+   delta, plus every current position/reasoning with at most five concise,
+   source-attributed evidence bullets per voice.
+4. Revalidate native fixed routes and dispatch stateless fresh rounds. New
+   recipients require approval; failed peers are dropped, never represented by
+   their older position as though they participated again.
+
+Stop at the first applicable state: `confident` (reasoned host judgment after
+weighing survivors), `no-movement` (all survivors held and host not confident),
+or `limit-reached` (finite authorized limit exhausted without confidence).
+Confidence is not a vote. The latter two require stalemate disclosure, not a
+fabricated consensus. At a cap, recommend a specific bounded extension only with
+a named unresolved question and new evidence/framing likely to move it; otherwise
+recommend stopping. Extra rounds require authorization unless already covered
+by the user's larger finite limit.
+
+## 6. Delivery and cleanup
+
+Lead with the host POV in the active subject shape, then a compact panel note:
+
+- Confident: say whether voices aligned; if deciding over dissent, explain why.
+  Distinguish later host recommendations from what peers actually judged.
+- Stalemate: state each survivor's position/movement, dropped voices' last state,
+  evidence gap versus judgment difference, and material tradeoffs. At a cap,
+  recommend the bounded extension and evidence path or explain why to stop.
+- Partial: name surviving/dropped targets and observed failures. Missing required
+  fixed routes or cross-model independence remain incomplete, even if a solo or
+  same-model review is useful.
+- No survivor: deliver solo with “cross-model check unavailable or incomplete.”
+  Every summons gets status naming which peers ran or that none ran and why.
+  No summons means no panel note.
+
+Retain target/route/requested/served model and independence receipts in the panel
+record. In chat name target and requested model, position/movement, relevant
+failures, and receipt/independence caveats when they affect credibility. Never
+attribute a position to a model that did not run. `unverified` serving evidence
+does not erase a known requested model.
+
+A skeptic critique is folded in once and never enters convergence; disclose
+whether it changed the POV. Peers never block a solo POV. Preserve the ordinary
+missing-context outcome when evidence cannot support judgment.
+
+The panel never mutates the project. Downstream action requires all four:
+original prompt explicitly authorized the named action, result is non-stalemated,
+action remains in inherited scope, and action is non-destructive and otherwise
+authorized. Otherwise return judgment and control to the caller.
+
+On success, failure, timeout, or interruption, stop and collect owned workers
+first. Remove only consumed run-owned payloads, logs, results, and round directories
+inside the verified private scratch root; never delete outside it. Preserve an
+explicitly requested undelivered write-up for delivery, and report cleanup failure
+without broad deletion. Peer reasoning and project context must not outlive use.

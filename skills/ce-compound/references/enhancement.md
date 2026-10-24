@@ -10,6 +10,8 @@ This phase is interactive-only: a non-interactive caller has no human-in-the-loo
 
 Based on problem type, optionally dispatch generic subagents seeded with local prompt assets from `references/agents/` to review the documentation. Do not dispatch standalone agents by type/name.
 
+Apply the native dispatch, delegation/model permission, nesting-capacity, and incomplete-coverage rules in `references/research.md` and `references/grounding-validation.md` to each optional reviewer. Use configured routes only when model selection is permitted; a suitable inherited-model reviewer is allowed but is not cross-model independence. Never evade a denial or depth limit through another harness. If independent review cannot run, report that limitation rather than claiming the optional review completed.
+
 - **performance_issue** → `references/agents/performance-oracle.md`
 - **security_issue** → `references/agents/security-sentinel.md`
 - **database_issue** → `references/agents/data-integrity-guardian.md`

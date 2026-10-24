@@ -1,39 +1,29 @@
-# Managed-stack CLI recipes
+# Native JJ and GitHub stack lifecycle
 
-Load this file when the active run uses a confirmed managed stack (`manager_status == "confirmed"`) and needs `gh stack` command recipes. Soft-depend on the CLI: if `gh stack` is missing or exits unavailable (e.g. code 9), surface a clear residual — do not invent managed membership from topology.
+Use latest JJ bookmarks/ancestry and repository-scoped `gh` API/PR operations, consistent with `ce-commit-push-pr`'s native stack submission. Never invoke a Git-backed stack dispatcher. Run every JJ command from the workspace's absolute root; export `GIT_DIR=$(jj git root)` there for gh. See https://docs.jj-vcs.dev/latest/cli-reference/ . Preserve host-managed metadata; no silent adoption, import, unlink, or conversion to an unmanaged stack.
 
-Always non-interactive. Prefer JSON/view probes and explicit branch names; never rely on interactive prompts. Substitute `<tracking-remote>` with the stack branches' actual tracking remote (often `origin`, but may be `upstream` or a fork remote) — never hard-code `origin` when SKILL.md already resolved a different tracking remote.
+## Fresh topology and baseline
 
-## After an owned push on the active layer (dependents exist)
+For the opt-in native bookmark/manual-gh stack emitted by `ce-commit-push-pr`, explicit whole-stack authority permits a native handoff, not automatic adoption of arbitrary manual chains. After verifying the complete ordered topology, exact head repositories and fetched JJ heads, write a run-owned JSON file under local `.tmp/` with `{"authorized_native_stack": true, "layers": [{"url": "<exact-bottom-open-PR-URL>", "head_repository": "<head-owner/repo>", "head_ref": "<exact-head-bookmark>"}]}`; repeat entries bottom-to-top for every open layer. Preserve any host-managed metadata; a native handoff never overrides host managed membership or a host probe error. Set `BABYSIT_NATIVE_STACK_FILE` to its absolute path in every snapshot/watch/mark shell invocation. The helper independently re-reads each exact PR, matches the declared head identity and immediate-parent links, and checks fetched JJ ancestry; unavailable evidence is `probe-error`, a changed parent tip marks the dependent stale. Only this explicitly authorized verified native chain emits `manager_source: native-jj-handoff` with confirmed membership. Keep the handoff immutable during a watcher; stop workers before updating it after verified merge/synchronization to remove only actually MERGED layers and preserve the remaining order. Copy/read back recovery evidence before replacing the file. Omitted handoff means ordinary manual dependencies stay target-local; an invalid handoff is never interpreted as an independent PR.
 
-```bash
-gh stack rebase "<first-open-dependent-branch>" --upstack --no-trunk --remote <tracking-remote>
-gh stack push --remote <tracking-remote>
-```
+Use the snapshot's direct host GraphQL stack metadata, verified explicit PR base/head relationships and JJ ancestry. Positively prove membership and bottom-to-top order, including the target; manual topology alone is not managed membership. Query each exact PR with `gh pr view <PR> --repo <host/owner/repo> --json headRefName,headRefOid,headRepositoryOwner,headRepository,baseRefName,state,isDraft`. Match head repository/owner, remote URL, local and tracked bookmarks and OID independently. Fetch only the exact verified bookmarks with `jj git fetch --remote <verified-remote> --branch <layer>`. A stored base SHA is not proof of the current parent. Ambiguity, auth failure, unavailable metadata/lifecycle API, colliding bookmarks or missing push authority is a specific residual, never absence or permission to guess.
 
-Starting at the first dependent excludes the active target from the cascading rebase. Quote the branch name — git branch names may contain shell metacharacters. On conflict: `gh stack rebase --abort`, then surface a needs-human / stack-sync residual.
+Before any target delegate may push, require a clean/conflict-free workspace, preserve unrelated tracked/ignored/untracked files, and record the ordered open layers at/above target, each exact remote OID, parent OID, local bookmark and recovery reference under local `.tmp/`. Keep recovery bookmarks at all original owned tips. Re-probe membership and lower-layer quiescence immediately before mutation. Failed preconditions stop the active invocation before delegation/re-arm, with a recoverable residual and resume invocation.
 
-## Discover order / next open layer
+## Bounded upstack propagation after an owned target push
 
-```bash
-gh stack view --json
-```
+1. Retain the delegate's exact pushed SHA. Re-fetch/re-query and prove both local target bookmark and remote PR head still equal it. Never rebase the target, move trunk or include unrelated descendants. Revalidate the original ordered membership and all dependent remote OIDs before each mutation.
+2. Select the first open immediate dependent. Rebase only that layer's verified exclusive commit range from its recorded old parent onto the verified new parent using `jj rebase -r '<verified-exclusive-layer-revset>' -d <verified-new-parent>`. Work bottom-up, one layer at a time; verify the range contains no target, shared or unrelated commits. Preserve per-layer identity, PR base/head links and host metadata. Do not derive ranges from unordered API output. If a native rewrite cannot preserve host-managed metadata, stop with a lifecycle blocker before writing.
+3. Inspect conflicts immediately. On conflict, do not decide another layer's semantics or publish it; retain original/rewritten tips and exact operation IDs as recovery evidence. Restore only verified run-owned bookmarks/work using explicit recorded revisions when safe; otherwise leave state intact and report the precise recovery decision. Never blanket undo concurrent/user work, discard files or retry with force. The target remains at its exact pushed SHA.
+4. Verify each clean rewritten layer's expected tree/diff and ancestry, then push only its bookmark via `jj git push --remote <verified-remote> --bookmark <dependent>`. The ordinary JJ remote-state/lease check must protect against unseen remote movement; no unconditional force or retry after rejection. Re-probe remote heads after success AND failure. Partial pushes are observed progress, not atomic completion: record original OID, expected new OID and observed remote OID per layer and name the first rejected/divergent layer. Resume only after its cause is resolved and authority/topology are reverified.
+5. Verify target unchanged, every intended dependent remote at its expected rewritten tip, correct parent ancestry and preserved metadata. Every new head needs fresh review/CI/readiness evidence. Unpushed, conflicted, unverified or partially updated layers remain explicit residuals; never claim whole-stack readiness from target-local success. No dependent means no propagation.
 
-## Land one prefix (only under `posture:stack-land`)
+## Land exactly one settled bottom layer (`stack-land` only)
 
-Merge the **bottom-most open settled** PR — `gh stack merge <PR>` merges the full stack prefix through that PR atomically. Never merge an upstack active PR while downstack PRs remain open when single-prefix landing is intended.
+Re-probe the full order and identify the bottom-most OPEN layer. It must pass the complete settle gate (or pipeline green gate), with exact current head and no human/draft boundary. This is a stack-aware sequential lifecycle, not an independent member merge or an atomic-prefix claim. Never select an upper layer while a lower one remains open.
 
-```bash
-gh stack merge <BOTTOM_MOST_OPEN_SETTLED_PR> --yes --squash
-gh stack sync --remote <tracking-remote>
-```
+Merge that exact PR through the host with `gh pr merge <bottom-PR> --repo <verified-base-repo> --squash --match-head-commit <verified-head-OID>`. If host-managed metadata requires a stack-specific API instead, use only its verified direct API equivalent preserving that metadata; absent such capability is a blocker, never permission to bypass host stack protection. Respect queue policy: successful enqueue is not MERGED. Re-query state and merge commit; keep watching, or return a queued pipeline residual, while OPEN.
 
-Re-probe the landed PR before advancing: on merge-queue bases the CLI may succeed after enqueue while the PR stays OPEN — keep watching or return a queued residual until `pr_state` is `MERGED`. Only then treat the just-merged PR as a **layer transition** (stop watcher, re-probe, continue next open non-draft needing work with posture restated) — not a run-level Terminal stop for this babysit invocation.
+Only after actual MERGED: fetch and verify the exact resulting base tip, re-query the immediate next PR's base/head and host stack metadata. Preserve the immediate-parent chain by explicit authorized host base updates (`gh pr edit <next-PR> --repo <verified-base-repo> --base <verified-surviving-base>`) only where required and proven compatible with managed metadata. Rebase only remaining verified exclusive layer ranges onto the verified surviving base through the bounded propagation/recovery procedure above; never use ordinary base-into-head currency repair on a managed target. Retain recovery references, do not delete remote branches or bookmarks as implicit cleanup. If retargeting/restacking cannot safely preserve topology/metadata, report land-complete/sync-blocked and do not advance or claim success.
 
-## Forbidden on managed stack members
-
-```bash
-gh pr merge …
-```
-
-Use `gh stack merge` only. Under `posture:target` and `posture:stack-ready`, print the exact merge command when reporting ready-as-next; do not execute it.
+Re-probe all affected heads, relationships and checks after synchronization. Stop the old watcher and continue the next eligible layer with the same invocation ID/start/budget/dead-time carry and posture. A merge performed by this run is a layer transition only after verified MERGED and synchronization, not a run-level terminal stop. External MERGED/CLOSED remains a terminal stop. Under `target`/`stack-ready`, print the exact guarded bottom-PR merge command for the human instead of executing it; final merge authorization remains theirs.

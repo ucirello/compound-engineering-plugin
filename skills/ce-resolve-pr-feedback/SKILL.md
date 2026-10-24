@@ -2,12 +2,20 @@
 name: ce-resolve-pr-feedback
 description: Judge PR feedback centrally, apply valid fixes, and complete review conversations with publication verified. Use when addressing feedback already left on a PR, preparing local fixes for a caller to publish, or completing a saved feedback batch. Use ce-code-review for reviewing code before feedback exists.
 argument-hint: "[mode:pipeline | mode:return-to-caller | mode:resume] [PR number, comment URL, or blank for current branch's PR] [handoff:<path>]"
-allowed-tools: Bash(gh *), Bash(git *), Bash(bash *), Bash(python3 *), Read, Write
+allowed-tools: Bash(gh *), Bash(jj *), Bash(bash *), Bash(python3 *), Read, Write
 ---
 
 # Resolve PR Review Feedback
 
 Judge fresh PR review feedback centrally, then dispatch generic subagents seeded with the bundled fixer prompt only for approved fixes. Publish the fixes before replying and resolving. Resume completes saved judgments without another fix pass.
+
+## Native execution contract
+
+Run every JJ command and bundled helper from the target workspace's absolute root. In each shell call establish `workspace_root` as that absolute path, `cd "$workspace_root"`, and `export GIT_DIR=$(jj git root)` before repository-scoped `gh` or helper calls; shell state does not persist. Use native JJ only, never the Git executable. See https://docs.jj-vcs.dev/latest/git-command-table/ and https://docs.jj-vcs.dev/latest/cli-reference/. Store private reply bodies, handoff inputs and scratch data under "$workspace_root/.tmp/"; preserve private permissions and caller retention.
+
+This skill explicitly requests its described fixer dispatch. Under a user-or-loaded-skill delegation rule that satisfies the skill-requested exception without another approval. Respect unconditional prohibitions, actual denied permissions and tool availability. Delegation permission does not authorize model overrides: use OpenCode-native subagents with inherited models when overrides require an explicit user model request; use `opencode.models` only to resolve permitted configured model choices, not another harness's dispatcher. Keep configured choices and tiers as intent and disclose unsatisfied requirements. Verify remaining nesting capacity independently (the installation prerequisite is effective `experimental.subagent_depth >= 3`, not proof of available capacity). Distinguish actual depth errors, permission denials, model-argument rejection and missing tools; never evade them through shell or another harness. Inline implementation fallback remains valid because fixer independence is not required; required independent or different-model adjudication that cannot run remains incomplete, never cross-model verification from same-model reviewers.
+
+Routine actions already authorized by the user or inherited workflow require no repeated approval. Preserve watch boundaries, monitoring opt-outs, unknown push authority and genuine needs-human decisions. A caller's authorized factual PR-description refresh or clean alignment to the verified exact pushed head is not an optional rewrite approval flow; preserve unrelated work and stop on dirty/conflicted state or uncertain targets. Optional existing-PR rewrites still require approval outside authorized maintenance, description-only requests remain draft-only, and declining a rewrite must not block otherwise authorized monitoring.
 
 **Done:** Every selected item has a verdict and verified conversation completion or a reported residual. Completed threads have a visible submitted reply with quoted context and authoritative resolution; `needs-human` threads stay open. Ordinary and pipeline runs publish valid fixes before completion. Return-to-caller preserves its local fix commit and exact pending actions in a readable validated handoff, or records actual no-change completion. Resume verifies fresh publication and returns checkpointed completion or pending saved actions with retry evidence. Pending actions are never reported as resolved.
 

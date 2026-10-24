@@ -110,23 +110,20 @@ The Phase 3 blocks below each set `SKILL_DIR` inline as well (the loaded `ce-opt
 1. **Isolate.** For `worktree` and `codex`, create the experiment worktree on the optimization branch:
    ```bash
    SKILL_DIR="<absolute path of the directory containing this SKILL.md>";
-   WORKTREE_PATH=$(bash "$SKILL_DIR/scripts/experiment-worktree.sh" create "<spec_name>" <exp_index> "optimize/<spec_name>" <shared_files...>)  # creates optimize-exp/<spec_name>/exp-<NNN>
+    # Follow references/workspaces.md: verify base, create dated colocated isolation,
+    # verify colocation, then set WORKTREE_PATH to its absolute root.
    ```
-   Apply port parameterization if configured (set env vars for the measurement script). For `remote`, isolation is the worker's own checkout: record `base_sha` (`git rev-parse optimize/<spec_name>`) and make sure that commit is pushed to the remote the worker will fetch from.
+    Apply port parameterization if configured (set env vars for the measurement script). For `remote`, isolation is the worker's own checkout: record `base_sha` using `jj log --no-graph -r 'optimize/<spec_name>' -T 'commit_id'` from the absolute workspace root and ensure that exact commit is pushed with `jj git push` to the worker's verified remote.
 2. **Brief.** Fill the experiment prompt template (`references/experiment-prompt-template.md`): iteration number and spec name; hypothesis description and category; current best and baseline metrics; mutable and immutable scope; constraints and approved dependencies; the rolling window of the last 10 experiments as concise summaries; the source digest; and the current best's relevant `worst_cases`, from its kept entry or the baseline before any keep. For `remote`, append the template's measure-and-report delta with `base_sha`, the result ref `optimize-exp/<spec_name>/exp-<NNN>`, the measurement command, and the paired sample count the current ladder step needs.
 3. **Dispatch** by `execution.backend`, then record the return shape.
 
 | Backend | Dispatch | What returns |
 |---|---|---|
 | `worktree` | A subagent with the filled prompt, working in the experiment worktree | The subagent's completion, with its edits in the worktree |
-| `codex` | Write the filled prompt to a temp file and run `cat /tmp/optimize-exp-XXXXX.txt \| codex exec --skip-git-repo-check - 2>&1`, with the security posture from `execution.codex_security` (ask once per session when unset) | The process exit, with its edits in the worktree |
+| `codex` | Legacy configuration value: use native OpenCode subagents with the filled prompt and configured security intent; report any unavailable route rather than invoking another harness | Native completion with edits in the workspace |
 | `remote` | The detached-worker dispatch the body's Execution Surface names, with the filled prompt; when no such capability is in the tool list, use the `worktree` row for the whole run and log the fallback | A receipt naming the launch. The result is the pushed result ref (`result.yaml` at its root) or, when the host delivers results as a store file or terminal message, that file or message |
 
-**Codex delegation condition.** Delegate to `codex exec` only when this session is not itself running inside a Codex sandbox and `.git` is writable; otherwise use the `worktree` row for that experiment and log the fallback. A set sandbox marker in your environment is proof you are inside one; an unset marker proves nothing on its own, which is why the writable-`.git` check stays in the test:
-```bash
-# any true branch means: do not delegate this experiment to codex
-test -n "${CODEX_SANDBOX:-}" || test -n "${CODEX_SESSION_ID:-}" || test ! -w .git
-```
+**Native dispatch permissions.** This skill explicitly requests experiment subagents. Under a user-or-loaded-skill delegation rule this satisfies the skill-requested exception; do not demand second approval. Respect unconditional prohibitions and actual denials. Discover configured model routes with `opencode.models`; configuration remains authoritative intent, but omit optional model overrides when host policy requires an explicit user model request. Use inherited-model workers only when suitable and disclose unmet routes. Verify effective nesting capacity separately; identify permission, model-argument, missing-tool and depth errors accurately. Do not evade denial or depth limits through shell or another harness. Inline/parent fallback is allowed only where the experiment's independence and scope contract permits it; same-model reviewers do not establish cross-model independence, and unavailable required coverage remains incomplete.
 
 **Return shape.** A dispatch returns either a **result** (the work is done and its edits are where the table says) or a **receipt** (a handle for work that will finish after this call returns). A result goes straight to 3.3. A receipt is a pending wait: record it in `run_state.pending_waits` as `references/persistence.md` specifies, including the observable that will carry the result and the action to take (collect it through 3.3), and verify the write before dispatching the next experiment. Collect a receipt's result when that observable arrives, never by polling in a foreground loop.
 
@@ -206,7 +203,7 @@ After all experiments in the batch have been measured:
    - Commit the experiment branch first so the winning diff exists as a real commit before any merge or cherry-pick (a `remote` winner is already a commit at `head_sha`; merge `head_sha`, not the result ref's tip, which only adds `result.yaml`)
    - Include only mutable-scope changes in that commit; if no eligible diff remains, treat the experiment as non-improving and revert it
    - Merge the committed experiment branch into the optimization branch
-   - Use the message `optimize(<spec-name>): <hypothesis description>` for the experiment commit
+    - Compose the experiment message at runtime using `references/messages.md`, preserving its hypothesis and experiment identity without fixed syntax
    - After the merge succeeds, clean up the winner's experiment worktree and branch; the integrated commit on the optimization branch is the durable artifact
    - This is now the new baseline for subsequent batches
 

@@ -1,11 +1,19 @@
 # Session history (Phase 1 step 4)
 
+## Delegated source evidence (before the prior-session probe)
+
+After saving the supported export, run `python3 "$SKILL_DIR/scripts/session-history/reduce-opencode-export.py" < "$RUN_DIR/source-export.json" > "$RUN_DIR/source-text.txt"`. Check success and non-empty output before reading `source-text.txt`; keep the raw export unread. The reducer accepts the export's `messages` or API message array, including a `data` envelope, and fails visibly on an unsupported shape. Inspect/redact any sensitive short results before synthesis; do not send raw export contents to a researcher.
+
+When Full was delegated for context pressure, the passed source session is the primary evidence. Export it with the supported `opencode session export <source-session-id>` interface (or `opencode api get /api/session/<source-session-id>/message`) using shell with the supplied absolute workspace root as cwd. Save the response in this workspace's `.tmp/` run directory. Never open OpenCode's SQLite database or internal storage. Reduce the JSON locally before reading it: retain only user/assistant visible text, tool names, and short tool-result summaries (cap each result, omit tool inputs, reasoning, binaries, and secrets). Preserve chronology and session/message identifiers for provenance. Handle the export/API response's actual envelope rather than assuming the legacy JSONL extractors understand it. Read the reduced text as conversation evidence for research and assembly; do not infer a solved problem from the topic sentence alone. If export fails, report the evidence failure rather than claiming to have analyzed the source. The optional legacy discovery below cannot substitute for missing source evidence.
+
+Exclude only the executing delegated run's own session from analysis, not the passed source session. Include the reduced source path with `platform: opencode` in historian synthesis input, independently of the prior-session relevance gate. In ordinary runs, exclude the actual current session from the prior-session probe. Legacy extractors below are retained for their supported historical formats, not for accessing OpenCode internals. Apply `references/modes.md`'s native permission/model/depth contract to every dispatch here.
+
 ## Session context
 
 Resolve two values at runtime with the shell tool before Phase 1 session-history filtering. Run each as its own command and read its exit status. A non-zero exit is a normal state here, not an error to route around:
 
-- **Git branch**: run `git rev-parse --abbrev-ref HEAD`. Use the branch name to filter session history in Phase 1. If it returns `HEAD` (detached) or exits non-zero (not a git repo), skip branch filtering.
-- **Repo root**: run `git rev-parse --show-toplevel`. Use it as the session-history repo filter in Phase 1. If it exits non-zero (not a git repo), fall back to the working directory.
+- **Bookmarks**: from the absolute workspace root, run `jj log --no-graph -r @ -T 'bookmarks ++ "\n"'`. Use verified bookmark names as historical branch hints; if none exist, skip branch filtering rather than inventing a branch.
+- **Repo root**: from the absolute target cwd, run `jj workspace root`. Use it as the repo filter; outside JJ fall back to the absolute working directory. All subsequent JJ commands run with that absolute root as cwd. See https://docs.jj-vcs.dev/latest/cli-reference/.
 
 #### 4. **Session History** (internal flow after dispatching the Related Docs Finder; automatic in Full mode, including non-interactive)
    - This is a two-stage probe: the cheap discovery+metadata pass below always executes, and the expensive extraction+synthesis executes only when the probe clears the relevance bar (see **Escalation check** below).
@@ -39,7 +47,7 @@ Resolve two values at runtime with the shell tool before Phase 1 session-history
    SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
    if [ -f "$SKILL_DIR/scripts/session-history/discover-sessions.sh" ] && [ -f "$SKILL_DIR/scripts/session-history/extract-metadata.py" ]; then
      PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c '' >/dev/null 2>&1 && { echo "$c"; break; }; done)"; [ -n "$PY" ] || { echo "no working Python 3 interpreter on PATH" >&2; exit 1; };
-     REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd); REPO_NAME=$(basename "$REPO_ROOT"); SCAN_DAYS="7"; bash "$SKILL_DIR/scripts/session-history/discover-sessions.sh" "$REPO_NAME" "$SCAN_DAYS" --cwd "$REPO_ROOT" | tr '\n' '\0' | xargs -0 "$PY" "$SKILL_DIR/scripts/session-history/extract-metadata.py" --cwd-filter "$REPO_ROOT";
+      REPO_ROOT=$(jj workspace root 2>/dev/null || pwd -P); REPO_NAME=$(basename "$REPO_ROOT"); SCAN_DAYS="7"; bash "$SKILL_DIR/scripts/session-history/discover-sessions.sh" "$REPO_NAME" "$SCAN_DAYS" --cwd "$REPO_ROOT" | tr '\n' '\0' | xargs -0 "$PY" "$SKILL_DIR/scripts/session-history/extract-metadata.py" --cwd-filter "$REPO_ROOT";
    else echo "Session history bundled scripts were not found in this skill's directory; skipping the session-history probe for this run."; fi
    ```
 
@@ -47,7 +55,7 @@ Resolve two values at runtime with the shell tool before Phase 1 session-history
 
    **Escalation check.** The discovery+metadata pass above is the cheap probe and always runs in Full mode. Escalate to the extraction and synthesis stages below **only** when at least one retained candidate clears the relevance bar: a current-branch match, or ≥2 topic-keyword matches. If no candidate clears the bar (including the `_meta.files_processed` is `0` case), stop here, record `no relevant prior sessions` as the session-history input, and skip extraction and synthesis. This check is what keeps the always-on probe cheap. The expensive synthesis runs only when a prior session is genuinely relevant.
 
-   **Extraction pipeline.** Create `SCRATCH=$(mktemp -d "${TMPDIR:-/tmp}/ce-compound-sessions-XXXXXX")`. For each selected session, write extracted content to scratch files:
+   **Extraction pipeline.** From the absolute workspace cwd, create `mkdir -p "$REPO_ROOT/.tmp"` and `SCRATCH=$(mktemp -d "$REPO_ROOT/.tmp/ce-compound-sessions-XXXXXX")`. For each selected session, write extracted content to scratch files:
 
    ```bash
    SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";

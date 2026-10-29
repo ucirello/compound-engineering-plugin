@@ -28,6 +28,8 @@ If any is missing, **stop and say so**, naming what to build. Do not fall back t
 
 State the target model and the harness you found before continuing.
 
+Use OpenCode-native model discovery and subagents under `references/workflow-shapes.md`'s separate delegation, model-selection, and nesting-depth rules. This skill explicitly requests its audit and cut-pass agents; independent audit contexts are mandatory, and unavailable required coverage must be reported honestly. Run deterministic benchmark/extraction commands through shell, not a cross-harness dispatcher. Keep scratch, run logs, and error/fallback files under the absolute workspace root's local `.tmp/`; retain durable measurement evidence in the repository's documentation location. Never invoke Git directly. Run every JJ command from the target workspace's absolute root, and use `GIT_DIR=$(jj git root)` there for repository-scoped `gh` calls.
+
 ## The phases
 
 They run in order, and each names the reference it cannot start without. Read `references/workflow-shapes.md` before dispatching any phase: the wrong orchestration shape is the common failure. Fan out by disjoint file ownership, never by item. Items cross files, and agents that share a file lose each other's edits.

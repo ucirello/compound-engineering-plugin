@@ -9,7 +9,7 @@ argument-hint: "[feature, focus area, or constraint] [output:md]"
 
 `ce-ideate` runs before `ce-brainstorm`. This skill answers "which ideas are worth exploring?" `ce-brainstorm` then answers what one chosen idea should mean. `ce-plan` answers how it gets built.
 
-**Done:** a ranked ideation artifact is written to `<root>/ideation/` when that root is present, else to a CE temp path. Every idea generated has been critiqued, and the survivors are explained. The user is left holding the next-steps menu. No requirements, plans, or code.
+**Done:** a ranked ideation artifact is written to `<root>/ideation/` when that root is present, else to a local temporary path. Every idea generated has been critiqued, and the survivors are explained. The user is left holding the next-steps menu. No requirements, plans, or code.
 
 ## Boundaries
 
@@ -29,9 +29,9 @@ The **focus hint** is any optional context this run was invoked with, from the u
 Artifacts go under `<root>/ideation/`, and learnings are read from `<root>/solutions/`. Resolve `<root>` only when you are about to compose one of those paths, and never before the mode is classified — an elsewhere or no-repo run writes to a temp directory and never needs it. Pass a subagent the resolved path, not the config.
 
 <!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only (`<repo-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
 - **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
@@ -45,9 +45,9 @@ Both reads this phase names are required, even when the subject, mode, and forma
 Read `references/output-mode.md` whenever a format is resolved. The read is required. It defines each step of the decision, and the 30-day recent-work check that decides whether this run updates an existing doc instead of writing a new one.
 
 <!-- ce-config-layers:start -->
-**Resolve ordinary CE yaml keys from the two repo files.**
+**Resolve ordinary RocketClaw yaml keys from the two repo files.**
 
-- **Read** `<repo-root>/.compound-engineering/config.local.yaml`, then `config.yaml` (`<repo-root>` = `git rev-parse --show-toplevel`). Missing files are skipped. Gitignore does not change resolution.
+- **Read** `<repo-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<repo-root>` = `jj workspace root`). Missing files are skipped. Ignore rules do not change resolution.
 - **Win** with the first active (non-commented) value. For scalars, empty is unset; an invalid value continues to the next layer, then the skill default. For lists and maps, a present key — including an empty list or map — replaces the whole key.
 - **Do not** use this rule for `docs_root` — that key is `config.yaml` only.
 <!-- ce-config-layers:end -->
@@ -62,7 +62,11 @@ Read `references/grounding.md` before dispatching any grounding agent. The read 
 
 A generic subagent is one whose whole brief is the prompt you send it. When the host's subagent tool makes you name an agent, use only a name you have seen the host list, and list its agents before the first dispatch if you have not. Pick the plain one that adds no role of its own, which still counts as a generic subagent. Never pick a specialist, such as a reviewer or worker agent, whose own role prompt, output format, or tool limits would replace or narrow your prompt.
 
-Scratch lives beneath the effective user's private CE root: `/tmp/compound-engineering-<uid>` when that is usable, else the validated `$TMPDIR` fallback, and never `.context/`. Generate one 8-hex `<run-id>` and reuse it for the cache and for every checkpoint.
+Scratch lives beneath `<absolute-workspace-root>/.tmp/rocketclaw`, or the current directory's local `.tmp/rocketclaw` outside a JJ workspace, never OS-global temporary storage or `.context/`. Generate one 8-hex `<run-id>` and reuse it for the cache and for every checkpoint.
+
+Run every repository JJ command from its absolute workspace root, using `(cd "$workspace_root" && jj ...)`; discover that root with `jj workspace root`. For repository-scoped GitHub CLI calls use `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh ...)`. Never invoke Git directly. See https://docs.jj-vcs.dev/latest/cli-reference/.
+
+This skill explicitly requests native subagents for its grounding, ideation and verification fleet. Under a user-or-loaded-skill delegation rule, that request suffices without another approval; an unconditional prohibition or actual denial still wins. Discover model IDs with `opencode.models` and execute with native subagents and shell, not another harness's dispatcher. Delegation permission, model-selection permission and nesting capacity are separate: only pass a model override when host policy permits it (an explicit user model request may be required). Otherwise inherit when suitable, retaining configured tiers as intent and disclosing unmet tier or independence requirements. Same-model agents are not cross-model coverage. Check effective configured nesting depth before dispatch; classify actual failures as permission, depth/capacity, model rejection or missing tool. Do not bypass denials or depth limits through shell or another harness. Use inline fallback only where a phase allows it and report incomplete required independent verification.
 
 ## Phase 1.5: Topic-Surface Decomposition
 

@@ -27,7 +27,7 @@ This is the **canonical skeleton** for *which sections appear and in what order*
 | 7 | `orders_controller.rb:88` (+test) | Tightened export file perms `0644 -> 0600` (security-posture — verify in diff) | security |
 
 Validation: export tests 11 -> 13; suite 214 pass, lint clean.
-Committed: `fix(review): cover empty-format branch + tighten export perms` (working tree was clean before review).
+Recorded as one isolated JJ fix change, described using observed repository standards and the Go guidance (working tree was clean before review).
 
 ### Triage Groups
 
@@ -145,7 +145,7 @@ This fails because of the **box-drawing `────` separators between items*
 - **Header includes** scope, intent, and reviewer team with per-conditional justifications
 - **Mode line** -- include `markdown report-only`, `markdown local-apply`, or `agent report-only`
 - **Triage Groups section (when groups exist)** -- pipe table `| Group | Findings | Context | Preferred Resolution | Why |` rendered after Applied and before the severity tables. The `Findings` cell lists stable `#`s (e.g. `#2, #3`); every referenced `#` must appear in a severity table below. Groups are a triage lens over the findings -- they never replace the severity tables, merge findings, or renumber them. Omit when `grouping:off` is active or no groups survived Stage 5b/5c pruning.
-- **Applied section (explicit local apply only)** -- when Stage 5c was authorized and applied fixes, list them first, before the severity tables, as `# | File | Fix | Reviewer` followed by a one-line validation outcome (e.g. "suite 214 pass, lint clean") and the **commit status** — committed as an isolated review-labeled fix commit (`fix(review): …`, or the repo's nearest convention when `review` isn't an allowed scope) when the working tree was clean before the review, or left uncommitted (for the user's commit) when it was already dirty. A fix spanning multiple files is **one row with one `#`** (e.g. `controller.rb:88 (+test)`) -- never duplicate the number across rows. Flag green-but-unverifiable edits (auth/contract/concurrency) inline in the `Fix` cell, e.g. `(security-posture — verify in diff)`. Applied findings keep their stable `#` and appear only here, not in the severity tables. Omit when local apply was not authorized or nothing was applied
+- **Applied section (explicit local apply only)** -- list applied fixes first as `# | File | Fix | Reviewer`, validation outcome and JJ change status: an isolated fix change described from runtime repository standards and the full Go guidance in `finish-review.md` when the pre-review tree was clean, otherwise left with the user's in-flight work. Do not prescribe a message prefix/template. Multi-file fixes are one row with one stable `#` (e.g. `controller.rb:88 (+test)`); never duplicate numbers. Flag green-but-unverifiable auth/contract/concurrency edits in the Fix cell. Applied findings appear only here, not severity tables. Omit when unauthorized or none applied.
 - **Actionable Findings section** -- include when the actionable queue is non-empty (findings for the caller to handle)
 - **Pre-existing section** -- separate table, no confidence column (these are informational)
 - **Learnings & Past Solutions section** -- results from the `learnings-researcher` local prompt asset, with links to <root>/solutions/ files

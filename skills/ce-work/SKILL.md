@@ -45,7 +45,7 @@ When triage selects Return-to-Caller Mode, read `references/return-to-caller.md`
 
 Before the first implementation write, including on the Trivial route, read `references/implementation-loop.md`. It decides how evidence is chosen, verification, when to stop a unit, incremental commits, following existing patterns, continuous testing, where simplification stops, UI work, progress tracking, and settled decisions.
 
-The commit rule from this file stays in force throughout: every implementation commit names only that unit's owned files. A bare `git commit` can absorb the user's pre-existing index, so it is forbidden.
+The commit rule from this file stays in force throughout: every implementation commit names only that unit's owned files. An unrestricted JJ commit could absorb unrelated working-copy state, so it is forbidden. All commands run from the target workspace's absolute root; scratch belongs under local `.tmp/`. Controller means the native host-owned protocol, not a helper executable.
 
 ### Phase 3-4: Quality Check and Finishing Work
 

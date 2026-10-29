@@ -1,10 +1,10 @@
 ---
 name: lfg
-description: "Take a request all the way to done, hands-off, through the right Compound Engineering skills. A code change ends as an open pull request, pushed without stopping. Use only when the user explicitly asks for autonomous end-to-end work or invokes lfg directly. Use ce-plan, ce-work, ce-debug, or ce-commit-push-pr for work the user reviews step by step."
+description: "Take a request all the way to done, hands-off, through the right RocketClaw skills. A code change ends as an open pull request, pushed without stopping. Use only when the user explicitly asks for autonomous end-to-end work or invokes lfg directly. Use ce-plan, ce-work, ce-debug, or ce-commit-push-pr for work the user reviews step by step."
 argument-hint: "[feature, bug, issue reference, or plan path; optionally assign planning and/or implementation to a model or harness]"
 ---
 
-**Outcome.** The request reaches the end state its shape calls for, produced by the Compound Engineering skill whose job that is, with everything unresolved recorded where the user will see it. Most requests end with that skill's result and no branch. A change to the code is the one shape with more steps of its own: it ends in an open pull request whose URL you hold, with CI decided, after being implemented, simplified, reviewed with the eligible findings applied and the rest recorded, any durable learning captured, committed, and pushed. Merging stays with the user unless they granted it for this run.
+**Outcome.** The request reaches the end state its shape calls for, produced by the RocketClaw skill whose job that is, with everything unresolved recorded where the user will see it. Most requests end with that skill's result and no branch. A change to the code is the one shape with more steps of its own: it ends in an open pull request whose URL you hold, with CI decided, after being implemented, simplified, reviewed with the eligible findings applied and the rest recorded, any durable learning captured, committed, and pushed. Merging stays with the user unless they granted it for this run.
 
 **Work source.** On the routes that change the code, nothing is implemented without a work source verified this run, and only two things qualify: an implementation-ready plan, which `ce-work` implements; or a `fixed` return from `ce-debug`, where the fix is the implementation. The plan is one the session identifies, as `references/intake.md` defines. Never search the plans directory for a candidate or act on a file you discovered. Never plan from scratch over an existing plan.
 
@@ -30,7 +30,13 @@ When unsure, take the route that asks more of the evidence.
 
 A stop leaves nothing pushed that was not already pushed.
 
-Resolve every skill named here against the host's available-skills list and invoke that exact entry; some hosts namespace it (`compound-engineering:ce-plan`). Read `references/task-visibility.md` before starting: it defines the stage view published through the platform's task-tracking capability, the chat narration, and the completion rule that a step is done only after it ran, a child skill's return resumes the next numbered step in the same turn, and the turn does not end before DONE or a stop.
+Resolve every skill named here against the host's available-skills list and invoke that exact entry (for example, `ce-plan`). Read `references/task-visibility.md` before starting: it defines the stage view published through the platform's task-tracking capability, the chat narration, and the completion rule that a step is done only after it ran, a child skill's return resumes the next numbered step in the same turn, and the turn does not end before DONE or a stop.
+
+Use latest native JJ, never the Git executable, including history and transport. Run every JJ command with the target workspace's absolute root as cwd, for example `(cd "$workspace_root" && jj status)`. Scope every repository `gh` invocation the same way with `GIT_DIR=$(jj git root)`. Keep scratch, receipts, exports and error-path temporary files under that workspace's `.tmp/`. See https://docs.jj-vcs.dev/latest/git-command-table/ and https://docs.jj-vcs.dev/latest/cli-reference/.
+
+When implementation needs isolation, detect existing isolation first and preserve its verified name and harness ownership. For a newly requested `ce-worktree` workspace, capture the local date once and select `YYYYMMDD-<meaningful-kebab-case-slug>` from the task, PR or revision, normalizing caller names without double-prefixing. Use that same stable identity for the registered name and destination basename under the source workspace's local `.tmp/`; check registrations and paths for collisions and append `-2`, `-3`, etc., retaining the selected name across retries/resumes and midnight. Keep PR/source bookmarks unchanged. Creation must use `(cd "$workspace_root" && jj workspace add --colocate --name "$name" --revision "$verified_base" "$absolute_destination")`; verify `(cd "$absolute_destination" && jj git colocation status)` and adopt the workspace through the harness's supported session mechanism. Harness-owned isolation must support and verify those creation requirements; unsupported naming/colocation takes the safe blocker path, never recreation of existing isolation or a Git fallback.
+
+Retirement requires existing cleanup authorization and harness lifecycle authority, not merely completion. Stop workers, move the active session out to a surviving workspace, verify exact registered name/path/run ownership and required integration, retain recovery references, and copy/read back required evidence outside the target. Inspect tracked changes, conflicts, ignored and untracked content; snapshots do not protect ignored/untracked files. Preserve unrelated, still-referenced, ambiguously owned or non-disposable state. Remove disposable run-owned state only via `(cd "$surviving_workspace_root" && jj workspace remove "$verified_name")`, then verify both deregistration and directory disappearance. Warnings/incomplete deletion are blockers: retain state, never force-delete or use Git cleanup. Reserve `jj workspace forget` for unregister-only operations preserving files; bookmark deletion is separate and must preserve recovery/archive references. See https://docs.jj-vcs.dev/latest/cli-reference/#jj-workspace.
 
 ## The run (routes that change the code)
 
@@ -42,7 +48,7 @@ Resolve every skill named here against the host's available-skills list and invo
 
 4. Invoke the `ce-code-review` skill with `mode:agent plan:<plan-path-from-step-1>`; on the defect route omit `plan:`. A `settled_conflict` finding whose evidence shows the settled decision cannot work (infeasible, wrong-thing, or destructive) stops the pipeline as blocked, with the finding reported, before the shipping precondition.
 
-**Shipping precondition (every push from step 5 on).** Run `git remote` once. No remote means local-only: make every commit the steps call for, but skip every push, PR create/edit, and CI-watch action, including step 10 in full. That is terminal, not an error.
+**Shipping precondition (every push from step 5 on).** Run `(cd "$workspace_root" && jj git remote list)` once. No remote means local-only: make every commit the steps call for, but skip every push, PR create/edit, and CI-watch action, including step 10 in full. That is terminal, not an error.
 
 5. **Apply and persist review fixes** as that file defines. Do not proceed to the residual handoff, run browser tests, or output DONE while eligible review fixes remain only in the working tree uncommitted.
 
@@ -52,7 +58,7 @@ Resolve every skill named here against the host's available-skills list and invo
 
 8. Invoke the `ce-test-browser` skill with `mode:pipeline`.
 
-9. **Read `references/shipping.md` first**; it governs steps 9 through 11. Then invoke the `ce-commit-push-pr` skill with `mode:pipeline branding:on`.
+9. **Read `references/shipping.md` first**; it governs steps 9 through 11. Then invoke the `ce-commit-push-pr` skill with `mode:pipeline`.
 
 10. Watch the PR to CI-decided with `ce-babysit-pr mode:pipeline <pr-url>` when an open PR exists, as `references/shipping.md` decides. Do not reimplement CI-watching here.
 

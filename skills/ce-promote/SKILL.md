@@ -17,10 +17,12 @@ It works **with or without Spiral**: with nothing installed it drafts directly f
 
 A free-form description in the arguments is the source of truth. Otherwise derive it from context, using what is available and never waiting on any single source:
 
-- **Merged/active PR** — `gh pr view --json title,body,url` (the title and body usually state the user-facing value)
-- **The diff** — `git diff main...HEAD --stat`, skimming notable changes so the claim is grounded in what actually changed
+- **Merged/active PR** — `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh pr view --json title,body,url)` (the title and body usually state the user-facing value)
+- **The diff** — resolve the actual shipped or PR base and head, verify both revisions, then `(cd "$workspace_root" && jj diff --from "$verified_base" --to "$verified_head" --stat)`, skimming notable changes so the claim is grounded in what actually changed. Do not guess a default branch or silently substitute a different range.
 - **Changelog** — the top or `[Unreleased]` entry in `docs/changelog.md`, `CHANGELOG.md`, or similar
-- **Recent commits** — `git log --oneline -15` for the arc of the change
+- **Recent changes** — `(cd "$workspace_root" && jj log --no-graph -r "::$verified_head" -n 15 -T 'description ++ "\n"')` for the arc of the change, retaining subjects and bodies
+
+Resolve `workspace_root` to the target workspace's absolute root with `jj workspace root` before repository commands; execute every JJ command from that absolute root. Use the task's verified history head, not an assumed branch. Without a JJ repository, use the supplied description and available changelog instead. Native JJ reference: https://docs.jj-vcs.dev/latest/cli-reference/ .
 
 Then write a 1-3 sentence summary of the **user-facing value**: what a user can now do that they couldn't before, and why they'd care. Outcome, not implementation — "You can now export any report to CSV in one click", not "Added a CsvSerializer and an export endpoint." If you can't confidently tell what shipped, ask one short question rather than guessing.
 

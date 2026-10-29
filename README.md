@@ -319,15 +319,18 @@ Qwen Code installs Claude Code-compatible plugins directly from GitHub and conve
 
 ### OpenCode
 
-Add Compound Engineering to the `plugins` array in your global or project `opencode.json`:
+RocketClaw supports **OpenCode V2 only**. Add this fork's published Git/npm package spec to the `plugins` array in your existing global or project configuration (replace the placeholder below with that spec, not the upstream release):
 
 ```json
 {
-  "plugins": ["compound-engineering@git+https://github.com/EveryInc/compound-engineering-plugin.git"]
+  "plugins": ["<RocketClaw Git or npm package spec>"],
+  "experimental": { "subagent_depth": 3 }
 }
 ```
 
-On OpenCode 1.x, the config key is `plugin` (singular). Restart OpenCode after changing the config. The plugin registers the Compound Engineering skills and `/commands` directly; no Bun installer or generated skill copy is required. See [`.opencode/INSTALL.md`](.opencode/INSTALL.md) for pinning examples.
+**User-level prerequisite:** merge `"experimental": { "subagent_depth": 3 }` into your existing `~/.config/opencode/opencode.json`. Use `opencode debug paths` or `opencode debug paths config` to locate the actual global configuration directory and update the existing `opencode.json(c)` there. Preserve unrelated settings, sibling `experimental` fields, existing plugin entries, and any existing integer depth higher than `3`; do not replace the whole file or create a competing JSON/JSONC file. A higher-precedence configuration must not lower depth below `3`.
+
+A depth of at least `3` is required for the skills' deep agentic delegation. Installing the plugin or shipping its package-local `opencode.json` alone does not enable this in a consuming project: bundled package configuration is not merged by Git/npm installation. Explicitly adopt the setting while preserving the consuming project's own higher value and unrelated settings. Restart OpenCode after changing configuration. The V2 plugin registers skills and `/commands` directly; no Bun installer or generated skill copy is required. See the [V2 configuration](https://opencode.ai/v2/docs/config) and [plugin loading](https://opencode.ai/v2/docs/plugins) guides.
 
 ### Pi
 

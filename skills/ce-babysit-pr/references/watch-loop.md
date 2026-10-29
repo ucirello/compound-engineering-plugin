@@ -41,7 +41,7 @@ Use the harness's tools to run the detector and wait for its output. A skill dri
 
 **Checkpoint:** Use checkpoint mode only when the user requests it or the harness cannot keep the session active while waiting for the detector's output. Run one tick, persist state, report, and print the exact host-rendered resume invocation. Say monitoring is paused. Never fake a loop with a foreground `sleep` or an unmanaged detached process.
 
-**Durability:** the in-session watch dies with the session. Re-invoking the skill resumes from disk, because `/tmp` persists across ticks. For an unattended multi-day watch, escalate to a durable scheduler: Grok's `scheduler_create --durable`, or cron running `<cli> exec '<host-rendered resume invocation>'`. A fresh headless run has no memory of this conversation, so persist consequential decisions to disk.
+**Durability:** the in-session watch dies with the session. Re-invoking the skill resumes from disk under the workspace's local `.tmp/` directory across ticks. For an unattended multi-day watch, use an authorized durable scheduler invoking OpenCode with the host-rendered resume invocation, absolute workspace cwd and repository-scoped `GIT_DIR` from `jj git root`. A fresh headless run has no memory of this conversation, so persist consequential decisions to disk.
 
 ## Cadence (the watch interval)
 

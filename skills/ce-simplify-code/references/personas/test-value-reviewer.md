@@ -18,6 +18,8 @@ Never recommend deleting:
 
 Before flagging, run the test and read the whole test, the code it covers, that code's callers, and the tests that overlap it. Recommend deleting a test only after seeing it pass; one that fails or cannot be run is a possible defect, never a deletion candidate. When a test claims behavior of a dependency, read the dependency's source or types. In standalone mode, check the test's history when it may explain why the test exists. A deletion finding must name the remaining test that covers the same ground, or show that the test asserts nothing that could fail, so no coverage is lost; without one of those, do not flag it. Prefer a few well-evidenced findings over a long speculative list, and do not recommend new tests except as the replacement in a rewrite.
 
+For history inspection, use native JJ from the target workspace's absolute root, with the verified history anchor and repository-relative test path (for example, `(cd "$workspace_root" && jj log -r '::<verified-history-head>' <test-path>)`). Inspect relevant descriptions and diffs without substituting a different revision or invoking Git. Keep any temporary evidence under the workspace's `.tmp/`.
+
 In pipeline mode, flag only tests the current work added or changed.
 
 Return each finding as: location (`file:line`), category, recommended action (delete, merge, rewrite, or report as defect), the failure the test can catch, the remaining test that covers it, any seam its deletion unlocks, and how you checked. If there is nothing to flag, say so explicitly.

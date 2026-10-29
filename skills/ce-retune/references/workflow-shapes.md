@@ -2,12 +2,14 @@
 
 Which orchestration shape fits each phase, and what breaks when you pick the wrong one.
 
-Two primitives are assumed, both platform-neutral:
+Two primitives are assumed, implemented through OpenCode-native tools:
 
-- **A dispatch primitive** that launches an independent agent with its own context window and returns a result to the orchestrator (in one host it is a subagent-spawning tool; in another a job runner). Only two properties matter: fresh context per agent, and a result the orchestrator can read.
+- **A native subagent primitive** that launches an independent agent with its own context window and returns a result to the orchestrator. Resolve configured model routes through `opencode.models`, then use native subagents; use shell for deterministic local extraction and benchmark commands, never another harness's dispatcher. Configuration (`config.yaml`, `config.local.yaml`, or `config.example.yml` where applicable) remains authoritative for desired model choices and tiers.
 - **A concurrency cap** the host enforces on how many agents run at once (often around 10). Dispatches above the cap queue rather than fail, so a 31-unit fan-out is three waves, not one. Plan the wave count; do not assume flat cost.
 
-Classify a rejected dispatch by whether an agent launched. Correct a pre-launch argument rejection once, and leave capacity-limited work queued. Any other launch failure follows the phase's own failure direction. In the corpus audit, the proposal and defense contexts must be independent for the audit to mean anything, so a launch failure there is a blocker: stop the audit rather than running the missing side inline.
+This skill explicitly requests the independent agents below. Under a host rule allowing user- OR skill-requested delegation, this satisfies the skill-requested exception without a second approval. An unconditional prohibition, missing tool, or actual permission denial still controls; do not bypass it through shell or another harness. Delegation permission is not model-selection permission: if model overrides require an explicit user model request, omit the optional model argument and use a suitable inherited model. Preserve configured tier intent and disclose unmet requirements. Separate same-model contexts are independent reviewers, not cross-model coverage; a required unavailable different-model pass remains incomplete.
+
+Verify effective delegation depth separately by inspecting effective OpenCode configuration and source precedence for `experimental.subagent_depth` (installation requires at least 3), accounting for current nesting and actual dispatch results. Do not alter host/global configuration or assume bundled configuration applies to a consuming project. Classify actual errors distinctly: permission denial, model-argument rejection, missing tool, nesting limit, and concurrency capacity. Correct a non-permission pre-launch argument error once where allowed; never retry denial or evade depth limits. Queue capacity-limited work only when supported by the host. In the corpus audit, proposal and defense contexts must remain independent: a launch failure is a blocker, not permission to run the missing side inline. Report all units and required routes that did not run.
 
 ## The shapes
 

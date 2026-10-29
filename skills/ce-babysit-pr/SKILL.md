@@ -32,11 +32,15 @@ One PR named → `target` (ask once if a confirmed multi-layer stack exists); as
 
 ## Step 1: Resolve and arm
 
-1. `gh repo view` must succeed, else say GitHub-only, stop.
+1. Run all repository commands from the target workspace's absolute root (`workspace_root`). Export `GIT_DIR=$(jj git root)` there before every repository-scoped `gh` call, including background helpers. Use latest JJ only, never the Git executable. `gh repo view` must succeed, else say GitHub-only, stop. See https://docs.jj-vcs.dev/latest/git-command-table/ and https://docs.jj-vcs.dev/latest/cli-reference/.
 2. Resolve the PR from the argument or current branch (`references/setup.md`); none → report, stop.
 3. **Old-PR intake** (fresh invocation, before the checkout gate): read `references/intake.md`; it decides whether this PR still belongs. A user request to take the PR over: `references/takeover.md`.
 4. Chain classification comes from the snapshot, never the user; resolve posture before semantic work.
-5. **Checkout must be the PR's head branch with matching upstream** before any delegated mutation; default `gh pr checkout <ref>`; no push access or dirty checkout → stop, say so.
+5. **Verify the exact PR head repository, bookmark, remote and commit before mutation.** An empty `@` may sit directly above the PR commit: inspect `@-`, its bookmarks and remote branch and associated PR before declaring no PR/work. Continue when that PR is eligible. An empty `@` directly above the verified pushed head is already aligned. Align a clean workspace with `jj new <verified-head>` without another approval; dirty/conflicted state, unrelated tracked/ignored work, uncertain targets, denied permissions or unknown push authority follow the safe stop path, never reset/discard or guess. Do not use `gh pr checkout`.
+
+**Native delegation:** this skill explicitly requests native subagents for its delegated review/fix work when the host allows user-or-skill-requested delegation. A higher-priority prohibition or actual denial still wins. Model-selection permission is separate: consult `opencode.models` and configured routes, but omit model overrides unless permitted; use suitable inherited-model reviewers, disclose unmet tiers and never claim cross-model independence from same-model passes. Check effective nesting depth independently (setup requires user configuration depth at least 3); classify actual missing-tool, permission, model-argument and depth errors. Use only contract-permitted inline/coordinator fallbacks, never another harness or shell to evade restrictions; required unavailable independent coverage remains incomplete.
+
+**Authorized maintenance:** apply factual stale-description refreshes with this run's verified results directly, preserving unrelated user text and issue links; do not enter a standalone preview/approval flow. Clean exact-head alignment and starting/re-arming authorized monitoring likewise need no second approval. Respect explicit watch boundaries, standing opt-outs, tool permissions and higher-priority instructions. Outside this maintenance or an explicit apply request, optional existing-description rewrites still require approval; description-only requests stay draft-only. Never bundle rewrite approval with alignment/monitoring, and declining a rewrite does not block authorized monitoring.
 6. **Sustain mode** (`references/setup.md`, `references/watch-loop.md`): keep monitoring in the current session until a stop condition is met, one tick per `BABYSIT_WAKE`; never collapse the loop into a script. Checkpoint mode only when the user asks or the harness cannot wait. **Pipeline** (`mode:pipeline`): bounded synchronous ticks, structured return (`references/pipeline.md`).
 
 ## Step 2: One tick (ordering invariant)
@@ -58,3 +62,34 @@ Snapshot first, then in this order:
 ## Step 4: Report
 
 One fixed status line first, then a recap the reader could merge from without scrolling back (`references/report.md`). Never "safe to merge".
+
+## Change-description standards (including local currency repairs)
+
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards.
+
+Before composing, read the full Go guide and compare several recent subjects AND bodies from the task's verified history head: from the target workspace's absolute root run `jj log --no-graph -r '::<verified-history-head>' -n 10 -T 'description ++ "\n"'`. Determine actual prefixes/package naming, casing, tense, subject/body separation, wrapping and issue placement. Repository-local instructions and observed syntax always win over Go guidance; apply only compatible clarity and structure. With no history use explicit project/user instructions and Go guidance without inventing precedent. Use `jj describe -m "<message composed from the standards above>"` on the intended owned change; preserve the repair's meaning and issue/PR references, never impose a fixed prefix or template. Pass these standards to delegated composition sites as well.
+
+Verbatim Go source guidance; this example is illustrative, NOT a mandatory repository template:
+
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+
+```text
+net/http: handle foo when bar
+
+[longer description here in the body]
+
+Fixes #12345
+```
+
+> Notably, for the subject (the first line of description):
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+
+> For the body (the rest of the description):
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.

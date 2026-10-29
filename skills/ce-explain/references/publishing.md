@@ -2,7 +2,7 @@
 
 Read this before opening, sharing, or publishing a document this skill wrote.
 
-Publishing makes a copy. Write the document first to the place this skill normally stores it, such as the repo artifact root, or a temp path when there is no repo. That stored file stays the record other skills read. A published copy never replaces it, and nothing syncs back from the copy.
+Publishing makes a copy. Write the document first to the place this skill normally stores it, such as the repo artifact root, or a local `.tmp/` path when there is no repo. That stored file stays the record other skills read. A published copy never replaces it, and nothing syncs back from the copy.
 
 Never publish in a headless run, one with no user present to answer, such as a pipeline or an automated caller. Keep the stored file and report its path.
 

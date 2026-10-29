@@ -4,11 +4,19 @@ A carrier is the prefix string that passes a stage assignment (which model or ha
 
 LFG is otherwise hands-off and never stops to ask. The single question it may ask is the one in scope rule 3 below, and only on an interactive host.
 
+## Native execution and capability gates
+
+The carrier fields below preserve routing intent and compatibility data, not permission to launch another harness. Execute planning and implementation through OpenCode-native `opencode.models`, subagents and shell for ordinary commands; never invoke a harness dispatcher or workspace bridge. Current task/session intent and `.rocketclaw/config.yaml` / `config.local.yaml` model choices and tiers remain authoritative desired behavior under each child skill's precedence rules. Resolve model/provider IDs with `opencode.models` rather than inventing aliases. A harness target in a legacy carrier identifies the requested route; do not claim native execution met a harness-specific requirement it cannot satisfy.
+
+This skill explicitly requests native subagents when a routed stage or reviewer requires them. Under a host rule permitting user- OR skill-requested delegation, that satisfies the skill-requested exception without another approval. An unconditional higher-priority prohibition, unavailable tool or actual denial still applies. Model selection is separate: if overrides require an explicit user model request, configured tiers alone do not authorize passing `model`; use a suitable inherited-model reviewer when allowed and disclose unmet intent. Same-model reviewers are independent runs, not cross-model coverage. A required unavailable different-model or fixed-route pass is incomplete, never fully verified.
+
+Check effective nesting capacity separately using the runtime's effective configuration (depth at least 3 is an installation prerequisite, not a promise that this nested session has capacity left). Classify actual dispatch errors as permission, model rejection, missing tool or depth/capacity failures. Never evade a denial or depth limit through shell or another harness. Use inline or parent-coordinator fallback only when the child's contract allows it without losing required independence; otherwise return a blocker with coverage and recovery facts. Preserve all receipt, bounded recovery and requested-versus-actual route fields below.
+
 ## What is routable
 
 Interpret whether the invoking conversation expresses **semantic intent to assign a pipeline stage** — planning or implementation — to a specific model or harness. This is judgment, not keyword or prompt-token matching: an explicit instruction such as "plan with fable" or "use Codex for implementation" creates an assignment, while a plain mention of Codex, Composer, Fable, or another model/harness in feature content, quoted material, comparison text, or a filename does not. Two pipeline stages are routable, each with its own carrier:
 
-- **Planning** routes to `ce-plan` as a `plan_model:<alias>` carrier. This names the **model** that authors the plan (model elevation) and nothing else. Example aliases: `fable`, `opus`. LFG has no way to pass a harness assignment to planning: an assignment that scopes a *harness* to planning ("plan with codex", "plan on cursor") is **not supported**. Stop and report it as a routing-carrier blocker (a stage assignment LFG cannot pass on) rather than encoding a harness name as `plan_model:<harness>`, which `ce-plan` cannot serve and would silently fall back to the session model. Only the implementation stage routes to a different harness.
+- **Planning** routes to `ce-plan` as a `plan_model:<alias>` carrier. This names the **model** intended to author the plan (native model selection) and nothing else. Example aliases: `fable`, `opus`. LFG has no way to pass a harness assignment to planning: an assignment that scopes a *harness* to planning ("plan with codex", "plan on cursor") is **not supported**. Stop and report it as a routing-carrier blocker (a stage assignment LFG cannot pass on) rather than encoding a harness name as `plan_model:<harness>`, which `ce-plan` cannot serve and would silently fall back to the session model. Implementation's legacy harness target likewise remains intent, subject to the native capability gates above.
 - **Implementation** routes to `ce-work` as an `implementation_engine` object (grammar below). This names the harness and model that write the code.
 
 ## Resolve each directive by scope
@@ -38,7 +46,7 @@ Remove every routing directive from the feature request that enters planning, ke
 
 ## Pass the planning carrier at step 1
 
-When a planning-stage directive resolved, prefix the `ce-plan` invocation with its `plan_model:<alias>` carrier. It is structured routing data beside the request, never woven into it, so `ce-plan`'s model elevation authors the plan on the chosen model even in pipeline mode.
+When a planning-stage directive resolved, prefix the `ce-plan` invocation with its `plan_model:<alias>` carrier. It is structured routing data beside the request, never woven into it. Native selection is subject to the permission and capability gates above even in pipeline mode; report the actual model and any unmet route instead of promising the chosen model ran.
 
 ## Pass the implementation carrier at step 2
 

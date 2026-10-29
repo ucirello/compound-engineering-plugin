@@ -298,18 +298,11 @@ def _run(cmd):
     env["NO_COLOR"] = "1"
     env.pop("CLICOLOR_FORCE", None)
     env.pop("GH_FORCE_TTY", None)
-    return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", env=env)
-
-
-def _run_git(cmd):
-    env = os.environ.copy()
-    env["GIT_TERMINAL_PROMPT"] = "0"
-    env["GCM_INTERACTIVE"] = "never"
-    env["GIT_ASKPASS"] = ""
-    env["SSH_ASKPASS"] = ""
-    return subprocess.run(
-        cmd, capture_output=True, text=True, encoding="utf-8", env=env, timeout=30,
-    )
+    root = subprocess.run(["jj", "workspace", "root"], capture_output=True,
+                          text=True, check=True).stdout.strip()
+    env["GIT_DIR"] = subprocess.run(["jj", "git", "root"], cwd=root,
+                                    capture_output=True, text=True, check=True).stdout.strip()
+    return subprocess.run(cmd, cwd=root, capture_output=True, text=True, encoding="utf-8", env=env)
 
 
 def _run_checked(cmd, label):
@@ -481,8 +474,8 @@ def fetch_base_ref(owner, name, ref, merge_identity, host=None):
     `baseRefOid` is retained only as historical PR metadata. Current identity comes from both the
     PR's `baseRef.target.oid` and an exact Git-ref read; a usable generated test merge must then
     name that base and the observed PR head as its two parents. Some valid private-repository OAuth
-    sessions return 404 from the REST Git-ref endpoint, so that response falls back to the Git
-    transport while preserving exact-ref matching and non-interactive failure behavior.
+    sessions return 404 from the REST Git-ref endpoint, so that response falls back to the
+    exact REST branch endpoint while preserving matching and non-interactive failure behavior.
     """
     historical_oid = (merge_identity or {}).get("baseRefOid")
     head_oid = (merge_identity or {}).get("headRefOid")
@@ -519,30 +512,11 @@ def fetch_base_ref(owner, name, ref, merge_identity, host=None):
     ])
     current_oid = (r.stdout or "").strip()
     if r.returncode != 0 and re.search(r"\bHTTP\s+404\b", r.stderr or "", re.IGNORECASE):
-        exact_ref = f"refs/heads/{ref}"
-        remote_url = (f"https://{host or 'github.com'}/"
-                      f"{quote(owner, safe='')}/{quote(name, safe='')}.git")
-        try:
-            # Reuse the gh session (GH_TOKEN or keyring) as git's credential source so a
-            # headless host with no configured Git credential helper is not anonymous here.
-            git_result = _run_git([
-                "git", "-c", "core.askPass=",
-                "-c", "credential.helper=",
-                "-c", "credential.helper=!gh auth git-credential",
-                "ls-remote", "--exit-code", "--refs",
-                remote_url, exact_ref,
-            ])
-        except (subprocess.TimeoutExpired, OSError):
-            git_result = None
-        if git_result is not None and git_result.returncode == 0:
-            matches = []
-            for line in (git_result.stdout or "").splitlines():
-                fields = line.split()
-                if len(fields) == 2 and fields[1] == exact_ref and _valid_oid(fields[0]):
-                    matches.append(fields[0])
-            if len(matches) == 1:
-                current_oid = matches[0]
-                r = git_result
+        # Independent REST branch endpoint retains exact-ref verification without Git transport.
+        r = _run(["gh", "api", *_host_args(host),
+                  f"repos/{owner}/{name}/branches/{quote(ref, safe='')}",
+                  "--jq", ".commit.sha"])
+        current_oid = (r.stdout or "").strip()
     if r.returncode != 0 or not _valid_oid(current_oid):
         return base
     base["oid"] = current_oid
@@ -822,6 +796,10 @@ def fetch_pr_chain(pr, repo, url, base_ref_name, head_ref_name, owner, name, hos
 
     manager_status, chain, default_branch = _fetch_graphql_stack(pr, owner, name, host)
     if manager_status == MANAGER_CONFIRMED:
+        # Service-side linking does not register a local gh-stack manager. Preserve
+        # remote order/evidence, but never grant manager-only mutation authority.
+        chain["manager_status"] = MANAGER_ABSENT
+        chain["manager_source"] = "graphql-external"
         chain["default_branch"] = default_branch
         return chain
 
@@ -1399,7 +1377,7 @@ def _empty_trajectory():
 
 def _load_trajectory(state):
     """Load the trajectory, tolerating a partial or non-dict value from an older on-disk
-    state.json (persisted in /tmp across script versions) — backfill missing keys so a new
+    state.json (persisted in workspace-local .tmp across script versions) — backfill missing keys so a new
     field never KeyErrors an old state, and a null/garbage value never crashes."""
     tj = state.get("trajectory")
     if not isinstance(tj, dict):
@@ -3631,6 +3609,15 @@ def main():
     w.set_defaults(func=cmd_watch)
 
     args = p.parse_args()
+    workspace_root = subprocess.run(
+        ["jj", "workspace", "root"], cwd=os.path.abspath(os.getcwd()),
+        capture_output=True, text=True, check=True).stdout.strip()
+    local_tmp = os.path.join(workspace_root, ".tmp")
+    state_path = os.path.realpath(args.state_dir)
+    if (os.path.islink(local_tmp) or os.path.commonpath(
+            [os.path.realpath(local_tmp), state_path]) != os.path.realpath(local_tmp)):
+        p.error("--state-dir must be contained in this workspace's local .tmp directory")
+    args.state_dir = state_path
     if (args.cmd in ("snapshot", "watch")
             and args.invocation_budget_seconds is not None
             and args.invocation_budget_seconds <= 0):

@@ -6,9 +6,9 @@ Use fresh contexts that receive neither the coordinator's preferred answer nor s
 
 Name the independent authors **Baker A**, **Baker B**, and so on in dispatch labels and payloads. Use “bakers” for the workers in progress updates and “candidates” for their proposed solutions.
 
-Honor explicit candidate model choices or mixes, otherwise the caller's resolved model preference. Without a model preference, seek different model families across the bakers. Prefer native host access to serve the selected models, then try available authorized model CLIs for families the host cannot serve. If those routes are unavailable or fail, use fresh agents on the host's own model and disclose the fallback. An explicit restriction on models or providers still applies; do not silently substitute for a required model.
+Honor explicit candidate model choices or mixes and configuration's model choices and tiers as desired behavior, otherwise the caller's resolved model preference. Discover exact available IDs with `opencode.models`; use native `subagents` for fresh contexts and `shell` only for scoped evidence or lifecycle commands, not another harness's dispatcher. Without a model preference, seek different model families across the bakers when model selection is permitted. If the host requires an explicit user model request for overrides, omit the optional `model` argument and use suitable inherited-model agents; a configured tier alone does not authorize an override. Disclose unmet tier or diversity intent. An explicit restriction on models or providers still applies; do not silently substitute for a required model.
 
-Bake-off owns candidate dispatch. Use the host's actual capabilities and each available CLI's current help to establish supported model selection, a fresh context, read scope, output collection, and cancellation. Keep CLI calls direct and scoped; do not invoke the peer-job Python framework or build a new dispatch system for this task. Do not invent model IDs or flags, install tools, or change credentials. A failed route should lead to the next usable route within budget, not repeated setup or troubleshooting. Cancel any outstanding attempt before replacing it, and count actual candidate launches against the run's allowance.
+Bake-off owns candidate dispatch. Use the native tools' actual capabilities to establish a fresh context, read scope, output collection, and cancellation. Do not invoke the peer-job Python framework, an elevation adapter, or another harness's model CLI, or build a new dispatch system. Do not invent model IDs or flags, install tools, or change credentials. Verify effective nesting capacity from the runtime's resolved configuration and actual tool results; package-local configuration alone does not establish the consuming session's depth. Distinguish a depth/capacity error, permission denial, rejected model argument, and missing tool. Do not retry denied operations or evade depth limits. If no permitted fresh-context route remains, return incomplete; parent-coordinator handoff is allowed only if it preserves the independent-context contract. Cancel any outstanding attempt before replacing it, and count actual candidate launches against the run's allowance.
 
 Before external dispatch, briefly name the recipient and material it will inspect unless already disclosed. Stay within existing authority and read scope. CLI availability or authentication does not authorize a new recipient. Model diversity is a preference, not a completion requirement; fresh contexts remain required even when all bakers use the same model. Every baker is a read-only author returning its artifact to the coordinator, which owns persistence. Without enough fresh contexts through any permitted route, report incomplete rather than perform same-context roleplay.
 
@@ -21,8 +21,10 @@ Ask each candidate to return an approach sketch at the requested fidelity, with 
 Create private run scratch once:
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+# Set workspace_root to the target workspace's verified absolute root.
+# Run every JJ command with that absolute working directory.
+if [ -L "$workspace_root/.tmp" ]; then echo "unsafe scratch parent symlink" >&2; exit 1; fi;
+SCRATCH_ROOT="$workspace_root/.tmp/rocketclaw";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
@@ -32,6 +34,8 @@ SCRATCH_DIR=$(mktemp -d "$SCRATCH_ROOT/ce-bakeoff/run-XXXXXX") || exit 1;
 echo "$SCRATCH_DIR";
 ```
 
-Use separate candidate artifacts in this run directory, written by the session orchestrator from actual returns. Keep shared input separate from candidate outputs. When an elevation adapter creates a private handoff bundle, let it own that bundle; carry the same evidence into each candidate without exposing sibling results.
+Ensure `.tmp/` is ignored; reject a symlinked `.tmp` parent or a resolved scratch path outside the workspace. Keep failures local: never fall back to OS temporary storage. Resolve the root using `(cd "$absolute_target_root" && jj workspace root)`; for non-repository use, use the verified absolute project root instead. No isolated workspace is needed for these read-only authors. Use native JJ for repository inspection, always from the absolute workspace root, never the Git executable; see https://docs.jj-vcs.dev/latest/cli-reference/ . Repository-scoped GitHub calls use `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh ...)`.
+
+Use separate candidate artifacts in this run directory, written by the session orchestrator from actual returns. Keep shared input separate from candidate outputs. Carry the same evidence into each candidate without exposing sibling results; the coordinator owns any private native handoff bundle and preserves its evidence until consumed.
 
 Inspect actual completion receipts and returned artifacts before counting candidates. Record launch failures, dropouts, and model attribution as observed; missing model receipts stay unverified. Do not count a dispatch announcement or promised file as a completed candidate. Cancel or reap outstanding workers through the owning lifecycle before closing the run.

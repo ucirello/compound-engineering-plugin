@@ -22,6 +22,8 @@ Writing the file, checking confidence, and running or explicitly skipping `ce-do
 
 Ask one question at a time through the host's blocking question tool already in the current tool list. Match by capability; never probe a user-facing tool to discover it. If none is listed or a real question call errors, render numbered choices in chat; never silently skip a required question. If no feature description was supplied, ask what to plan and wait.
 
+Run all JJ operations from the target workspace's absolute root, not with repository-selection flags from another cwd. Use native JJ history and workspace operations, never the Git executable. Resolve scratch storage under that root's `.tmp/` (local `.tmp/` outside a repository), reject symlink/ownership ambiguity, and preserve evidence. Native dispatch throughout research, deepening, elevation, and document-review handoff follows the separate delegation, model-authorization, nesting, and truthful coverage rules in `references/research.md` and `references/reasoning-elevation.md`; they apply to callers too.
+
 ## Output Contract
 
 Decide which output contract applies at the start of scoping (Phase 0.6), before choosing depth and before the scoping synthesis. It applies only when no resume route (Phase 0.1) fired and the source check (Phase 0.2) found no upstream artifact. Ground it with bounded inline reads of what the request names, without dispatching a subagent. Select one:

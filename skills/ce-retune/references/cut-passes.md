@@ -32,18 +32,24 @@ Fan out by **unit** instead: one agent edits one skill directory and applies the
 
 State the forbidden set in the prompt as paths, not as a rule to infer. An agent told "do not touch shared files" will decide for itself what is shared.
 
-## Isolation: separate worktrees or disjoint paths in one tree
+## Isolation: separate JJ workspaces or disjoint paths in one tree
 
 Disjoint paths in one tree are enough when nothing an agent runs mutates state outside its own paths. That covers most cut passes: edits are text, the manifest is a partition, and a single tree keeps the diff readable and the commit trivial.
 
-Pay for a worktree (or equivalent per-agent checkout) when any of these is true:
+Pay for an isolated JJ workspace when any of these is true:
 
 - Agents run builds, formatters, generators, or anything that writes outside its unit, such as lockfiles, caches, generated output, or a repo-root config.
-- An agent needs to run the suite or the harness to check its own edit. Concurrent runs in one tree race on scratch and on git index state.
-- Agents commit, stage, or use branch operations. One git index shared by parallel agents corrupts staging.
+- An agent needs to run the suite or the harness to check its own edit. Concurrent runs in one workspace race on scratch and working-copy state.
+- Agents create changes or move bookmarks. Shared working-copy mutations collide even with disjoint edited paths.
 - A pass may need to be abandoned wholesale, and a clean discard is worth more than a shared diff.
 
 Otherwise the isolation cost is real: N checkouts to create, N results to merge, and merge conflicts reintroduced on exactly the files the manifest was designed to keep apart.
+
+Detect existing isolation first and reuse its verified identity unchanged, even if its name is undated or it is not colocated; never rename/recreate it to enforce new-workspace rules. Respect harness ownership and lifecycle. For new isolation, use `ce-worktree` and its supported harness-native colocated JJ capability where available. Capture the local creation date once; derive a meaningful kebab-case slug from the task, PR, or revision, normalizing caller names without double-prefixing. Persist `YYYYMMDD-<slug>` across retries, resumes, and midnight boundaries. Use that same identity for the workspace name and destination basename under the source workspace's absolute local `.tmp/` parent. Check registered names and filesystem destinations; resolve collisions with `-2`, `-3`, etc., never timestamps, PIDs, random IDs, or overwrites. Leave PR/source bookmarks unchanged. Unsupported harness naming or colocation is a compatibility blocker, not permission to bypass ownership or fall back to Git.
+
+Verify the exact base revision before creation. From the source's absolute root run `(cd "$workspace_root" && jj workspace add --colocate --name "$dated_name" --revision "$verified_base" "$absolute_owned_destination")`; from the created absolute root verify `(cd "$absolute_owned_destination" && jj git colocation status)` and registered name/path/base before adopting it through the harness's session-move mechanism. All JJ commands, including inspection and integration, run with the relevant absolute workspace root as cwd, not merely `jj -R`. Use repository-relative paths in file lists. See https://docs.jj-vcs.dev/latest/cli-reference/#jj-workspace . Keep run scratch and fallback/error output under workspace-local `.tmp/`.
+
+Retirement requires existing cleanup authorization, not merely completion. Stop all workers first; leave the target and move any active harness session to a surviving workspace. Verify the exact registration, absolute path, run ownership, and integration of the measured pass; preserve recovery/best/archive references and copy required evidence outside the target, then read it back. Inspect tracked changes, conflicts, and ignored/untracked files: JJ's removal snapshot does not protect ignored or untracked content. Never remove unrelated, ambiguous, still-referenced, or non-disposable content, and respect harness lifecycle authority. From a surviving absolute root use `(cd "$surviving_workspace_root" && jj workspace remove "$verified_workspace_name")`. Verify both deregistration and directory disappearance; warnings or successful exit alone are insufficient. On any failure retain remaining state and report the blocker, with no force deletion or Git fallback. Keep bookmark deletion separate. `jj workspace forget` is only for explicitly unregistering while preserving files, never a prelude to deleting them.
 
 ## The shared-asset trap
 
@@ -124,6 +130,6 @@ A failure that moves to a later phase is progress and names the next target. A f
 
 ## Ship (Phase 6)
 
-Commit each pass separately with its own message so the history says which change was made and why, and so release tooling can classify intent. Keep the measurement artifacts.
+Record each pass as a separate JJ change with its own dynamically composed description so the history says which change was made and why, and release tooling can classify intent. Read `message-guidance.md` before composing any pass description; include the problem class, rationale, and measured result without prescribing a fixed prefix or experiment-message template. From the target's absolute root use `jj describe -m "<message composed from the standards above>"` and finalize only the pass's owned paths, leaving unrelated work untouched. Keep the measurement artifacts.
 
 Then write the finding down where the next person will hit it: the mechanism, the before and after, the measured numbers, and the hypotheses that died. **Record the ones that died.** They are what stops the next attempt from re-running a dead end, and they are the part every write-up omits.

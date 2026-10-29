@@ -4,7 +4,7 @@ Read this file at the start of Phase 2 — after Phase 1 grounding and Phase 1.5
 
 ## Fleet
 
-Dispatch parallel ideation sub-agents per the model-tier fleet in `references/grounding.md`. Omit the `mode` parameter so the user's configured permission settings apply. The default fleet is **5 agents covering all six frames**:
+Dispatch parallel native ideation sub-agents per the model-tier fleet in `references/grounding.md`, subject to SKILL.md's separate delegation, model-selection and nesting-depth checks. Do not override the user's configured permission settings. The default fleet is **5 agents covering all six frames**:
 
 - **3 generation-tier agents**, one per evidence-driven frame (Pain and friction; Inversion, removal, or automation; Leverage and compounding). These frames live on evidence the agents read for themselves, so the mid-tier model performs well here.
 - **2 ceiling-tier agents** for the ceiling frames, where the strong model's reasoning is the product and must not be tiered down: one takes Cross-domain analogy; the other takes Assumption-breaking and reframing **plus** Constraint-flipping (cousins — both invert givens; one agent holds both as starting biases).

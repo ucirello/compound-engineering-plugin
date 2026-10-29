@@ -1,28 +1,25 @@
 # Committing and pushing
 
-If `references/stack-submit.md` already built and committed the stack layers before this step, skip the ordinary single-branch commit and push and continue to Step 4 (compose the PR title and body); `gh stack submit` in Step 5 (apply and report) pushes the stack.
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards.
 
-If you are on the default branch, creating the feature branch has to handle three things: a stale local `<base>`, unpushed commits on local `<base>`, and uncommitted changes that collide with the fresh remote base. Read `references/branch-creation.md` and follow its decision flow before continuing.
+Use `context.md`'s absolute workspace cwd and scoped GitHub environment. If `stack-submit.md` already committed layers, skip ordinary single-bookmark publication; Step 5 submits them. On the default bookmark follow `branch-creation.md` first.
 
-Scan changed files for naturally distinct concerns. If they clearly group into separate logical changes, create separate commits (2-3 max). Group at file level only — no `git add -p`. When ambiguous, one commit is fine.
+Scan for naturally distinct concerns: at most 2–3 logical changes, whole-file groups only; ambiguity permits one change. Inspect tracked/untracked changes, track only intended new paths with `jj file track <paths>`, and commit only explicitly reviewed owned paths. Honor `exclude:<paths>`: never move or commit them; preserve and report them. Do not broadly track or commit the workspace. Stop on conflicts.
 
-Stage and commit each group. **Avoid `git add -A` and `git add .`** — they sweep in `.env`, build artifacts, and generated files. **Honor `exclude:<paths>` when the invocation carries it.** The caller names files that must stay uncommitted, typically the user's own in-progress edits it could not separate from its work. Never stage or commit them, and say in the report that they were left out. When a plan Implementation Unit ID is already in hand for this commit (conversation, caller, or the files belong to one unit), append that unit's U-ID in parentheses — `(U3)` means unit 3. Do not hunt for a plan. Omit when the commit spans units, the unit is unclear, or no plan is in hand.
+Before composing each message, read and follow `commit-message-standards.md` in full. Include a known plan Implementation Unit ID as semantic context in the observed repository style; do not impose suffix syntax or hunt for plans. Omit unclear/multi-unit IDs.
 
-Add your commits on top of other people's commits on this branch; never rewrite theirs in a way that drops their author or trailers, such as squashing them into yours. When a commit you create carries someone else's work that will not otherwise land under their name (ported from their branch or PR, or applied from their patch), end its message with a `Co-authored-by: Name <email>` trailer for each person that work credits: its commit authors and anyone their `Co-authored-by` trailers name. Copy each identity exactly from those commits or the patch. Never guess an email: when none is recorded, name them in the message body instead.
-
-```bash
-git add file1 file2 file3 && git commit -m "$(cat <<'EOF'
-commit message here
-EOF
-)" -- file1 file2 file3
-```
-
-The trailing path list on `git commit` matters. A bare `git commit` takes the whole index, so anything already staged before this run (a caller's `exclude:` paths, or work the user staged and did not name) would end up in the commit. Naming the paths commits exactly the group and leaves other index entries alone.
-
-Then apply the **Project publishing gate**. Immediately before pushing, re-confirm you are on the intended feature branch with `git branch --show-current`. The branch gathered in Context is a hint, and Step 1 (resolve branch and PR state) may have created or switched branches since. Push the live `HEAD` so it reflects the current checkout, never a stale branch name:
+Add changes above others' commits without rewriting away authors or existing human trailers. For carried work that will not otherwise land under its author's name, preserve exact human credit in the body or required project convention; never invent emails. Do not add model/harness attribution or new Co-authored-by/Assisted-by message trailers. Preserve existing human trailers on commits you did not author.
 
 ```bash
-git push -u origin HEAD
+jj commit -m "<message composed from the standards above>" -- <owned-paths>
 ```
 
-If the working tree is clean and all commits are already pushed, this step is a no-op.
+Read back the full description and diff; verify excluded/unrelated work remains. Resolve the actual resulting head, not the new empty `@`. Set/create only the intended feature bookmark there with `jj bookmark set <head-bookmark> -r <verified-head>`.
+
+Apply the **Project publishing gate** to the exact outgoing state. Immediately before push verify target, repository, remote, tracking state, PR and authority:
+
+```bash
+jj git push --remote <verified-head-remote> --bookmark <head-bookmark>
+```
+
+For new remote bookmarks use `--allow-new` only when creation is authorized. Re-read remote bookmark and PR head and verify exact commit agreement after push. Clean state with all intended commits already published is a no-op. Never force a guessed target or discard unrelated work.

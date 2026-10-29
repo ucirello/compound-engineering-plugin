@@ -7,7 +7,7 @@ This reference owns evidence collection after the app launches.
 Derive the key screens and flows from the user's request and the changed iOS surface. For each one:
 
 - Navigate through the running app and record what was exercised.
-- Capture a descriptively named screenshot of the resulting state.
+- Capture a descriptively named screenshot of the resulting state in the workspace-local `.tmp/` evidence directory established during setup; save exported logs and other run-owned temporary evidence there too.
 - Check that expected content and controls render without visible error or broken layout.
 - Read the captured simulator logs for crashes, exceptions, error-level messages, and failed network requests attributable to the flow.
 

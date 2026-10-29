@@ -1,5 +1,9 @@
 # Completion reports
 
+## Delegated Full handoff
+
+Include the source-session ID, resulting doc path, truthful completed/degraded review coverage, and interactive-only followups not applied (discoverability instruction-file edit and Compound Pack destination). The parent relays this report and path, then offers those followups with normal consent; it does not run a second Full pass or re-edit the doc. This handoff is the exception to the ordinary interactive no-menu ending below. For a context-pressure Lightweight fallback report the actual unavailable-tool, permission, or nesting-depth reason and recommend retry from the same source session once delegation is available.
+
 ## Success Output
 
 **User-runnable refresh rendering.** The reports below print a `ce-compound-refresh` invocation for the user to copy. Default to `/ce-compound-refresh <scope>`; use `$ce-compound-refresh <scope>` only when the active host is Codex or explicitly documents dollar-prefixed skill invocation. Render only the invocation as inline code and output one form only.

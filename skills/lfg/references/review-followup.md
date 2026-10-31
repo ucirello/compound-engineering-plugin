@@ -28,6 +28,8 @@ Pass the plan file path from step 1 so `ce-code-review` can verify requirements 
 
 Capture parsed JSON (`status`, `actionable_findings`, `findings`, `artifact_path`, `run_id`) or the markdown Actionable Findings section. If `status` is `failed`, stop and report `reason`.
 
+Apply `stage-routing.md`'s native delegation/model/depth distinctions to this reviewer call. Explicit skill-requested reviewers proceed when the host permits user-or-skill delegation; do not demand another approval. Preserve the review's required independence and stop on incomplete mandatory coverage, even if a partial report contains no findings.
+
 ## Step 5 — apply and persist review fixes
 
 ### What to apply
@@ -53,7 +55,7 @@ Do not treat `autofix_class` as permission to auto-apply.
 1. Filter `actionable_findings` (or markdown Actionable Findings) with the bar above.
 2. Apply eligible fixes in the working tree in severity order (`#` stable from the review).
 3. Run targeted tests when `requires_verification: true` on any applied finding.
-4. If `git status --short` shows changes, stage only review-driven files and commit `fix(review): apply review findings`. Then push before step 6 **when a remote is configured** (per LFG's shipping precondition) and, on the defect route, when everything the push would publish is work the user offered (`references/debug-return.md`). To push: if an upstream exists, run `git push`. If no upstream exists but a remote is configured (common on a fresh feature branch), pick a writable remote at run time: prefer `origin` when present, otherwise run `git remote` and choose the first configured remote. Then run `git push --set-upstream <remote> HEAD`. If there is no remote at all, do not push; the local commit suffices. If no eligible fixes were applied, say so explicitly and skip the commit.
+4. From the verified absolute target workspace root, inspect `jj status` and `jj diff`. If eligible fixes were applied, read `message-standards.md`, compose a message describing those review fixes, and commit only their explicit owned paths with `jj commit -m "<message composed from the standards above>" -- <review-driven-paths>`. Preserve unrelated working-copy edits; never include them just to make the workspace clean. Then push before step 6 **when a remote is configured** (per LFG's shipping precondition) and, on the defect route, when everything the push would publish is work the user offered (`references/debug-return.md`). Resolve the verified publication bookmark and its tracked remote; move only that authorized bookmark to the reviewed commit. Push with `jj git push --remote <remote> --bookmark <publication-bookmark>`; for a new remote bookmark use `--allow-new`. If no tracked remote exists, prefer writable `origin`, otherwise choose the first configured writable remote from `jj git remote list`. Never guess a bookmark or publish unrelated ancestry. If there is no remote at all, do not push; the local commit suffices. If no eligible fixes were applied, say so explicitly and skip the commit.
 
 ## Step 6 — residual handoff
 

@@ -27,6 +27,8 @@ Also stop with the missing prerequisite when Xcode, its command-line tools, a va
 3. Build the simulator app with the selected project/workspace and scheme. On failure, report the relevant build errors and stop; do not install or launch a missing artifact.
 4. From the successful build result, retain the app path and bundle identifier. Install the app, launch it, and start simulator log capture for that bundle.
 
+Store run-owned temporary build output, logs, screenshots, and other evidence under the target workspace's absolute `.tmp/` directory, not OS temporary directories or global caches. Resolve the root with `jj workspace root` from the target workspace's absolute root; outside a JJ repository, use the project's local `.tmp/`. Configure available output-path options accordingly. If an adapter cannot honor the local storage requirement, report that limitation as a setup blocker rather than silently using global temporary storage. Do not relocate or delete existing user-owned build artifacts or caches.
+
 Any failure before the app is visibly launched with log capture running is a setup blocker: preserve its evidence, report it, and stop later stages.
 
 At handoff, retain the project/workspace, scheme, simulator identity, app identity, and log-capture handle needed by `test-and-report.md`.

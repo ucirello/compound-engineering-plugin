@@ -8,11 +8,10 @@ Before generating ideas, gather grounding. The dispatch set depends on the mode 
 
 **Surprise-me grounding depth.** In surprise-me mode, grounding goes deeper than specified mode — apply the 0.2 table's `1 grounding` row, and pass issue themes as first-class input rather than a footnote when issue intelligence runs. Specified mode keeps the shallower scan: the user's named subject anchors what is relevant.
 
-**Pre-resolve the scratch directory.** Generate a `<run-id>` once (8 hex chars) and reuse it for the web-research cache and the Phase 2/4 checkpoints so they share one per-run directory. Scratch lives beneath the effective user's private CE root — `/tmp/compound-engineering-<uid>` when it is usable, else the validated `$TMPDIR` fallback the block below selects — never `.context/`. Run this to validate the owner-private root, create the run directory, and capture its absolute path:
+**Pre-resolve the scratch directory.** Generate a `<run-id>` once (8 hex chars) and reuse it for the web-research cache and the Phase 2/4 checkpoints so they share one per-run directory. Set `workspace_root` to the verified absolute JJ workspace root, or the absolute current directory outside a JJ workspace. Scratch stays under its local `.tmp/rocketclaw/`, never `.context/` or OS-global storage. Ensure `.tmp/` is ignored for repository runs. Run this to validate the owner-private root, create the run directory, and capture its absolute path:
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+SCRATCH_ROOT="$workspace_root/.tmp/rocketclaw/$(id -u)";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
@@ -117,6 +116,8 @@ Consolidate all dispatched results into a short grounding summary using these se
 
 ## Model tiers (applies to every dispatch in this skill)
 
+Use OpenCode-native subagents for these explicitly requested parallel agents and `opencode.models` to resolve permitted configured model choices and tiers; use shell only for mechanical work, never another harness dispatcher. Under a user-or-skill delegation policy this skill's explicit requests authorize delegation without a second approval. Respect unconditional prohibitions and actual denials. Model permission is separate: if overrides require an explicit user model request, omit `model` even when configuration names a tier or route, and inherit when suitable. Preserve configured intent and disclose any unmet fixed-route or different-model requirement; separate inherited-model agents do not establish cross-model independence. Classify actual launch errors as permission, model-argument, missing-tool, or depth/capacity failures. Never bypass a denial or nesting limit through shell. Apply each phase's bounded recovery/degraded path and report incomplete coverage truthfully.
+
 Sub-agent dispatch is tiered by task shape, never hardcoded to a model name:
 
 - **Extraction tier** — retrieval and quoting work, such as the quick context scan and research distillers. Use the platform's cheapest capable model when the harness exposes a known override; escalate to the generation tier when the repo is large or the stack obscure.
@@ -125,7 +126,7 @@ Sub-agent dispatch is tiered by task shape, never hardcoded to a model name:
 
 If model names are unknown, omit the override and inherit rather than guessing.
 
-If the user's or project's active instructions or the live prompt name a model for this subagent, use that model instead of the default tier above. They can name it by the subagent's tier, by its prompt-asset name, or for the subagents being dispatched. Without such an instruction, a model configured for this subagent's role takes precedence over the default tier.
+When model overrides are permitted, if the user's or project's active instructions or the live prompt name a model for this subagent, use that model instead of the default tier above. They can name it by the subagent's tier, by its prompt-asset name, or for the subagents being dispatched. Without such an instruction, a model configured for this subagent's role takes precedence over the default tier. If overrides are forbidden, inherit and disclose unmet tier or route requirements instead.
 
 **Degradation rule.** When the platform's subagent primitive does not support per-agent model selection, dispatch everything on the inherited model and keep the read budgets and dossier caps — cost control then comes from structure, not tiering.
 

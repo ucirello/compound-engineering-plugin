@@ -15,8 +15,10 @@ Required read before writing a handoff.
 When the user did not choose another destination, resolve the managed root with this shell block:
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+LOCAL_ROOT="$(pwd -P)";
+WORKSPACE_ROOT="$(cd "$LOCAL_ROOT" && jj workspace root 2>/dev/null)" || WORKSPACE_ROOT="$LOCAL_ROOT";
+if [ -L "$WORKSPACE_ROOT/.tmp" ]; then echo "unsafe local temporary directory" >&2; exit 1; fi;
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
@@ -27,7 +29,7 @@ HANDOFF_DIR="$SCRATCH_ROOT/ce-handoff/<repo-namespace>";
 
 Write a Markdown snapshot at `$HANDOFF_DIR/<topic>.md`.
 
-Use a readable topic slug as the filename. When Git context exists, use a sanitized repository name plus a stable root-commit prefix as the repository namespace; otherwise use `general`. Worktrees from the same repository share the namespace and remain distinguishable through frontmatter. Do not put a timestamp or unique ID in the path by default; `created_at` carries chronology for discovery. Reserve the final candidate filename atomically and exclusively; on collision, retry with the smallest available numeric suffix rather than overwrite a handoff. Never check availability and then write. Keep the directory and file user-private where the platform supports permissions.
+Use a readable topic slug as the filename. When JJ context exists, use a sanitized repository name plus a stable root-commit prefix as the repository namespace; otherwise use `general`. Obtain repository facts with native JJ commands from the verified absolute workspace root, for example `(cd "$WORKSPACE_ROOT" && jj log --no-graph -r 'roots(::@ ~ root())' -T 'commit_id ++ "\n"')`; sort multiple real root IDs and use the first, and omit the prefix when none exists. Capture bookmarks, the working-copy commit ID, and the workspace path using JJ rather than invoking Git. Workspaces from the same repository share the namespace, but each workspace's local store is separate; frontmatter distinguishes captures. Do not put a timestamp or unique ID in the path by default; `created_at` carries chronology for discovery. Reserve the final candidate filename atomically and exclusively; on collision, retry with the smallest available numeric suffix rather than overwrite a handoff. Never check availability and then write. Keep the directory and file user-private where the platform supports permissions. Reject symlink or escaping intermediate directories before writing beneath the managed root.
 
 ## Frontmatter contract
 
@@ -44,9 +46,9 @@ cwd: "/absolute/capture/path"
 resume_focus: "Optional next-session focus"
 repository: "Sanitized repository identifier without embedded credentials"
 repo_root_sha: "First root commit when available"
-branch: "Captured branch when available"
-head: "Captured HEAD when available"
-worktree_path: "Captured worktree when relevant"
+branch: "Captured JJ bookmark when available"
+head: "Captured JJ working-copy commit ID when available"
+worktree_path: "Captured JJ workspace path when relevant"
 ---
 ```
 
@@ -77,7 +79,7 @@ Keep the handoff pointer-first. For each required reference, name what specifica
 
 ## Report
 
-Treat creation as complete only after confirming the destination contains the handoff. Give a succinct, context-specific summary of what the generated handoff captures so the user can verify its substance without opening it; do not impose a fixed summary template. Then report the final path or URL, applicable retention or access limits, and any warnings together. Managed `/tmp` storage is OS-managed and not permanent. Its automatic discovery assumes the receiving session can see the same host filesystem; otherwise tell the user to transfer or publish the handoff to a receiver-visible location and resume from that explicit source.
+Treat creation as complete only after confirming the destination contains the handoff. Give a succinct, context-specific summary of what the generated handoff captures so the user can verify its substance without opening it; do not impose a fixed summary template. Then report the final path or URL, applicable retention or access limits, and any warnings together. Managed workspace-local `.tmp` storage is temporary and not permanent; removing its workspace can remove the handoff. Its automatic discovery assumes the receiving session can see the same workspace filesystem; otherwise tell the user to transfer or publish the handoff to a receiver-visible location and resume from that explicit source.
 
 End the creation response with one fenced, copyable command using the final path or URL and the rendering rule in the body:
 

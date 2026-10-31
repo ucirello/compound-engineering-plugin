@@ -2,12 +2,14 @@
 
 Which orchestration shape fits each phase, and what breaks when you pick the wrong one.
 
-Two primitives are assumed, both platform-neutral:
+Use native OpenCode subagents for independent contexts and shell for deterministic local work, never another harness's dispatcher. This skill explicitly requests delegation under a host rule permitting user OR loaded-skill requests; no second request is needed. Respect unconditional prohibitions and actual denials. Model permission is separate: resolve permitted configured choices/tiers with `opencode.models`, but omit the optional model argument when only an explicit user model request permits overrides. Suitable inherited models can provide separate proposal/defense contexts, not cross-model independence. Report an unmet required tier or independent-model pass as incomplete coverage.
+
+Two primitives are assumed:
 
 - **A dispatch primitive** that launches an independent agent with its own context window and returns a result to the orchestrator (in one host it is a subagent-spawning tool; in another a job runner). Only two properties matter: fresh context per agent, and a result the orchestrator can read.
 - **A concurrency cap** the host enforces on how many agents run at once (often around 10). Dispatches above the cap queue rather than fail, so a 31-unit fan-out is three waves, not one. Plan the wave count; do not assume flat cost.
 
-Classify a rejected dispatch by whether an agent launched. Correct a pre-launch argument rejection once, and leave capacity-limited work queued. Any other launch failure follows the phase's own failure direction. In the corpus audit, the proposal and defense contexts must be independent for the audit to mean anything, so a launch failure there is a blocker: stop the audit rather than running the missing side inline.
+Classify dispatch failures from the actual error: missing tool, permission denial, model-argument rejection, or nesting-depth/capacity exhaustion. Correct an allowed pre-launch argument error once; never retry denials or evade depth through shell/another harness. Queue capacity-limited work only if supported by the host. Retain session/result receipts and missing-coverage records. Any other launch failure follows the phase's own failure direction. In the corpus audit, the proposal and defense contexts must be independent for the audit to mean anything, so a launch failure there is a blocker: stop the audit rather than running the missing side inline.
 
 ## The shapes
 

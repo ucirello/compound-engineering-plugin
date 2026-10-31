@@ -6,6 +6,12 @@
 
 set -e
 
+workspace_root=$(jj workspace root)
+cd "$workspace_root"
+GIT_DIR=$(jj git root)
+export GIT_DIR
+mkdir -p "$workspace_root/.tmp"
+
 if [ $# -lt 2 ]; then
     echo "Usage: get-thread-for-comment PR_NUMBER COMMENT_NODE_ID [OWNER/REPO]"
     echo "Example: get-thread-for-comment 378 PRRC_kwDOP_gZVc6ySv89"
@@ -37,7 +43,7 @@ fi
 # more than one page of threads can still resolve a comment to its parent
 # thread. Per-thread comments are still capped at 100 -- threads exceeding
 # that depth are not paginated here.
-tmp_threads=$(mktemp "${TMPDIR:-/tmp}/ce-pr-threads.XXXXXX")
+tmp_threads=$(mktemp "$workspace_root/.tmp/pr-threads.XXXXXX")
 trap 'rm -f "$tmp_threads"' EXIT
 
 gh api graphql --paginate --slurp \

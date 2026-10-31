@@ -51,6 +51,8 @@ Detection is reasoning-based. Do not maintain an enumerated checklist of files t
 
 ## Probe timing and caching
 
+For every repository-scoped `gh` probe or issue operation below, run from the verified absolute target workspace root and first `export GIT_DIR=$(jj git root)` in that shell sequence. Do not inherit another workspace's Git environment or invoke the Git executable directly.
+
 Availability probes run **at most once per session** and **only when Defer execution is imminent**. Never speculatively at review start, never per-Defer, never per-walk-through-finding. The cached tuple is reused for every Defer action in the same run.
 
 Typical probe sequence:

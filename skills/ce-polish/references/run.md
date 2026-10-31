@@ -4,9 +4,9 @@ This reference owns checkout safety, server startup, reachability, and browser h
 
 ## Resolve the workspace
 
-If the user named a PR or branch, first locate whether its branch is already checked out in a worktree. Enter that existing worktree when the harness can; if it cannot, report the blocker and stop. Only use the harness's checkout capability in the current workspace when no other worktree owns the target. With no argument, stay in the current checkout.
+Resolve the absolute JJ workspace root first. Run every JJ command from its target workspace's absolute root. If the user named a PR or bookmark, verify the exact target revision and inspect `jj workspace list` for an existing workspace owning that target. Enter and adopt that existing workspace through the harness's supported session capability; preserve its existing name and isolation unchanged. If the harness cannot adopt it, report the blocker and stop. Only use the harness's supported JJ checkout capability in the current workspace when no other workspace owns the target and unrelated changes are preserved. With no argument, stay in the current workspace. For repository-scoped PR queries, run `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh pr view <PR> --json headRefName,headRefOid,headRepository)` and verify the repository and head before selecting it. Never invoke Git directly.
 
-Confirm the resulting branch is neither the repository's default branch nor detached. Report and stop when a safe feature-branch workspace cannot be reached; do not create another worktree behind the harness or move uncommitted user changes.
+Confirm the resulting change belongs to the intended non-default feature bookmark; JJ's normal working-copy change need not itself carry a bookmark. Report and stop when a safe feature workspace cannot be reached; do not create another workspace behind the harness or move unrelated user changes. This skill does not create or remove workspaces. Ensure local `.tmp/` is ignored in `.gitignore` before writing run artifacts.
 
 ## Resolve the start command
 
@@ -48,7 +48,7 @@ Startup may proceed only when the tuple has a usable command, working directory,
 
 ## Start and hand off
 
-Inspect the chosen port and select exactly one intended server instance before handoff. Reuse a process already serving that port only when evidence identifies it as the intended project server. Only when no intended instance is selected may the resolved command be launched in the background with the project's working directory and environment; that process becomes the selected instance. Keep its process or session handle, and write its output under a directory created with `mktemp -d "${TMPDIR:-/tmp}/ce-polish-XXXXXX"`.
+Inspect the chosen port and select exactly one intended server instance before handoff. Reuse a process already serving that port only when evidence identifies it as the intended project server. Only when no intended instance is selected may the resolved command be launched in the background with the project's working directory and environment; that process becomes the selected instance. Keep its process or session handle, and write its output under a directory created with `mkdir -p "$workspace_root/.tmp" && mktemp -d "$workspace_root/.tmp/ce-polish-XXXXXX"`, where `workspace_root` is the verified absolute JJ workspace root. Reject symlinked or unowned scratch parents; report failure without an OS-temporary fallback.
 
 An occupied port that cannot be attributed to the intended project server remains an unresolved collision. Ask the user whether to stop that process, choose another port, or stop this run; never kill it or launch past it.
 

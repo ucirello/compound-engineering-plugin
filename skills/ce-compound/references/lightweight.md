@@ -46,7 +46,8 @@ a one-line mention helps agents find the shared vocabulary.
 
 Note: This was created in lightweight mode. For richer documentation
 (cross-references, detailed prevention strategies, specialized reviews,
-semantic grounding validation), re-run <rendered invocation> in a fresh session.
+semantic grounding validation), re-run <rendered invocation> from this same
+session once native Full delegation is available.
 ```
 
 **No subagents are launched. No parallel tasks. The solution doc is the one deliverable** (Phase 2.4's update-only vocabulary capture may also change an existing `CONCEPTS.md`).

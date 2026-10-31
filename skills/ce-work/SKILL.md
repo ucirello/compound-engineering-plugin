@@ -45,7 +45,11 @@ When triage selects Return-to-Caller Mode, read `references/return-to-caller.md`
 
 Before the first implementation write, including on the Trivial route, read `references/implementation-loop.md`. It decides how evidence is chosen, verification, when to stop a unit, incremental commits, following existing patterns, continuous testing, where simplification stops, UI work, progress tracking, and settled decisions.
 
-The commit rule from this file stays in force throughout: every implementation commit names only that unit's owned files. A bare `git commit` can absorb the user's pre-existing index, so it is forbidden.
+The commit rule from this file stays in force throughout: every implementation change contains only that unit's owned files. Use path-limited native JJ operations; never absorb pre-existing user work.
+
+All JJ operations run with cwd set to the target workspace's verified absolute root, never repository selection alone. Repository-scoped GitHub CLI calls use `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh ...)`; export `GIT_DIR` there for sequences. All temporary files and error fallbacks stay under that workspace's `.tmp/`, which must be ignored. Never directly invoke Git, including read-only inspection or transport. Isolated creation, native session adoption, dated caller naming and authorized cleanup follow `references/cross-model-execution.md` for every execution route that creates isolation. Existing isolation is reused unchanged.
+
+This skill explicitly requests native subagents where its execution strategy calls for workers/reviewers. Respect actual higher-priority prohibition; under a user-or-skill rule no second user request is needed. Model override authority is separate: omit the optional model argument when only explicit user model requests permit it, use a suitable inherited model, and disclose unmet route or independence requirements. Distinguish actual depth/capacity, missing-tool, model-selection and permission failures. Never evade them through shell harnesses or label incomplete required independent review complete.
 
 ### Phase 3-4: Quality Check and Finishing Work
 

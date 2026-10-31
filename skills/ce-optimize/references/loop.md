@@ -107,25 +107,26 @@ The Phase 3 blocks below each set `SKILL_DIR` inline as well (the loaded `ce-opt
 
 **One dispatch recipe, per experiment.** The backend changes where the experiment runs and how its result comes back, not what the worker is told.
 
-1. **Isolate.** For `worktree` and `codex`, create the experiment worktree on the optimization branch:
+1. **Isolate.** Read and execute `references/workspaces.md` in full for `worktree` and the legacy `codex` selection, using the verified optimization bookmark base:
    ```bash
    SKILL_DIR="<absolute path of the directory containing this SKILL.md>";
-   WORKTREE_PATH=$(bash "$SKILL_DIR/scripts/experiment-worktree.sh" create "<spec_name>" <exp_index> "optimize/<spec_name>" <shared_files...>)  # creates optimize-exp/<spec_name>/exp-<NNN>
+   (cd "$workspace_root" && jj workspace add --colocate --name "$persisted_dated_name" --revision "$verified_base" "$absolute_owned_destination")
+   (cd "$absolute_owned_destination" && jj git colocation status)
    ```
-   Apply port parameterization if configured (set env vars for the measurement script). For `remote`, isolation is the worker's own checkout: record `base_sha` (`git rev-parse optimize/<spec_name>`) and make sure that commit is pushed to the remote the worker will fetch from.
+   Apply port parameterization if configured (set env vars for the measurement script). For `remote`, isolation is the worker's own checkout: resolve and record the exact optimization bookmark's full commit ID as `base_sha` with JJ from the target absolute root and push that exact authorized bookmark using `jj git push` to the remote the worker will fetch from.
 2. **Brief.** Fill the experiment prompt template (`references/experiment-prompt-template.md`): iteration number and spec name; hypothesis description and category; current best and baseline metrics; mutable and immutable scope; constraints and approved dependencies; the rolling window of the last 10 experiments as concise summaries; the source digest; and the current best's relevant `worst_cases`, from its kept entry or the baseline before any keep. For `remote`, append the template's measure-and-report delta with `base_sha`, the result ref `optimize-exp/<spec_name>/exp-<NNN>`, the measurement command, and the paired sample count the current ladder step needs.
 3. **Dispatch** by `execution.backend`, then record the return shape.
 
 | Backend | Dispatch | What returns |
 |---|---|---|
 | `worktree` | A subagent with the filled prompt, working in the experiment worktree | The subagent's completion, with its edits in the worktree |
-| `codex` | Write the filled prompt to a temp file and run `cat /tmp/optimize-exp-XXXXX.txt \| codex exec --skip-git-repo-check - 2>&1`, with the security posture from `execution.codex_security` (ask once per session when unset) | The process exit, with its edits in the worktree |
+| `codex` | Preserve configured tier and security intent (ask once when unset), execute the filled prompt through native OpenCode subagents per `references/workspaces.md` | Native result or persisted receipt, with edits in the isolated workspace |
 | `remote` | The detached-worker dispatch the body's Execution Surface names, with the filled prompt; when no such capability is in the tool list, use the `worktree` row for the whole run and log the fallback | A receipt naming the launch. The result is the pushed result ref (`result.yaml` at its root) or, when the host delivers results as a store file or terminal message, that file or message |
 
-**Codex delegation condition.** Delegate to `codex exec` only when this session is not itself running inside a Codex sandbox and `.git` is writable; otherwise use the `worktree` row for that experiment and log the fallback. A set sandbox marker in your environment is proof you are inside one; an unset marker proves nothing on its own, which is why the writable-`.git` check stays in the test:
+**Delegation condition.** Apply the actual delegation, model-selection, depth and isolation checks in `references/workspaces.md`; do not use another harness to evade restrictions. If the configured route is unavailable, use the permitted native `worktree` route and record the unmet route and fallback. Required unavailable independence remains incomplete.
 ```bash
-# any true branch means: do not delegate this experiment to codex
-test -n "${CODEX_SANDBOX:-}" || test -n "${CODEX_SESSION_ID:-}" || test ! -w .git
+# Native permission, depth and ownership checks are required.
+# Verify native capability and workspace ownership before dispatch.
 ```
 
 **Return shape.** A dispatch returns either a **result** (the work is done and its edits are where the table says) or a **receipt** (a handle for work that will finish after this call returns). A result goes straight to 3.3. A receipt is a pending wait: record it in `run_state.pending_waits` as `references/persistence.md` specifies, including the observable that will carry the result and the action to take (collect it through 3.3), and verify the write before dispatching the next experiment. Collect a receipt's result when that observable arrives, never by polling in a foreground loop.
@@ -206,8 +207,8 @@ After all experiments in the batch have been measured:
    - Commit the experiment branch first so the winning diff exists as a real commit before any merge or cherry-pick (a `remote` winner is already a commit at `head_sha`; merge `head_sha`, not the result ref's tip, which only adds `result.yaml`)
    - Include only mutable-scope changes in that commit; if no eligible diff remains, treat the experiment as non-improving and revert it
    - Merge the committed experiment branch into the optimization branch
-   - Use the message `optimize(<spec-name>): <hypothesis description>` for the experiment commit
-   - After the merge succeeds, clean up the winner's experiment worktree and branch; the integrated commit on the optimization branch is the durable artifact
+    - Follow `references/messages.md` in full before composing the experiment description; include the hypothesis and owned mutable scope, without imposing syntax
+    - After integration succeeds, apply `references/workspaces.md` retirement safeguards; preserve best/archive/recovery references and evidence. The integrated change is the durable artifact
    - This is now the new baseline for subsequent batches
 
 5. **Check file-disjoint runners-up** (up to `max_runner_up_merges_per_batch`):

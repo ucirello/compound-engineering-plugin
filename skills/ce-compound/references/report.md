@@ -1,5 +1,9 @@
 # Completion reports
 
+## Delegated Full handoff
+
+A context-pressure delegated Full run includes its source session ID, final doc path (or skipped reason), evidence/export failures, incomplete review coverage, and interactive-only actions not applied: discoverability instruction-file edit and eligible Compound Pack destination. Non-interactive mode does not apply those actions or ask consent. The interactive parent relays this report and path, then offers only those actions with normal consent; it never runs a second Full pass or re-edits the learning. A Lightweight fallback names the actual missing-tool, permission, or depth/capacity blocker and recommends retrying from the same source session once delegation is available.
+
 ## Success Output
 
 **User-runnable refresh rendering.** The reports below print a `ce-compound-refresh` invocation for the user to copy. Default to `/ce-compound-refresh <scope>`; use `$ce-compound-refresh <scope>` only when the active host is Codex or explicitly documents dollar-prefixed skill invocation. Render only the invocation as inline code and output one form only.

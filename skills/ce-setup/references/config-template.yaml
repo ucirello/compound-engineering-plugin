@@ -1,17 +1,23 @@
-# Compound Engineering -- repo config
-# Copy to .compound-engineering/config.yaml in your project root (team defaults).
-# Optional override: .compound-engineering/config.local.yaml, same keys.
+# RocketClaw -- repo config
+# Installation prerequisite (not a repo key): merge experimental.subagent_depth
+# >= 3 into the existing user ~/.config/opencode/opencode.json(c), locating its
+# actual directory with opencode debug paths / opencode debug paths config.
+# Preserve higher integers, unrelated settings and experimental siblings; create
+# no competing file. Plugin/package-local config alone is insufficient, and
+# higher-precedence config must not lower effective depth below 3.
+# Copy to .rocketclaw/config.yaml in your project root (team defaults).
+# Optional override: .rocketclaw/config.local.yaml, same keys.
 # Ordinary keys: local wins when set, then this file, then the skill default.
 # docs_root is repo layout -- set it only here; local docs_root is ignored.
 # All settings are optional. Invalid ordinary values continue to the next layer.
 # docs_root fails closed on an unusable value.
 
 # --- Artifact root ---
-# Relocate every CE-written artifact folder (solutions, plans, ideation,
+# Relocate every artifact folder (solutions, plans, ideation,
 # explainers, pulse-reports, dogfood-reports,
 # feedback-sweep, personas) under one repo-relative root. Unset -> `docs`,
-# byte-identical to today. A configured root becomes the sole location CE reads
-# and writes; CE never falls back to reading `docs/`.
+# byte-identical to today. A configured root becomes the sole location skills read
+# and write; they never fall back to reading `docs/`.
 #
 # Set this only in this tracked file so every clone and worktree share one
 # artifact tree. A docs_root in config.local.yaml is ignored.
@@ -19,10 +25,10 @@
 # The value must be a repo-relative directory whose real (symlink-resolved) path
 # stays inside the repo, is not the repo root itself, and is not under `.git/`.
 # Unlike every other setting here, an unusable value does NOT fall through to the
-# default -- CE stops with an error so a typo can't silently write artifacts into
+# default -- stop with an error so a typo can't silently write artifacts into
 # the location you configured away from. `/ce-setup` reports the resolved root.
 
-# docs_root: .compound-engineering/artifacts   # repo-relative dir (default: docs)
+# docs_root: .rocketclaw/artifacts   # repo-relative dir (default: docs)
 
 # --- Product pulse ---
 # Settings written by /ce-product-pulse first-run interview. Re-run the skill with
@@ -65,11 +71,12 @@
 # model. The value is a model alias (e.g. `fable`, `opus`). You can also name a
 # model in a prompt for a one-off, which overrides these keys.
 #
-# Cross-harness: setting a key means every harness you run these skills in will
-# attempt that model. The host serves it natively where it can; otherwise the
-# Claude CLI is invoked when installed and authenticated; otherwise the step runs
-# on your session model and the run says so. Invalid/commented/missing -> no
-# elevation.
+# Resolve configured model intent using opencode.models and native subagents.
+# Never dispatch through another harness CLI. Respect delegation permission,
+# model-override permission and runtime depth separately (see ce-setup).
+# If overrides are user-only, omit the model argument and disclose unmet intent.
+# A required independent route unavailable remains incomplete; same-model passes
+# are not cross-model independence. Invalid/commented/missing -> no elevation.
 
 # plan_model: fable              # model alias for plan authoring; candidate preference when a Bake-off runs (no default)
 # brainstorm_model: fable        # model alias for approach generation; candidate preference when a Bake-off runs (no default)
@@ -140,8 +147,10 @@
 # task/session/project instructions and LFG's provenance-bearing binding may
 # override or narrow these defaults. `off` disables only this standing preference.
 # `prefer` tries candidates in order, then falls back natively with disclosure.
-# `require` keeps the requested external identity fixed while viable, then also
-# falls back natively with disclosure if the route is unavailable. Harnesses:
+# `require` keeps the requested model identity fixed while viable, then also
+# falls back natively with disclosure if the route is unavailable. Harness labels
+# below retain provider/model intent, executed only through native OpenCode.
+# Required cross-model independence remains incomplete if unavailable. Labels:
 # codex | claude | grok | antigravity | cursor | opencode. Omit model to use that harness's configured
 # default. Composer is a model
 # family through Cursor: { harness: cursor, model: composer }. Do not put CLI flags
@@ -184,7 +193,7 @@
 #   - { type: github-issues, id: gh-issues, target: owner/repo, ack_action: "feedback:ack", closeout_action: "feedback:resolved", sensitive: false, approved: true }
 
 # Sweep-owned settings.
-# sweep_state_path: docs/feedback-sweep/state.yml   # committed (multi-agent) or /tmp path (solo)
+# sweep_state_path: docs/feedback-sweep/state.yml   # committed (multi-agent) or local .tmp/ path (solo)
 # sweep_ack_cap: 25                                 # max acks per source per run before the circuit breaker
 # sweep_lease_ttl_minutes: 60                       # single-writer lease staleness threshold
 # sweep_shared_branch: false                        # true: push-gated lease for shared-docs-branch topology

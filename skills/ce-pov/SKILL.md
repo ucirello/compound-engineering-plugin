@@ -25,12 +25,12 @@ Identify the question from the request and conversation, then look up facts you 
 
 ## Artifact Root
 
-Resolve `<root>` the first time you compose a `<root>/` path; a read of `<root>/solutions/` counts as composing one. Pass the resolved path to scouts, never the config. A non-git project has no `<root>`, so its prior-decision scan uses local ADRs and design docs instead.
+Resolve `<root>` the first time you compose a `<root>/` path; a read of `<root>/solutions/` counts as composing one. Pass the resolved path to scouts, never the config. A non-JJ project has no `<root>`, so its prior-decision scan uses local ADRs and design docs instead.
 
 <!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only. Resolve `<repo-root>` with `jj workspace root` from the target workspace's absolute working directory. Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
 - **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
@@ -61,4 +61,4 @@ Only then deliver the position with the content required by `references/method.m
 
 ### Phase 4: Deliver and return
 
-The judgment is the deliverable; implementation is not. A calling workflow receives the result and control back. For a requested write-up or continuation, read `references/followup.md`; it defines artifact delivery and what authority a downstream action needs. Do not require a next-step choice to complete a POV.
+The judgment is the deliverable; implementation is not. A calling workflow receives the result and control back. A standalone downstream handoff requires all four conditions: the original request explicitly authorized the named action, the result is non-stalemated, the action stays in inherited scope, and it is non-destructive and otherwise authorized. For a requested write-up or continuation, read `references/followup.md`; it defines artifact delivery and what authority a downstream action needs. Do not require a next-step choice to complete a POV.

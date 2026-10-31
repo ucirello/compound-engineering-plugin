@@ -1,4 +1,6 @@
-# Warm the npm cache for cross-model peers
+# Optional legacy adapter cache warm
+
+Apply SKILL.md's user-level OpenCode depth prerequisite. Native model routing uses `opencode.models` and subagents, not these adapters. This retained cache-only capability is optional compatibility support, never a prerequisite or fallback dispatcher for native review.
 
 Cross-model peers resolve acpx within tested version bounds, preserving npm's release-age and date-cutoff policies. Warming downloads an eligible transport and the adapters associated with the newest validated release. An older policy-selected transport may fetch different adapter packages on its first run.
 

@@ -6,9 +6,9 @@ Dispatch context supplies: `{window}` (a date range, relative window, or since-r
 
 Work through these sources for the window, cheapest first:
 
-1. **Git activity** — `git log` over the window (subjects, shas, dates, authors), and for the substantial commits, a stat-level view of what they touched. Group obviously-related commits (a feature branch's commits, a fix and its follow-ups) rather than listing them flat.
+1. **JJ activity** — from the passed absolute workspace root, use `jj log --no-graph -r '<verified-window-revset>' -T 'commit_id ++ "\n" ++ author.name() ++ "\n" ++ author.timestamp() ++ "\n" ++ description ++ "\n"'` over the resolved window, preserving subjects, bodies, commit IDs, dates, and authors. Resolve the intended history head and date bounds before constructing that revset; do not substitute the default log view. For substantial commits, use `jj log -r '<verified-commit-id>' --stat` from the same root. Group obviously-related commits (a feature bookmark's commits, a fix and its follow-ups) rather than listing them flat.
 2. **Merged and open PRs** — only when a PR interface is reachable (a `gh` CLI that responds, a connector/MCP tool). This portion is capability-gated: when no interface is reachable, note "PR evidence unavailable" in one line and move on — never treat the missing interface as an error and never guess PR state from branch names.
-3. **Project docs** — plans, brainstorms, and solution docs added or modified in the window (`<root>/plans/`, `docs/brainstorms/`, `<root>/solutions/`, or wherever this repo keeps them). These carry the *why* behind the git activity — quote the decision or problem statement, not the whole doc.
+3. **Project docs** — plans, brainstorms, and solution docs added or modified in the window (`<root>/plans/`, `docs/brainstorms/`, `<root>/solutions/`, or wherever this repo keeps them). These carry the *why* behind the JJ activity — quote the decision or problem statement, not the whole doc.
 
 ## Output
 

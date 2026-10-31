@@ -1,5 +1,9 @@
 # Completion reports
 
+## Delegated context-pressure Full
+
+The child returns the Full non-interactive report, doc path, evidence source session ID, any degraded coverage, and interactive-only actions not applied (instruction-file discoverability edit and eligible pack destination). The parent relays that report and path, then offers only those consent-required actions. It does not run Full again or rewrite the doc. This consent handoff is the exception to the ordinary no-follow-up-question rule below. Research subagents remain scratch-only; the delegated Full orchestrator is authorized to write the one learning doc.
+
 ## Success Output
 
 **User-runnable refresh rendering.** The reports below print a `ce-compound-refresh` invocation for the user to copy. Default to `/ce-compound-refresh <scope>`; use `$ce-compound-refresh <scope>` only when the active host is Codex or explicitly documents dollar-prefixed skill invocation. Render only the invocation as inline code and output one form only.

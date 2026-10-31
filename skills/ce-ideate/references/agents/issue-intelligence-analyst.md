@@ -18,6 +18,8 @@ These are a floor plus a goal, not an algorithm. You are smart enough to read th
 Detect the reachable access method by **category**, never by assuming a specific binary exists:
 
 - **GitHub** — the `gh` CLI, or a GitHub MCP server (tools matching `mcp__github__*`).
+
+For repository-scoped `gh`, resolve the absolute target root with `jj workspace root`, then run `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh <arguments>)`. Read remotes with `jj git remote list` from that root; never invoke Git directly. Preserve the upstream-versus-fork tracker selection below.
 - **Linear** — a Linear MCP server, or the `orca linear` CLI.
 - **Jira** — a Jira MCP server, or a documented Jira CLI.
 

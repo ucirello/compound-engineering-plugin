@@ -4,6 +4,8 @@ Load this file when the active run uses a confirmed managed stack (`manager_stat
 
 Always non-interactive. Prefer JSON/view probes and explicit branch names; never rely on interactive prompts. Substitute `<tracking-remote>` with the stack branches' actual tracking remote (often `origin`, but may be `upstream` or a fork remote) — never hard-code `origin` when SKILL.md already resolved a different tracking remote.
 
+Run every recipe from the verified absolute JJ workspace root with `export GIT_DIR="$(jj git root)"` before `gh`. Fetch/inspect local bookmark state through `jj git fetch`, `jj bookmark list --all-remotes`, and exact `jj log` commit IDs; an empty `@` above the verified pushed head is aligned. Do not invoke Git directly.
+
 ## After an owned push on the active layer (dependents exist)
 
 ```bash

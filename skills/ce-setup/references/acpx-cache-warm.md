@@ -1,6 +1,6 @@
 # Warm the npm cache for cross-model peers
 
-Cross-model peers resolve acpx within tested version bounds, preserving npm's release-age and date-cutoff policies. Warming downloads an eligible transport and the adapters associated with the newest validated release. An older policy-selected transport may fetch different adapter packages on its first run.
+This retained opt-in compatibility cache utility is not an active peer dispatch route. Native OpenCode peers use `opencode.models` and subagents and need no acpx warm-up. For explicitly requested compatibility use, warming preserves npm's release-age and date-cutoff policies and downloads an eligible transport and adapters; an older policy-selected transport may fetch different adapter packages on its first run. Follow SKILL.md's user-level depth merge prerequisite for native setup.
 
 Ask once, saying it downloads a supported acpx version and its adapters from the npm registry into the user's npm cache, and that npm runs any install scripts those packages declare, as a first peer run would. Run it only after the user approves; if they decline, fetch nothing.
 

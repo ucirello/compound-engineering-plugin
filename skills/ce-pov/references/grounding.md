@@ -6,21 +6,23 @@ Read this before dispatching scouts. It defines how the Ground step (SKILL.md Ph
 
 Dispatch is tiered by task shape, never hardcoded to a model name:
 
-- **Extraction tier** — the project-grounding scout and the precedent-&-activity scout: search-and-quote work. Use the platform's cheapest capable model when the harness exposes a known override; otherwise inherit.
-- **Generation tier** — the external-evidence researcher: web/docs retrieval and entailment checking. Use the platform's mid-tier model when a known override exists; otherwise inherit.
+- **Extraction tier** — the project-grounding scout and the precedent-&-activity scout: search-and-quote work. Use the platform's cheapest capable model when an override is both available and permitted; otherwise inherit.
+- **Generation tier** — the external-evidence researcher: web/docs retrieval and entailment checking. Use the platform's mid-tier model when an override is both available and permitted; otherwise inherit.
 - **Ceiling tier** — the final assessment stays with the agent running `ce-pov`, even when another agent delegated the task to it. That agent checks whether the evidence is sufficient, weighs skeptical findings, and produces the required result. Research subagents gather evidence; they do not make this final assessment.
 
-If the user's or project's active instructions or the live prompt name a model for this subagent, use that model instead of the default tier above. They can name it by the subagent's tier, by its prompt-asset name, or for the subagents being dispatched. Without such an instruction, a model configured for this subagent's role takes precedence over the default tier.
+If the user's or project's active instructions or the live prompt name a model for this subagent, treat that as the requested intent instead of the default tier above, subject to the model-selection permission rules below. They can name it by the subagent's tier, by its prompt-asset name, or for the subagents being dispatched. Without such an instruction, a model configured for this subagent's role takes precedence over the default tier.
 
 **When per-agent models cannot be chosen.** If the platform's subagent mechanism cannot select a model per agent, dispatch every scout on the inherited model and keep their read budgets. Cost control then comes from the read budgets and the tier-sensitive scout count, not from tiering.
 
-When a scout dispatch is rejected, first check whether an agent launched. If the rejection was a bad argument before launch, correct it once. If the platform is out of capacity, leave the work queued. If a launch still fails after the correction, gather that scout's bounded evidence inline and lower the verdict's stated confidence.
+This skill explicitly requests native scout subagents. Under a user-OR-loaded-skill delegation rule, that satisfies delegation permission without another approval. Respect genuine prohibitions and actual denials. Delegation permission, model override permission, and remaining nesting depth are independent. Resolve allowed model IDs with `opencode.models`; configuration and the tiers above remain authoritative intent, but if model selection requires an explicit user model request, omit the optional `model` argument and use a suitable inherited model. Do not treat same-model scouts as cross-model independence.
+
+When a scout dispatch is rejected, first check whether an agent launched. Classify the actual error as permission denial, unavailable tool, model-argument rejection, or nesting/capacity exhaustion. Correct a recoverable bad argument once before launch; never retry a denial or evade a depth limit through shell or another harness. Gather unavailable scouts' bounded evidence inline and lower confidence; report unmet required coverage as incomplete. Check effective runtime depth independently of permission.
 
 Create the scratch dir once, and reuse the echoed path for every scout this run:
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+WORKSPACE_ROOT="<verified absolute workspace root, or absolute project root outside JJ>";
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;

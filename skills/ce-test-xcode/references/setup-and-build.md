@@ -18,9 +18,13 @@ npx:
 
 Then tell the user to add XcodeBuildMCP as an MCP server and restart the agent. Testing does not authorize installing or configuring it for them.
 
+For OpenCode installations, also document the delegation prerequisite: merge `"experimental": { "subagent_depth": 3 }` into the existing `~/.config/opencode/opencode.json`, or locate the actual global configuration directory with `opencode debug paths` / `opencode debug paths config` and update its existing `opencode.json(c)`. Preserve unrelated settings, sibling `experimental` fields, and any existing integer depth higher than `3`; do not replace the file or create a competing JSON/JSONC file. Deep skill delegation requires a depth of at least `3`. Installing the plugin or shipping package-local configuration does not merge this setting into consumers, and higher-precedence configuration must not lower it below `3`. These are user installation instructions, not authority to edit host configuration.
+
 Also stop with the missing prerequisite when Xcode, its command-line tools, a valid project/workspace, or an iOS simulator is unavailable.
 
 ## Discover and launch
+
+Keep run-created screenshots, logs, temporary files, and error/fallback artifacts under a run directory in the absolute JJ workspace root's `.tmp/` (resolve it with `jj workspace root`); outside a JJ repository, use the selected project's local `.tmp/`. Ensure `.tmp/` is ignored before storing evidence. Configure output paths explicitly where supported; do not use OS-global temporary directories. Preserve the evidence paths for the final report.
 
 1. Discover projects and workspaces, then list schemes for the selected project. An empty argument or `current` selects the default or last-used scheme; a named argument selects that scheme. Ask only when no such scheme can be resolved or project discovery itself remains materially ambiguous.
 2. List simulators. Reuse a compatible booted simulator when practical; otherwise prefer an available iPhone 15 Pro and boot it by UUID. Wait until it is ready.

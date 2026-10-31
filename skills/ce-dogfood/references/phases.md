@@ -6,14 +6,17 @@ Required read before Phase 0. Full detail for every phase; the skill body carrie
 
 Parse the arguments you were invoked with: a PR number, a branch name, or blank (use current branch). Strip `--port PORT` if present.
 
+Before any repository-scoped command, resolve the absolute root with `jj workspace root`, set the shell/subprocess working directory to that root, and export `GIT_DIR="$(jj git root)"` there for every `gh` call. Repeat this setup after adopting an isolated workspace. Never invoke Git directly.
+
 1. **Identify the target — keep PR identity; do not switch the working tree yet.**
    - **PR number:** the target *is the PR* — carry the number through every later step (trunk check, isolation, checkout). Read its head only for display (`gh pr view <number> --json headRefName,isCrossRepository`), but do **not** reduce it to a bare branch name: a fork PR's head can even be named `main`/`master`. Do not check out yet.
    - **Branch name:** the target is that branch.
    - **Blank:** the target is the current branch.
 2. **Refuse to run on the trunk — branch/blank targets only.** If a *branch-name or blank* target resolves to the trunk (`main`/`master`/the detected default), stop — there is no diff to dogfood. A **PR is always diffable** (it has a base), so this check never applies to a PR target; never refuse a `ce-dogfood <number>` invocation just because the PR's head branch happens to be named `main`.
-3. **Decide isolation by what you're testing; let `ce-worktree` own the worktree mechanics.** Do not re-derive worktree detection or creation here — `ce-worktree` handles existing-isolation detection, the harness-native tool, attaching to a ref, and the "already checked out" constraint, and reports its decision back. The only call this skill makes is *whether to isolate at all*:
-   - **Blank / current-branch target:** do **not** isolate — dogfood in place. You are already on the branch under test, the fix-commits belong on it, and git cannot check the same branch out in a second worktree anyway. (If you happen to already be in a worktree, that is fine — you are simply dogfooding here.)
-   - **A PR or a different named branch:** this is an existing ref to test without disturbing your current checkout. Isolate it without asking: invoke `ce-worktree` for **that target ref** — it attaches a worktree to the ref (or, if already isolated, checks it out in place; or reports "already checked out at `<path>` — work there" when the ref is live elsewhere). Act on `ce-worktree`'s verdict; on that path the primary checkout is never switched. Check the target out in place (`gh pr checkout <number>` for a PR, `git checkout <branch>` for a branch) only when `ce-worktree` cannot isolate it, and ask first, because that switches the user's checkout.
+3. **Decide isolation by what you're testing; let `ce-worktree` own the workspace mechanics.** Do not re-derive detection or creation here — `ce-worktree` handles existing isolation, the harness-native lifecycle, and verified revision selection, and reports its decision back. The only call this skill makes is *whether to isolate at all*:
+   - **Blank / current-bookmark target:** do **not** isolate — dogfood in place. Fix changes belong to the verified target. Existing isolation is reused without renaming or recreating it.
+   - **A PR or a different named bookmark:** invoke `ce-worktree` for **that verified target ref** without asking. Let it detect existing isolation and respect harness ownership first. New isolation uses `jj workspace add --colocate --name <name> --revision <verified-base> <absolute-owned-destination>` from the absolute source root, then verifies `jj git colocation status` from the created root. Capture the local date once; use the same `YYYYMMDD-<task/PR/revision-slug>` for name and destination basename under the existing local `.tmp/` parent, normalizing caller names without double prefixes and checking registrations and paths for collisions (`-2`, `-3`). Preserve the identity on retries/resumes and preserve source/PR bookmarks. Unsupported required naming or colocation is a safe blocker, not permission to bypass the harness. If isolation is unavailable, ask before a verified `jj new <target>` in place; never discard unrelated work or use a Git checkout fallback. See https://docs.jj-vcs.dev/latest/cli-reference/#jj-workspace.
+   - **Retirement:** completion does not authorize cleanup. When explicitly authorized, `ce-worktree` stops workers, moves active sessions to a surviving workspace, verifies exact registered name/path/run ownership and required integration, preserves recovery bookmarks and copies/read-backs evidence outside the target, and inspects tracked changes, conflicts and ignored/untracked content. Remove only disposable run-owned state using `jj workspace remove <verified-name>` from the surviving absolute root. Verify both deregistration and directory disappearance; warnings/failure retain state and report a blocker, with no force/manual/Git deletion fallback. `workspace forget` is unregister-only and preserves files; bookmark deletion remains separate.
 4. **Resume if a prior run exists.** Look for an existing report at `<root>/dogfood-reports/*-<branch-slug>-dogfood.md` (see the branch-slug rule under Resumability). If one is found with unfinished scenarios, resume it without asking, unless the user asked for a fresh run. Rebuild the task list from its matrix: `Pass`/`Fixed`/`Skipped` stay done; `Pending` and `in_progress` become the remaining work. The two `Blocked` states stay as they are: they wait on a person, so carry them into the end-of-run hand-back instead of re-queuing them or asking about them mid-run.
 
 ### Resumability (stop and return at any point)
@@ -27,31 +30,21 @@ Because tasks are session-scoped but the report doc is on disk, the report is th
 
 ### Phase 1: Analyze Changes
 
-Derive the trunk ref once, then pull the full diff against it and read it. Do not hard-code `main` — a repo whose default branch is `master` (or anything else) would fail with `fatal: ambiguous argument 'main...HEAD'`.
+Derive and verify the trunk and target once, then read the full diff. Do not hard-code `main`. For a PR preserve its exact verified base/head and merge-base semantics; do not replace the review range with a history sample.
 
 ```bash
-# Resolve the trunk to a ref that actually exists. Start from the detected
-# default name (origin/HEAD, then gh), then fall back to common names. For each
-# candidate prefer a local branch; else use the remote-tracking ref QUALIFIED as
-# origin/<branch> — an unqualified name resolves via refs/remotes/<name>, NOT
-# refs/remotes/origin/<name>, so a remote-only trunk would otherwise miss. This
-# qualification applies to the detected default too (PR/CI checkouts often have
-# only origin/main, no local main).
-DEFAULT=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's@^origin/@@')
-DEFAULT=${DEFAULT:-$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name 2>/dev/null)}
-TRUNK=""
-for cand in "$DEFAULT" main master; do
-  [ -n "$cand" ] || continue
-  if git show-ref --verify --quiet "refs/heads/$cand"; then
-    TRUNK=$cand; break
-  elif git show-ref --verify --quiet "refs/remotes/origin/$cand"; then
-    TRUNK="origin/$cand"; break
-  fi
-done
-TRUNK=${TRUNK:-main}
-
-git diff --name-only "$TRUNK...HEAD"   # what changed
-git diff "$TRUNK...HEAD"               # how it changed
+workspace_root="$(jj workspace root)"
+cd "$workspace_root"
+export GIT_DIR="$(jj git root)"  # applies to every repository-scoped gh call
+gh repo view --json defaultBranchRef -q .defaultBranchRef.name
+jj bookmark list --all-remotes
+# Verify the detected default (or an existing main/master candidate) resolves
+# uniquely, preferring the local bookmark then <name>@origin. Stop if none does.
+# Set TRUNK and HEAD to the verified commit IDs, including the PR's actual head.
+BASE=$(jj log --no-graph -r "heads(::$TRUNK & ::$HEAD)" -T 'commit_id ++ "\n"')
+# Require exactly one BASE; ambiguous ancestry needs a human decision.
+jj diff --from "$BASE" --to "$HEAD" --name-only
+jj diff --from "$BASE" --to "$HEAD"
 ```
 
 Build a mental model of every change: new features, modified behavior, new routes/views/components, touched data flows. Note anything that produces user-visible behavior — that is what the matrix must cover.
@@ -119,7 +112,7 @@ Determine the port (priority: explicit `--port` > a port explicitly stated in yo
 Work the task list **one item at a time**. For each scenario, mark the task `in_progress`, then:
 
 1. **Document** what you're testing (the journey and the expected outcome).
-2. **Drive it** with the chosen browser: navigate, read the interactive elements, click, fill, submit, and follow the journey to its real end state. Take screenshots and check console and page errors along the way. Write transient screenshots to OS temp (e.g. `mktemp -d "${TMPDIR:-/tmp}/ce-dogfood-XXXXXX"`), never the repo root. Only copy a screenshot into the report's location if you intend to embed it in the final report.
+2. **Drive it** with the chosen browser: navigate, read the interactive elements, click, fill, submit, and follow the journey to its real end state. Take screenshots and check console and page errors along the way. Write transient screenshots under the absolute workspace root's ignored `.tmp/dogfood/` using the browser driver's local scratch recipe, never OS-global temp. Only copy a screenshot into the report's location if you intend to embed it in the final report.
 
 3. **Judge** both correctness and experience: right data, right destination, sensible content, no console errors, and does it feel aligned with the product? Then judge the scenario against each pack criterion attached to it in Phase 2: state whether the behavior you drove honors the rule or contradicts it, quoting the rule's text and what the browser showed. A contradicted criterion is a failure-class result carrying its citation, exactly like a functional failure; an honored one is recorded as honored.
 4. **Walk it as each persona.** Re-run the journey in your head from each primary persona's perspective (from Phase 1, pack personas included) and ask where they'd feel a **paper cut** — a small friction that wouldn't fail a functional test but degrades the experience: a confusing label, an extra click, an unexpected jump, a slow-feeling step, missing feedback, copy that doesn't match how that persona thinks. A scenario can be functionally `Pass` yet still carry paper cuts. Note each paper cut, which persona feels it, and its severity; a paper cut felt by a pack persona carries that persona's citation.
@@ -128,6 +121,35 @@ Work the task list **one item at a time**. For each scenario, mark the task `in_
 **Outside services** (OAuth, email delivery, payments, SMS, third-party APIs). First use whatever local stand-in the project provides, such as test-mode keys, a local mail catcher, seeded sessions, or fixture providers, and drive the leg through it. A leg the stand-in cannot cover is `Blocked (needs human verify)` only when the branch changed that integration; record what a person should check and continue without waiting. A real leg the branch did not touch is not applicable, not blocked. Never spend real money, send to real recipients, or write to hosted systems to cover a leg; a changed leg that would need one is `Blocked (needs human verify)`. Note once, in Final Status, what the environment replaced and which claims that leaves unproven.
 
 ### Phase 5: Fix Loop (Autonomous)
+
+**Message standards for every fix and the final report commit:** use `ce-commit` and preserve its owned-path scope. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards.
+
+Before composing, read the full guide and several recent complete subjects and bodies from the actual verified relevant history head: from the target's absolute root run `jj log --no-graph -r '::<verified-history-head>' -n 10 -T 'description ++ "\n"'`. Compare package/prefix, casing, tense, body separation, wrapping and issue placement. Project/user instructions and observed repository syntax always win over incompatible Go guidance; use compatible guidance for clarity and structure. With no history, use explicit instructions and Go guidance without inventing precedent. Do not force Conventional Commits or a fixed subject. Where describing a change, use `jj describe -m "<message composed from the standards above>"` with the operation and owned-path scope required by `ce-commit`.
+
+Verbatim Go source guidance below is illustrative, not a mandatory repository template:
+
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+
+```text
+net/http: handle foo when bar
+
+[longer description here in the body]
+
+Fixes #12345
+```
+
+> Notably, for the subject (the first line of description):
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+
+> For the body (the rest of the description):
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
 
 When a scenario fails — a functional failure or a contradicted pack criterion — or a passing scenario carries a sharp paper cut worth fixing now, **fix it and prove it**, but first decide whether the fix is yours to make autonomously or a human's to decide.
 

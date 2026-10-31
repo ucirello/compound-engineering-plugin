@@ -12,6 +12,8 @@ command -v agent-browser >/dev/null 2>&1 && echo "Ready" || echo "NOT INSTALLED"
 
 If it is missing, tell the user: "`agent-browser` is not installed. Use the `ce-setup` skill to print the current install command, then install `agent-browser` and retry." Then stop. An installed discovery skill does not imply that the CLI or its browser runtime is installed.
 
+For OpenCode installation/setup, the user must also merge `"experimental": { "subagent_depth": 3 }` into their existing `~/.config/opencode/opencode.json` (or locate the actual global configuration with `opencode debug paths` / `opencode debug paths config` and update the existing `opencode.json(c)` there). Preserve higher integer depths, unrelated settings, and sibling experimental settings; do not create a competing JSON/JSONC file. Installing the plugin or its package-local configuration does not merge this setting into consumers, and higher-precedence configuration must not lower the effective depth below 3. Document this prerequisite; do not edit host configuration automatically.
+
 Before running browser actions, load the workflow and troubleshooting content that matches the installed CLI:
 
 ```bash
@@ -36,8 +38,8 @@ agent-browser type @e1 "text"
 agent-browser press Enter
 
 # Capture evidence
-agent-browser screenshot out.png
-agent-browser screenshot --full out-full.png
+agent-browser screenshot <absolute-workspace-root>/.tmp/browser-tests/out.png
+agent-browser screenshot --full <absolute-workspace-root>/.tmp/browser-tests/out-full.png
 
 # Navigation and waits
 agent-browser back
@@ -45,3 +47,5 @@ agent-browser wait @e1
 ```
 
 Use the installed core documentation for console-error inspection and any command not shown here. Do not switch to another browser driver after the first route is tested.
+
+Create the workspace-local `.tmp/browser-tests` directory before saving evidence; keep temporary files and error/fallback artifacts there rather than in OS-global temporary storage.

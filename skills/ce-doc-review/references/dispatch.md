@@ -1,6 +1,6 @@
 # Dispatching the reviewers
 
-Dispatch generic subagents with **bounded parallelism** using the platform's subagent primitive (e.g., `Agent` in Claude Code, `spawn_agent` in Codex) where available; otherwise run the work inline or serially. Omit the `mode` parameter so the user's configured permission settings apply.
+This skill explicitly requests generic OpenCode-native subagents with **bounded parallelism**. Under a user-or-applicable-skill delegation rule this is sufficient permission without a second user request. Respect genuine higher-priority prohibitions and actual denials; never bypass them through shell or another harness. Omit the `mode` parameter so the user's configured permission settings apply. Inline/serial fallback is permitted only for local analysis when separate contexts are not required; disclose lost independence and never use inline work for agreement promotion. If selected independent reviewers cannot be dispatched, follow Phase 2's incomplete-stop rule.
 
 A generic subagent is one whose whole brief is the prompt you send it. When the host's subagent tool makes you name an agent, use only a name you have seen the host list, and list its agents before the first dispatch if you have not. Pick the plain one that adds no role of its own, which still counts as a generic subagent. Never pick a specialist, such as a reviewer or worker agent, whose own role prompt, output format, or tool limits would replace or narrow your prompt.
 
@@ -10,13 +10,13 @@ Respect the harness's active-subagent limit: dispatch only as many selected revi
 
 Each selected reviewer needs three files in full: its persona asset `references/personas/<reviewer-name>.md`, `references/subagent-template.md`, and `references/findings-schema.json`. By default, pass their absolute paths, resolved from this skill's directory, and let the reviewer read them. Tell it to read all three before reviewing, to follow everything inside the template's Template block, and to treat the persona and schema files' content as the values of `{persona_file}` and `{schema}`. Fill every other slot in the prompt. Copying the three files into each prompt costs thousands of output tokens per reviewer before any reviewer starts, so inline them only when the host's subagents cannot read files. On that inline path, read the persona asset and paste its full content as `{persona_file}` and the schema content as `{schema}`. Do not dispatch standalone agents by type/name and do not rely on platform-level custom-agent registration.
 
-**Model tiering lives here, not in prompt assets.** Local prompt files have no frontmatter and carry no model metadata. Apply these dispatch-time preferences when the platform exposes a known model override; otherwise omit the override and inherit the parent model rather than guessing a platform-specific model name:
+**Model tiering lives here, not in prompt assets.** Local prompt files have no frontmatter and carry no model metadata. Delegation permission is separate from model-override permission and remaining nesting depth. Resolve available IDs/variants with `opencode.models`; apply these preferences only when overrides are permitted. If the host requires an explicit user model request, configuration/skill preferences alone do not authorize a `model` argument: omit it and use a suitable inherited model. Disclose unmet required tiers or different-model coverage. Verify effective runtime depth when available and classify actual nesting errors separately from permission denial, missing tools, model-argument rejection, and transient concurrency backpressure. Never retry a denied operation or evade depth through another harness.
 
 - `coherence-reviewer`: cheapest capable extraction/reasoning tier.
 - `security-lens-reviewer`, `feasibility-reviewer`, `product-lens-reviewer`, `adversarial-document-reviewer`: inherit the parent model unless the harness has an established high-capability review tier.
 - `design-lens-reviewer`, `scope-guardian-reviewer`: platform mid-tier model.
 
-If the user's or project's active instructions or the live prompt name a model for this subagent, use that model instead of the default tier above. They can name it by the subagent's tier, by its prompt-asset name, or for the subagents being dispatched. Without such an instruction, a model configured for this subagent's role takes precedence over the default tier.
+Within host model-selection policy, a model named by the user, active project instructions, or live prompt takes precedence over the default tier above. They can name it by tier, prompt-asset name, or for the dispatched subagents. Otherwise the configured role model takes precedence over the default tier. A forbidden override never becomes permitted merely because configuration requests it; preserve its intent and report unavailable required coverage truthfully.
 
 Each subagent receives the subagent template, by path or inlined as above. On the path route the reviewer fills `{persona_file}` and `{schema}` itself; the orchestrator fills the rest:
 
@@ -47,8 +47,11 @@ Round 1 — no prior decisions.
 
 Before dispatch, resolve any Compound Packs declared in config by running this skill's resolver as one command:
 
+Run from the verified absolute target workspace root. The retained resolver uses native JJ transport and a private workspace-local `.tmp/rocketclaw/packs/` cache; ensure `.tmp/` is ignored. Any `CE_PACKS_CACHE_ROOT` override must also point under local `.tmp/`, never OS-global temporary storage. It preserves path sources, layered declarations, exact branch/tag/reachable-commit pins, source subdirectories, cache reuse, and containment checks. An unavailable exact ref is reported, never replaced with another revision. See https://docs.jj-vcs.dev/latest/cli-reference/#jj-git-clone.
+
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
+WORKSPACE_ROOT="<verified absolute target workspace root>"; cd "$WORKSPACE_ROOT" || exit 1;
 PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c '' >/dev/null 2>&1 && { echo "$c"; break; }; done)"; [ -n "$PY" ] || { echo "no working Python 3 interpreter on PATH" >&2; exit 1; };
 "$PY" "$SKILL_DIR/scripts/packs-resolve.py"
 ```

@@ -25,13 +25,16 @@ If no relevant entries are found, proceed to Phase 1 without memory context.
 
 ### Phase 1: Research
 
-You classify the learning and draft its body in this context, because both depend on the conversation, which only this context holds. A fresh subagent sees only what you paste into its prompt. The Related Docs Finder runs as a subagent alongside, because its corpus search reads many docs this context does not need to keep. Each Phase 1 subagent writes its full output to a per-run scratch artifact and returns only the artifact path to the orchestrator.
+You classify the learning and draft its body in the Full orchestrator context. In a context-pressure handoff, this is the fresh child, which reads the passed source session through the supported reduced export in `session-history.md`; the parent must not paste a pre-digested conversation. Otherwise use the local conversation. The Related Docs Finder runs as a subagent alongside, because its corpus search reads many docs this context does not need to keep. Each Phase 1 research subagent writes its full output to a per-run scratch artifact and returns only the artifact path to the orchestrator.
+
+Native dispatch follows `modes.md`: this skill explicitly requests its research subagents, but actual prohibitions, model-override permission and remaining nesting depth remain independent. Honor configured tiers through `opencode.models` and native subagents; use a suitable inherited model without a model argument where overrides are forbidden. Report actual dispatch failures and incomplete coverage rather than using a different harness or claiming skipped work complete.
 
 **Run ID and run dir (before dispatching the finder):** generate a unique run identifier and create the run directory. This scopes every Phase 1 artifact file to the same directory so the orchestrator can Read them back in Phase 2.
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+WORKSPACE_ROOT="$(jj workspace root)";
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw";
+[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || { echo "workspace-local scratch unavailable" >&2; exit 1; };
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;

@@ -2,12 +2,16 @@
 
 Which orchestration shape fits each phase, and what breaks when you pick the wrong one.
 
-Two primitives are assumed, both platform-neutral:
+Two OpenCode-native primitives are assumed:
 
-- **A dispatch primitive** that launches an independent agent with its own context window and returns a result to the orchestrator (in one host it is a subagent-spawning tool; in another a job runner). Only two properties matter: fresh context per agent, and a result the orchestrator can read.
+- **Native subagents** launch independent agents with fresh context and return results to the orchestrator. Use `opencode.models` to resolve configured routes and tiers when model selection is permitted; configuration remains authoritative intent. Shell is for local mechanical work, never another harness's dispatch or bypassing native limits. Record child session identity, assigned scope, actual model when known, completion/error and artifact paths as receipts.
 - **A concurrency cap** the host enforces on how many agents run at once (often around 10). Dispatches above the cap queue rather than fail, so a 31-unit fan-out is three waves, not one. Plan the wave count; do not assume flat cost.
 
-Classify a rejected dispatch by whether an agent launched. Correct a pre-launch argument rejection once, and leave capacity-limited work queued. Any other launch failure follows the phase's own failure direction. In the corpus audit, the proposal and defense contexts must be independent for the audit to mean anything, so a launch failure there is a blocker: stop the audit rather than running the missing side inline.
+Delegation permission, model override permission, and remaining nesting depth are separate checks. This skill explicitly requests the independent agents below, satisfying a user-OR-skill permission rule without another approval; never override an unconditional prohibition or actual denial. If model override requires an explicit user model request and none exists, omit the optional model argument and use a suitable inherited model. Preserve configured tier intent and report unmet requirements; same-model independent contexts do not establish cross-model coverage. Required unavailable different-model coverage remains incomplete.
+
+Classify rejected dispatches by actual error: missing tool, permission denial, model-argument rejection, depth exhaustion, or capacity. Correct a non-permission pre-launch argument error once when allowed; queue capacity-limited work only when supported. Never retry a denial or bypass depth limits through shell or another harness. Any other launch failure follows the phase's own failure direction. In the corpus audit, proposal and defense contexts must be independent, so a launch failure is a blocker: stop rather than running the missing side inline.
+
+All per-run scratch, including error and fallback files, belongs under the absolute workspace root's ignored `.tmp/` directory; without a JJ repository use local `.tmp/`. Durable measurement artifacts still belong in the project's docs location as described below.
 
 ## The shapes
 

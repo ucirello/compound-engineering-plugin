@@ -10,20 +10,20 @@ Think in terms of the deploy window: old code on new schema, new code on old dat
 
 ## Step 0: Schema drift (when a schema dump is in the diff)
 
-Run this **first** when `db/schema.rb` or `db/structure.sql` appears in the diff. Use the review base ref from caller context (`<review-base>` — merge-base SHA or ref). **Never assume `main`.**
+Run this **first** when `db/schema.rb` or `db/structure.sql` appears in the diff. Use the exact captured review base/head from caller context. **Never assume `main`.** Execute all JJ commands from the absolute target workspace root (set the shell working directory there before these examples).
 
 ```bash
-git diff <review-base> --name-only -- db/migrate/
+jj diff --from <review-base> --to <captured-head> --name-only -- db/migrate/
 ```
 
 Then diff each dump file that is actually in the PR diff (one or both may apply):
 
 ```bash
 # When db/schema.rb is in the diff:
-git diff <review-base> -- db/schema.rb
+jj diff --from <review-base> --to <captured-head> --git -- db/schema.rb
 
 # When db/structure.sql is in the diff:
-git diff <review-base> -- db/structure.sql
+jj diff --from <review-base> --to <captured-head> --git -- db/structure.sql
 ```
 
 Cross-reference every change in each in-scope dump against migrations **in this PR's diff**:
@@ -35,12 +35,13 @@ Cross-reference every change in each in-scope dump against migrations **in this 
 When drift is present, emit a **P1** finding on the affected dump path (`db/schema.rb` or `db/structure.sql`) with `autofix_class: manual`, concrete unrelated objects listed, and `suggested_fix`:
 
 ```bash
-# schema.rb:
-git checkout <review-base> -- db/schema.rb
+# Suggested fix for an authorized implementer, NOT commands the reviewer runs.
+# Restore only verified unrelated drift, preserving intentional PR schema changes:
+jj restore --from <review-base> db/schema.rb
 bin/rails db:migrate
 
 # structure.sql (regenerate after restoring and migrating):
-git checkout <review-base> -- db/structure.sql
+jj restore --from <review-base> db/structure.sql
 bin/rails db:migrate
 ```
 

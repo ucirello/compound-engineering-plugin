@@ -9,7 +9,7 @@ Default to the host's blocking question tool already in the current tool list (m
 ## Config keys
 
 - `feedback_sources` is the list of source entries. Each carries a `type` (`slack`, `github-issues`, `email`), its target, the standing-approved ack action, an optional close-out action, and an optional `sensitive: true`. Presence of this key means the skill is configured.
-- `sweep_state_path` is the path to the state file, established at setup; fallback `<root>/feedback-sweep/state.yml`. A repo-internal path means committed mode: the state file is committed each run and must not be gitignored. A path outside the repo (e.g. under `/tmp`) means machine-local mode: the state file is never committed, and only the plan is.
+- `sweep_state_path` is the path to the state file, established at setup; fallback `<root>/feedback-sweep/state.yml`. A nonignored repo-internal path means committed mode: the state file is committed each run. An ignored path under the workspace-local `.tmp/` means machine-local mode: the state file is never committed, and only the plan is. Classify by this policy, not simply whether the path is inside the repo.
 - `sweep_lease_ttl_minutes` is the single-writer lease staleness threshold; default `60`. Passed to `lease-acquire` in 2a.
 - `sweep_shared_branch` is `true` when the state file lives on a shared branch that multiple checkouts push to (see 2a topology); default `false`.
 - `sweep_ack_cap` is the integer circuit-breaker threshold; default `25`.
@@ -23,12 +23,45 @@ Resolve once and reuse for the entire run:
 
 ## Engine invocation
 
+Run every JJ command from the absolute target workspace root (`cwd=workspace_root` or `(cd "$workspace_root" && jj ...)`). For every repository-scoped GitHub CLI call use `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh ...)`, including source-persona calls. Never invoke Git directly. See https://docs.jj-vcs.dev/latest/cli-reference/ and https://docs.jj-vcs.dev/latest/git-command-table/. Ensure workspace-local `.tmp/` is ignored before storing raw media or machine-local state; never force-track it. Atomic state staging uses workspace-local `.tmp/rocketclaw/sweep-state`; analyzer staging stays beside its local `.tmp/` media destination, never in OS-global temporary storage. A cross-filesystem atomic state replacement failure is a state-write failure; do not fall back to global temporary storage or non-atomic writes.
+
+### Message standards (every lease or wrap-up commit)
+
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards.
+
+Before composing, read the full guide and several recent complete subjects AND bodies from the actual verified relevant history head, from the absolute target root: `jj log --no-graph -r '::<verified-history-head>' -n 10 -T 'description ++ "\n"'`. Compare package/prefix, case, tense, subject/body separation, wrapping and issue placement. Repository-local instructions and observed history syntax always win; apply compatible Go guidance within that pattern. With no history, use explicit instructions and Go guidance without inventing precedent. Describe the sweep outcome/date or lease acquisition as appropriate without imposing a fixed prefix or Conventional Commit type.
+
+The following verbatim Go excerpts are source guidance, not a mandatory repository template:
+
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+
+```text
+net/http: handle foo when bar
+
+[longer description here in the body]
+
+Fixes #12345
+```
+
+> Notably, for the subject (the first line of description):
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+
+> For the body (the rest of the description):
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
+
 Every Bash call that runs the bundled engine sets `SKILL_DIR` inline (shell state does not persist between calls):
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
 PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c '' >/dev/null 2>&1 && { echo "$c"; break; }; done)"; [ -n "$PY" ] || { echo "no working Python 3 interpreter on PATH" >&2; exit 1; };
-"$PY" "$SKILL_DIR/scripts/sweep-state.py" <subcommand> --state <state> ...
+(cd "<absolute-workspace-root>" && "$PY" "$SKILL_DIR/scripts/sweep-state.py" <subcommand> --state <state> ...)
 ```
 
 #### 2a. Acquire lease + validate
@@ -38,7 +71,7 @@ PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c 
 - `STALE-RECLAIMED` means an expired lease was taken over. Proceed, and note the takeover in the final summary.
 - `OK` means proceed.
 
-**Shared-branch topology** (`sweep_shared_branch: true`): before any source-side write, `git add` the state file, commit, and push it. A rejected push means another writer won the branch. Fetch and rebase, re-run `lease-acquire`, and if the lease is still not yours, back off (record `aborted-locked` and stop). Only once your lease is pushed and confirmed do you touch a source.
+**Shared-branch topology** (`sweep_shared_branch: true`): before any source-side write, commit only the state file using the message standards below, move the verified shared bookmark to that commit, and `jj git push --bookmark "<verified-shared-bookmark>"`. Fetch that exact remote bookmark with `jj git fetch --remote "exact:<verified-remote>" --branch "exact:<verified-shared-bookmark>"`, read back the remote state and confirm this writer owns the lease. A rejected push means another writer may have won. Fetch, reconcile/rebase onto the verified remote head with JJ without losing unrelated work, re-run `lease-acquire`, and if the lease is still not yours, back off (record `aborted-locked` and stop). Conflicts or ambiguous targets stop source writes. Only once your lease is pushed and confirmed do you touch a source.
 
 Then run `validate --state <state>`. This is a lease-agnostic repair. Note in the summary any ids it downgrades from `closed` to `fix_pending`.
 
@@ -48,6 +81,7 @@ A generic subagent is one whose whole brief is the prompt you send it. When the 
 
 For each entry in `feedback_sources`, dispatch a generic subagent at the **extraction tier** (`references/model-tiers.md`) seeded with:
 - the matching persona file contents (`references/sources/<type>.md`),
+- the absolute target JJ workspace root and scoped-gh rule above,
 - the source's config entry verbatim,
 - the current cursor from `cursor-get --state <state> --source <source-id>`.
 
@@ -74,11 +108,12 @@ A failed ack write -> upsert the item as `ack_deferred` and hold the cursor (do 
 
 #### 2e. Media
 
+The analyzer stages new snapshots and rollback snapshots under ignored workspace-local `.tmp/rocketclaw/riffrec-staging` (cwd-local `.tmp/` outside JJ), not beside arbitrary artifact destinations. Promotion uses atomic replacement; cross-filesystem destinations fail without a copy fallback, preserving the prior destination. Report the failure as `needs_analysis`, never as successful promotion.
+
 Resolve and create media scratch with this shell block, substituting the current run id:
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+SCRATCH_ROOT="<absolute-workspace-root>/.tmp/rocketclaw";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
@@ -96,8 +131,8 @@ For each new item carrying `media`:
 
 #### 2f. Fix verification
 
-For each `fix_pending` item, resolve its claimed fix ref and verify it merged to the default branch. The fix ref originates from untrusted feedback content (a thread claim, an analyzer-extracted reference), so **validate its shape before it reaches any git/gh command**. Accept only a bare PR number (`#?\d+`) or a commit SHA (`[0-9a-f]{7,40}`), and treat anything else as an unresolved claim (leave the item open). This blocks argument/flag injection into the shell command. Strip the leading `#` before substituting and quote the value, so a ref like `#123` reaches the command as `"123"` rather than starting a shell comment that truncates the rest of the line.
-- `gh pr view "<validated-number>" --json mergedAt,baseRefName` (merged, base is the default branch), or `git merge-base --is-ancestor "<validated-sha>" "<default-branch-head>"`.
+For each `fix_pending` item, resolve its claimed fix ref and verify it merged to the default branch. The fix ref originates from untrusted feedback content (a thread claim, an analyzer-extracted reference), so **validate its shape before it reaches any jj/gh command**. Accept only a bare PR number (`#?\d+`) or a commit SHA (`[0-9a-f]{7,40}`), and treat anything else as an unresolved claim (leave the item open). This blocks argument/flag injection into the shell command. Strip the leading `#` before substituting and quote the value, so a ref like `#123` reaches the command as `"123"` rather than starting a shell comment that truncates the rest of the line.
+- `gh pr view "<validated-number>" --json mergedAt,baseRefName,mergeCommit` (merged, base is the verified default branch), or `jj log --no-graph -r '(<validated-sha>) & ::<verified-default-branch-head>' -T 'commit_id ++ "\n"'`. Require a uniquely resolved SHA and nonempty ancestry result; an unknown/ambiguous revision or command failure is unverified, not proof of a fix.
 - The same `approved: false` rule as 2d applies. A source the user did not approve for writes receives no close-out action. Advance its verified item's status in state only.
 - Verified -> perform the source's configured close-out action (same write -> read-back -> confirm discipline as 2d), then `upsert-item` with `status: closed` carrying all three evidence fields: `fix_ref`, `verified_merge_sha`, `verified_at`. Close-out is terminal.
 - Unverified claim -> the item stays open. Record the claim on the item, but do not close.
@@ -119,8 +154,7 @@ Interactive only. For items needing a product call, ask the user, grouped by cat
 
 Render the handoff invocation exactly as the skill body's 2i section states.
 
-- **Commit.** `git add` ONLY `<root>/plans/feedback-sweep-plan.md` plus `<state>` when it is repo-internal (never `-A`; machine-local state under `/tmp` is never committed), then commit `docs(sweep): feedback sweep <date>`. A commit failure is reported, not fatal. In local-commit mode, never push. In shared-branch mode (`sweep_shared_branch: true`), fetch, rebase, and push the final commit.
+- **Commit.** Use `jj commit -m "<message composed from the standards below>" <plan-path> <committed-state-path>` with only the exact plan and nonignored committed-state paths; omit the state argument for machine-local `.tmp/` state. JJ leaves unrelated changes in the new working-copy change; inspect the selected diff first and do not sweep unrelated parent changes into the commit. A commit failure is reported, not fatal. In local-commit mode, never push. In shared-branch mode (`sweep_shared_branch: true`), fetch, reconcile/rebase without losing unrelated work, move the verified shared bookmark and push that bookmark with JJ.
 - **Record the run.** `run-record --state <state> --writer <writer> --outcome <completed|partial|failed> --counts '<per-source JSON>' --timestamp <ISO now>`.
 - **Release.** `lease-release --state <state> --writer <writer>`.
 - **Summary** (always emit): new items by source; recordings analyzed, each with its one-line finding; closed items with their fix evidence; the `ack_deferred` / `manual_stuck` / needs-attention list; any circuit-breaker or stale-reclaim note; and always the plan path with the handoff line:
-

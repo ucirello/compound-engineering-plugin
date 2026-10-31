@@ -9,7 +9,7 @@ Two claim categories verify against different trees:
 - **Code-behavior claims** (enum values, status semantics, limits, defaults) verify against the **local working tree**. They describe what this session's work produced and verified here.
 - **Merge-state claims** ("fixed in #1608", "landed", "shipped") verify against **remote truth**. The checkout may predate a merge, so `gh pr view` (or the tracker equivalent) is primary and local git reachability is only the fallback. The script's `INFO: worktree is N commits behind …` line tells you how much to distrust the local tree for this category.
 
-Before running the script, optionally run `git fetch --quiet` (best-effort; skip silently on failure or offline, because the network is never a correctness dependency). When remote state cannot be checked at all, keep the claim, add an as-of qualifier ("as of this writing"), and record degraded verification in the run report.
+Run all JJ and repository-scoped GitHub commands from the verified absolute workspace root. Before running the script, optionally run `jj git fetch` there (best-effort; skip silently on failure or offline, because the network is never a correctness dependency). Scope each `gh` call with `GIT_DIR=$(jj git root)`, for example `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh pr view <n> --json state,mergedAt,baseRefName)`. When remote state cannot be checked at all, keep the claim, add an as-of qualifier ("as of this writing"), and record degraded verification in the run report.
 
 ## Step 1: Adjudicate the mechanical flags
 
@@ -36,14 +36,15 @@ After any body edit from this step or Step 2, re-run the script until it reports
 
 Dispatch **one generic read-only subagent** covering the written solution doc plus any `CONCEPTS.md` entries added or edited this run. Phase 2.4's entries are claims too; a glossary entry written from a session-level summary is exactly how wrong semantics enter the vocabulary. Use the same mid-tier model class as other reviewer subagents when the platform exposes one.
 
-If the user's or project's active instructions or the live prompt name a model for this subagent, use that model instead of the default tier above. They can name it by the subagent's tier, by its prompt-asset name, or for the subagents being dispatched. Without such an instruction, a model configured for this subagent's role takes precedence over the default tier.
+Use `opencode.models` for native model discovery and honor configured role routes/tiers subject to host permissions. This skill explicitly requests reviewers, satisfying a user-OR-skill delegation rule without extra approval; genuine prohibitions still apply. Model override permission and remaining nesting depth are independent: when overrides require an explicit user model request, omit the optional model argument and use a suitable inherited model. Classify actual missing tools, permission denials, model rejections and depth/capacity errors accurately. Never evade limits through shell/other harnesses; disclose skipped validation and unavailable required cross-model coverage as incomplete, never verified. Configured routes remain authoritative intent.
 
 Build its prompt from this template:
 
 ```
 You are a grounding validator for documentation about to enter a permanent
 knowledge store. You are read-only: never edit files. Inspect with Read,
-Grep, Glob, git (non-mutating), and gh when available.
+Grep, Glob, jj (non-mutating), and gh when available. Run JJ from the verified
+absolute workspace root; scope gh there with GIT_DIR=$(jj git root).
 
 Inputs: the doc content below, the CONCEPTS.md entries below (if any), and
 this staleness context: <INFO line from the mechanical script, or "none">.
@@ -59,7 +60,7 @@ Check every factual claim in three categories:
 
 2. MERGE-STATE CLAIMS — assertions that a change landed ("fixed in",
    "merged", "shipped in", "resolved by #N"). Primary check: gh pr view
-   <n> --json state,mergedAt,baseRefName (remote truth). Fallback: git
+   <n> --json state,mergedAt,baseRefName (remote truth). Fallback: JJ
    reachability from the upstream default branch. Verdict: verified,
    contradicted (e.g. PR open, not merged), or unverifiable (offline / no
    gh) — mark unverifiable as "degraded", do not guess.

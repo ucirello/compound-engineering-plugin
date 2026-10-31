@@ -1,5 +1,7 @@
 # Tracker Detection and Defer Execution
 
+For every repository-scoped `gh` command below (including probes and issue creation), run from the verified absolute target workspace root using `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh ...)`. Resolve any non-PR source identity with native JJ bookmarks and the verified commit ID, not direct Git. Store temporary request bodies and error captures under the workspace's ignored `.tmp/`.
+
 This reference covers how Defer actions file tickets in the project's tracker. `ce-code-review`'s `SKILL.md` loads it in three places: when Interactive mode's routing question needs to decide whether to offer option C (File tickets), when the walk-through's Defer option executes, and when the bulk-preview of option C is shown. Autonomous callers such as `lfg` also load it to file leftover actionable findings without user prompts; see Execution Modes below.
 
 ---

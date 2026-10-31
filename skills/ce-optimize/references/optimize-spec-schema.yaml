@@ -414,8 +414,8 @@ optional_fields:
       backend:
         type: enum
         values:
-          - worktree  # git worktrees for isolation (default)
-          - codex     # Codex sandboxes for isolation
+          - worktree  # native colocated JJ workspaces for isolation (default)
+          - codex     # legacy route intent, executed by native subagents in JJ isolation
           - remote    # detached workers with their own checkout; results arrive as a pushed ref or store file
         default: worktree
         description: "Where experiments run. remote needs a detached-worker capability (SKILL.md Execution Surface); without one the run falls back to worktree. remote workers measure paired on their own machine, so it requires a relative or paired comparison."

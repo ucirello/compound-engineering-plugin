@@ -6,6 +6,8 @@ Riffrec is a browser-based capture tool that records the screen, microphone audi
 
 ## What to tell the user
 
+For the OpenCode skills' deep delegation, first merge `"experimental": { "subagent_depth": 3 }` into the existing `~/.config/opencode/opencode.json`, or locate the actual global configuration with `opencode debug paths` / `opencode debug paths config` and update its existing `opencode.json(c)`. Preserve unrelated settings, sibling experimental fields, and any higher integer depth; do not replace the file or create a competing JSON/JSONC file. Installing the plugin or its package-local configuration does not merge this into consumers. Higher-precedence configuration must not lower the effective depth below 3. This is a user installation action, not permission for the skill to edit host configuration.
+
 1. Riffrec lives at <https://github.com/kieranklaassen/riffrec>. Refer them to the README for the current install command — it is the source of truth and may change.
 2. The general shape of integration:
    - Add the Riffrec capture script or package to the project's web app.

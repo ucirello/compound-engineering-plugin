@@ -17,10 +17,12 @@ It works **with or without Spiral**: with nothing installed it drafts directly f
 
 A free-form description in the arguments is the source of truth. Otherwise derive it from context, using what is available and never waiting on any single source:
 
-- **Merged/active PR** — `gh pr view --json title,body,url` (the title and body usually state the user-facing value)
-- **The diff** — `git diff main...HEAD --stat`, skimming notable changes so the claim is grounded in what actually changed
+- **Merged/active PR** — `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh pr view --json title,body,url)` (the title and body usually state the user-facing value; verify the relevant PR/bookmark rather than guessing when the working copy has no associated PR)
+- **The diff** — resolve the actual shipped head and its merge base with the verified target bookmark, then `(cd "$workspace_root" && jj diff --from "<verified-merge-base>" --to "<verified-shipped-head>" --stat)`, skimming notable changes so the claim is grounded in what actually changed
 - **Changelog** — the top or `[Unreleased]` entry in `docs/changelog.md`, `CHANGELOG.md`, or similar
-- **Recent commits** — `git log --oneline -15` for the arc of the change
+- **Recent commits** — `(cd "$workspace_root" && jj log --no-graph -r '::<verified-shipped-head>' -n 15 -T 'description ++ "\n"')` for the arc of the change
+
+Resolve `workspace_root` with `jj workspace root` and use that absolute root as the working directory for every JJ or repository-scoped GitHub command. Use native JJ only; see https://docs.jj-vcs.dev/latest/git-command-table/ for command semantics. If a history source cannot be verified, use the other available evidence rather than inventing a revision.
 
 Then write a 1-3 sentence summary of the **user-facing value**: what a user can now do that they couldn't before, and why they'd care. Outcome, not implementation — "You can now export any report to CSV in one click", not "Added a CsvSerializer and an export endpoint." If you can't confidently tell what shipped, ask one short question rather than guessing.
 

@@ -32,11 +32,15 @@ One PR named → `target` (ask once if a confirmed multi-layer stack exists); as
 
 ## Step 1: Resolve and arm
 
+Run all commands from the verified absolute JJ workspace root. For every repository-scoped `gh` call export `GIT_DIR=$(jj git root)` there first; never invoke Git directly. All scratch, error, and fallback files belong under that workspace's ignored `.tmp/`.
+
+**Empty working-copy tip:** `@` may be an empty change above the remote branch/PR commit. Before any no-PR/no-work decision, inspect `@-`, its bookmarks, remote branch, and associated PR as well as `@`. Continue when that parent's PR is eligible; an empty `@` alone is not a stop condition.
+
 1. `gh repo view` must succeed, else say GitHub-only, stop.
 2. Resolve the PR from the argument or current branch (`references/setup.md`); none → report, stop.
 3. **Old-PR intake** (fresh invocation, before the checkout gate): read `references/intake.md`; it decides whether this PR still belongs. A user request to take the PR over: `references/takeover.md`.
 4. Chain classification comes from the snapshot, never the user; resolve posture before semantic work.
-5. **Checkout must be the PR's head branch with matching upstream** before any delegated mutation; default `gh pr checkout <ref>`; no push access or dirty checkout → stop, say so.
+5. **Verify the exact head repository, bookmark, remote and commit** before any delegated mutation (`references/setup.md`). Clean exact pushed-head alignment needs no extra approval; empty `@` directly above that head is already aligned. Dirty/conflicted work, uncertain target or authority, or denied permission → preserve work and use the safe stop path, never reset or guess.
 6. **Sustain mode** (`references/setup.md`, `references/watch-loop.md`): keep monitoring in the current session until a stop condition is met, one tick per `BABYSIT_WAKE`; never collapse the loop into a script. Checkpoint mode only when the user asks or the harness cannot wait. **Pipeline** (`mode:pipeline`): bounded synchronous ticks, structured return (`references/pipeline.md`).
 
 ## Step 2: One tick (ordering invariant)
@@ -53,8 +57,12 @@ Snapshot first, then in this order:
 
 ## Step 3: Stop conditions
 
+For the description refresh below, pass `ce-commit-push-pr mode:pipeline` the verified PR/head and explicit **authorized factual maintenance: apply** context, plus this run's verified results. Preserve human-authored content and links; this is not a standalone optional rewrite or draft-only description request and requires no repeated approval. No scope expansion, merge or renewed monitoring against an opt-out is implied.
+
 **True stops** (`references/settle.md`): **Terminal**; **Looks ready** — `mergeability_certain`, `MERGEABLE`, `CLEAN`, no `base_ref_blocker`, checks terminal, zero backlog, `open_needs_human == 0`, `branch_currency_blocker == null`, settle elapsed, review-still-expected guard clear or its bounded stale protocol says stop; **blocked-external-drained**; **Budget** (active budget or 3-day backstop). Refresh a drifted PR description via `ce-commit-push-pr mode:pipeline` before reporting ready. In interactive runs, **standing residuals** (`needs-human`, `blocked-failing`, `stack-blocked`) block "ready" while independent work continues; stopping the run there is the primary failure mode. `mode:pipeline` returns the canonical decision set when autonomous work ends. After an interactive tick with no true stop, start the one watcher again and wait on it; its silence tells you nothing about the PR's state.
 
 ## Step 4: Report
+
+Authorized factual description maintenance preserves unrelated human content and issue links, applies without another preview/approval question, and never routes through an optional standalone rewrite flow. Outside authorized maintenance or an explicit apply request, optional existing-description rewrites still require approval; declining one keeps the description and does not block otherwise authorized monitoring. Description-only requests remain draft-only. Never bundle rewrite approval with alignment or monitoring; honor opt-outs, final-merge boundaries and genuine scope expansion.
 
 One fixed status line first, then a recap the reader could merge from without scrolling back (`references/report.md`). Never "safe to merge".

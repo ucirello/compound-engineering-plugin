@@ -7,6 +7,8 @@ does not work; it prints top-level help.)
 Only the behavior that changes a decision in stack mode is listed. This file is self-contained on
 purpose: do not depend on the user having a separate `gh-stack` skill installed.
 
+All repository-scoped `gh` calls require the absolute target-root and exported `GIT_DIR=$(jj git root)` context in `context.md`. JJ owns local revision/bookmark creation: use `jj new <verified-parent>` and `jj bookmark create <name> -r <verified-tip>`, preserving excluded and unrelated work. Export bookmarks with `jj git export` before manager adoption; after a manager checkout, reconcile using `jj git import` and verify the exact intended head. Manager checkout/init/add requires a clean conflict-free workspace and inspection of ignored/untracked collisions; stop rather than overwrite anything. Do not directly invoke Git or use another workspace bridge.
+
 ## Classifying a parent
 
 ```bash
@@ -42,8 +44,7 @@ the stack and no documented branch ordering, so do not derive position from this
 
 `gh pr view "<n>" --json headRefName,headRefOid,author` identifies the head; `headRefName` alone
 does not, because a same-repo name can be absent or stale locally and can collide with an unrelated
-branch. Create a local branch at `headRefOid`, fetching `refs/pull/<n>/head` when that commit is not
-reachable — reachability leaves the commit with no branch to name.
+branch. Fetch its verified head bookmark from its verified head remote with `jj git fetch --remote <head-remote> --branch <headRefName>`, verify its commit equals `headRefOid`, and create a local JJ bookmark at that exact commit. If the exact head cannot be retrieved, report a residual rather than substituting another ref.
 
 ## Building
 
@@ -64,7 +65,7 @@ Must run from the **top** branch of the stack (or the trunk while it is still em
 exits **5**. Exit 5 here means "you are not on the top", and moving there with `gh stack top` is a
 decision, not a fix: it changes which layer the new branch is parented to. Whether that is correct
 belongs to the caller — when a specific parent was named, it is not. Without `-Am`, `add` does not
-touch the working tree, so staged and unstaged changes follow onto the new branch.
+touch the working tree. In this JJ workflow, however, do not use manager movement to carry uncommitted work: commit owned paths with JJ first and preserve excluded/unrelated files unchanged, then adopt the verified bookmarks.
 
 ```bash
 gh stack submit --auto [--open]

@@ -8,7 +8,7 @@ This phase is interactive-only: a non-interactive caller has no human-in-the-loo
 
 <parallel_tasks>
 
-Based on problem type, optionally dispatch generic subagents seeded with local prompt assets from `references/agents/` to review the documentation. Do not dispatch standalone agents by type/name.
+Based on problem type, optionally dispatch native generic subagents seeded with local prompt assets from `references/agents/` to review the documentation. Do not dispatch standalone agents by type/name. Follow `modes.md`'s independent delegation, model-override and nesting-capacity rules: this skill requests reviewers under a user-OR-skill rule, never overrides actual prohibitions, and uses a suitable inherited model without the optional model argument when required. Discover permitted routes with `opencode.models`, preserve configured tiers as intent, and report actual failures and unavailable required cross-model coverage as incomplete.
 
 - **performance_issue** → `references/agents/performance-oracle.md`
 - **security_issue** → `references/agents/security-sentinel.md`

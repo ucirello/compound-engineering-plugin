@@ -18,6 +18,23 @@ VERDICTS = {"fixed", "fixed-differently", "replied", "not-addressing", "declined
 KINDS = {"thread", "comment", "review"}
 
 
+def workspace_context() -> tuple[Path, dict]:
+    root = Path(subprocess.run(["jj", "workspace", "root"], check=True,
+                               capture_output=True, text=True).stdout.strip()).resolve()
+    git_dir = subprocess.run(["jj", "git", "root"], cwd=root, check=True,
+                             capture_output=True, text=True).stdout.strip()
+    environment = os.environ.copy()
+    environment["GIT_DIR"] = git_dir
+    return root, environment
+
+
+def scratch_root() -> Path:
+    root, _ = workspace_context()
+    scratch = root / ".tmp"
+    scratch.mkdir(exist_ok=True)
+    return scratch
+
+
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise ValueError(message)
@@ -205,9 +222,10 @@ def write_record(path: Path, raw: bytes, *, checkpoint: bool) -> None:
 
 
 def github_json(host: str, endpoint: str) -> dict:
+    root, environment = workspace_context()
     result = subprocess.run(
         ["gh", "api", "--hostname", host, "--method", "GET", endpoint],
-        capture_output=True, text=True, check=False,
+        cwd=root, env=environment, capture_output=True, text=True, check=False,
     )
     require(result.returncode == 0, result.stderr.strip() or f"GitHub GET failed: {endpoint}")
     return object_value(json.loads(result.stdout), "GitHub response")
@@ -257,7 +275,8 @@ def main() -> None:
             command_parser.add_argument("--input", required=True)
     args = parser.parse_args()
     if args.command == "preflight":
-        path = Path(args.path).absolute() if args.path else Path(tempfile.mkdtemp(prefix="ce-pending-feedback-")) / "pending.json"
+        path = Path(args.path).absolute() if args.path else Path(tempfile.mkdtemp(dir=scratch_root(), prefix="pending-feedback-")) / "pending.json"
+        require(path.resolve().is_relative_to(scratch_root().resolve()), "handoff must be under workspace .tmp")
         require(not os.path.lexists(path), "handoff destination already exists")
         require(path.parent.is_dir(), "handoff parent directory does not exist")
         with tempfile.TemporaryFile(dir=path.parent):
@@ -265,6 +284,7 @@ def main() -> None:
         print(json.dumps({"handoff": str(path)}))
         return
     path = Path(args.path).absolute()
+    require(path.resolve().is_relative_to(scratch_root().resolve()), "handoff must be under workspace .tmp")
     if args.command in {"validate", "inspect-publication"}:
         record, _ = read_record(path)
     else:
@@ -282,6 +302,6 @@ def main() -> None:
 if __name__ == "__main__":
     try:
         main()
-    except (OSError, ValueError, TypeError) as error:
+    except (OSError, ValueError, TypeError, subprocess.CalledProcessError) as error:
         print(f"pending feedback: {error}", file=sys.stderr)
         sys.exit(1)

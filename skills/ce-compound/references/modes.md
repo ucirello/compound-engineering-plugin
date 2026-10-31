@@ -2,7 +2,7 @@
 
 Both are decisions the agent is better positioned to make than the user. Depth depends on the context budget the agent can observe and the user cannot. Neither party can know in advance whether session history will pay off, because the payoff is an unrelated earlier session the current agent was never in. So a cheap probe decides it instead of a question to the user.
 
-**Full is the right choice for essentially every documented learning.** Its token cost is small next to the engineering work that produced the learning, and it is dwarfed by the value of a doc that compounds. Lightweight buys back context at the cost of cross-referencing, overlap detection, and semantic grounding validation, so it is for real context pressure only. If Lightweight turns out to be the wrong call for the user's taste, re-running is a rare, cheap correction. It is cheaper than taxing every run with a question.
+**Full is the right choice for essentially every documented learning.** Interactive context pressure routes to the mandatory ONE fresh native Full delegate in `SKILL.md`, with source-session export as primary evidence, not directly to Lightweight. Only an actual classified tool/permission/depth failure permits Lightweight fallback; advise rerunning the same source session when delegation becomes available. Explicit non-interactive depth tokens are unchanged.
 
 **The session-history probe is near-free on wall-clock** because it runs alongside the Related Docs Finder and your drafting, and it escalates to the expensive extraction and synthesis only when genuinely relevant candidate sessions turn up (`references/session-history.md`). This support exists only inside the compounding workflow; there is no standalone session-history feature for users.
 

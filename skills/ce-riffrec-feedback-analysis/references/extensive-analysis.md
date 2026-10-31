@@ -1,6 +1,6 @@
 # Extensive analysis path
 
-Use this path when the input is a longer recording (over ~60 seconds), contains multiple issues, requirements, or workflow walkthroughs, or the user explicitly wants requirements material. The goal is a full Compound Engineering-compatible artifact set that feeds `ce-brainstorm`.
+Use this path when the input is a longer recording (over ~60 seconds), contains multiple issues, requirements, or workflow walkthroughs, or the user explicitly wants requirements material. The goal is a full RocketClaw-compatible artifact set that feeds `ce-brainstorm`.
 
 ## Workflow
 
@@ -30,6 +30,10 @@ Use this path when the input is a longer recording (over ~60 seconds), contains 
 7. When the current workspace contains the product source code, run a source-mapping pass before or during brainstorm. Use the transcript language, visible UI labels, screenshot paths, route names, and generated requirements to search the codebase for likely components, controllers, services, models, tests, and state stores. For larger sessions, split this mapping by product area and use sub-agents when available so independent areas can be inspected in parallel.
 
 8. Add source mapping to the brainstorm material as suspected implementation surfaces, not as proven root cause unless the code clearly proves it. Include confidence levels and short evidence notes explaining why each file or component is relevant.
+
+   The source-mapping delegation above authorizes native OpenCode subagents for this skill only, subject to unconditional user/tool prohibitions. Use the inherited model unless an optional model override is permitted; use `opencode.models` to resolve an explicitly requested model. Do not switch harnesses or shell-dispatch to evade a denial. Distinguish permission/tool unavailability, model rejection, and actual depth/capacity errors. Mapping may run inline if delegation is unavailable; disclose that it was not independent cross-model review. No independent review coverage is promised by this optional mapping pass.
+
+   For deep delegation, tell users to discover the active configuration directory with `opencode debug paths` / `opencode debug paths config` and merge `experimental.subagent_depth` of at least `3` into the existing `opencode.json` or `opencode.jsonc` there (normally `~/.config/opencode/opencode.json`). Preserve unrelated fields, sibling fields, and higher existing integers; do not create a competing file or replace the configuration. Package-local configuration or plugin installation alone does not enable this, and higher-precedence configuration must not lower the depth. Document this prerequisite only; do not modify host configuration. Inspect effective depth through supported configuration discovery before diagnosing a nesting limit.
 
 9. Unless the user explicitly asked only to extract or analyze artifacts, announce that analysis is complete and invoke `ce-brainstorm` with `requirements-kickoff.md` plus `source-materials.md` as its evidence manifest. The callee owns requirements confirmation and the durable requirements-only unified plan.
 
@@ -75,7 +79,7 @@ The analyzer writes:
 - `problem-analysis.md`: a categorized problem statement scaffold for visual, functional, requirement, and UX findings.
 - `review-prompt.md`: a filled prompt containing screenshot paths and transcript for a deeper visual analysis pass.
 - `source-materials.md`: a manifest linking the original source location, local-only raw files, transcript locations, chunks, local-only frames, and generated artifacts.
-- `requirements-kickoff.md`: a CE-friendly requirements starter with Problem Frame, Actors, Key Flows, R-IDs, Acceptance Examples, Success Criteria, Scope Boundaries, Questions, and Next Steps.
+- `requirements-kickoff.md`: a requirements starter with Problem Frame, Actors, Key Flows, R-IDs, Acceptance Examples, Success Criteria, Scope Boundaries, Questions, and Next Steps.
 - `analysis.json`: structured session, event, transcript, moment, and artifact metadata.
 - `frames/`: extracted PNG screenshots for selected moments. Local-only by default.
 - `raw/`: normalized capture contents and copied standalone media. Local-only by default.

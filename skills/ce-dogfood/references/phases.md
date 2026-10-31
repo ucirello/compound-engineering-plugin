@@ -11,9 +11,9 @@ Parse the arguments you were invoked with: a PR number, a branch name, or blank 
    - **Branch name:** the target is that branch.
    - **Blank:** the target is the current branch.
 2. **Refuse to run on the trunk — branch/blank targets only.** If a *branch-name or blank* target resolves to the trunk (`main`/`master`/the detected default), stop — there is no diff to dogfood. A **PR is always diffable** (it has a base), so this check never applies to a PR target; never refuse a `ce-dogfood <number>` invocation just because the PR's head branch happens to be named `main`.
-3. **Decide isolation by what you're testing; let `ce-worktree` own the worktree mechanics.** Do not re-derive worktree detection or creation here — `ce-worktree` handles existing-isolation detection, the harness-native tool, attaching to a ref, and the "already checked out" constraint, and reports its decision back. The only call this skill makes is *whether to isolate at all*:
-   - **Blank / current-branch target:** do **not** isolate — dogfood in place. You are already on the branch under test, the fix-commits belong on it, and git cannot check the same branch out in a second worktree anyway. (If you happen to already be in a worktree, that is fine — you are simply dogfooding here.)
-   - **A PR or a different named branch:** this is an existing ref to test without disturbing your current checkout. Isolate it without asking: invoke `ce-worktree` for **that target ref** — it attaches a worktree to the ref (or, if already isolated, checks it out in place; or reports "already checked out at `<path>` — work there" when the ref is live elsewhere). Act on `ce-worktree`'s verdict; on that path the primary checkout is never switched. Check the target out in place (`gh pr checkout <number>` for a PR, `git checkout <branch>` for a branch) only when `ce-worktree` cannot isolate it, and ask first, because that switches the user's checkout.
+3. **Decide isolation by what you're testing; let `ce-worktree` own the workspace mechanics.** Do not re-derive workspace detection or creation here — `ce-worktree` handles existing-isolation detection, harness-native lifecycle, exact revision selection, and collision/ownership checks, and reports its decision back. JJ permits multiple workspaces at the same revision; do not impose a Git branch-checkout restriction. The only call this skill makes is *whether to isolate at all*:
+   - **Blank / current-bookmark target:** do **not** isolate — dogfood in place. Existing isolation is reused unchanged, including its name and colocation.
+   - **A PR or a different named bookmark:** invoke `ce-worktree` for the verified target revision without asking. Harness-native lifecycle takes precedence; if it cannot supply the required naming/colocation, report a safe blocker, not an in-place checkout fallback. For a new workspace capture the local date once and persist one `YYYYMMDD-meaningful-kebab-slug` identity for both registration and destination basename under the existing local `.tmp` parent. Normalize caller names without double prefixing; check registrations and paths and append `-2`, `-3` on collision. From the absolute source root create with `jj workspace add --colocate --name NAME --revision VERIFIED_BASE ABSOLUTE_DEST`; in the resulting absolute root verify `jj git colocation status`. Never rename existing source/PR bookmarks. Leave cleanup to `ce-worktree`; completion is not deletion authority.
 4. **Resume if a prior run exists.** Look for an existing report at `<root>/dogfood-reports/*-<branch-slug>-dogfood.md` (see the branch-slug rule under Resumability). If one is found with unfinished scenarios, resume it without asking, unless the user asked for a fresh run. Rebuild the task list from its matrix: `Pass`/`Fixed`/`Skipped` stay done; `Pending` and `in_progress` become the remaining work. The two `Blocked` states stay as they are: they wait on a person, so carry them into the end-of-run hand-back instead of re-queuing them or asking about them mid-run.
 
 ### Resumability (stop and return at any point)
@@ -30,28 +30,15 @@ Because tasks are session-scoped but the report doc is on disk, the report is th
 Derive the trunk ref once, then pull the full diff against it and read it. Do not hard-code `main` — a repo whose default branch is `master` (or anything else) would fail with `fatal: ambiguous argument 'main...HEAD'`.
 
 ```bash
-# Resolve the trunk to a ref that actually exists. Start from the detected
-# default name (origin/HEAD, then gh), then fall back to common names. For each
-# candidate prefer a local branch; else use the remote-tracking ref QUALIFIED as
-# origin/<branch> — an unqualified name resolves via refs/remotes/<name>, NOT
-# refs/remotes/origin/<name>, so a remote-only trunk would otherwise miss. This
-# qualification applies to the detected default too (PR/CI checkouts often have
-# only origin/main, no local main).
-DEFAULT=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's@^origin/@@')
-DEFAULT=${DEFAULT:-$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name 2>/dev/null)}
-TRUNK=""
-for cand in "$DEFAULT" main master; do
-  [ -n "$cand" ] || continue
-  if git show-ref --verify --quiet "refs/heads/$cand"; then
-    TRUNK=$cand; break
-  elif git show-ref --verify --quiet "refs/remotes/origin/$cand"; then
-    TRUNK="origin/$cand"; break
-  fi
-done
-TRUNK=${TRUNK:-main}
-
-git diff --name-only "$TRUNK...HEAD"   # what changed
-git diff "$TRUNK...HEAD"               # how it changed
+# workspace_root is the absolute target workspace, VERIFIED_HEAD is the
+# captured target commit ID (use @- when @ is only its empty child).
+(cd "$workspace_root" && GIT_DIR=$(jj git root) gh repo view --json defaultBranchRef)
+(cd "$workspace_root" && jj bookmark list --all-remotes)
+# Verify the actual trunk bookmark against that evidence; stop if ambiguous.
+# Resolve its merge base with VERIFIED_HEAD to one captured BASE commit ID.
+(cd "$workspace_root" && jj log --no-graph -r 'heads(::VERIFIED_TRUNK & ::VERIFIED_HEAD)' -T 'commit_id ++ "\n"')
+(cd "$workspace_root" && jj diff --from "$BASE" --to "$VERIFIED_HEAD" --summary)
+(cd "$workspace_root" && jj diff --from "$BASE" --to "$VERIFIED_HEAD")
 ```
 
 Build a mental model of every change: new features, modified behavior, new routes/views/components, touched data flows. Note anything that produces user-visible behavior — that is what the matrix must cover.
@@ -119,7 +106,7 @@ Determine the port (priority: explicit `--port` > a port explicitly stated in yo
 Work the task list **one item at a time**. For each scenario, mark the task `in_progress`, then:
 
 1. **Document** what you're testing (the journey and the expected outcome).
-2. **Drive it** with the chosen browser: navigate, read the interactive elements, click, fill, submit, and follow the journey to its real end state. Take screenshots and check console and page errors along the way. Write transient screenshots to OS temp (e.g. `mktemp -d "${TMPDIR:-/tmp}/ce-dogfood-XXXXXX"`), never the repo root. Only copy a screenshot into the report's location if you intend to embed it in the final report.
+2. **Drive it** with the chosen browser: navigate, read the interactive elements, click, fill, submit, and follow the journey to its real end state. Take screenshots and check console and page errors along the way. Write transient screenshots under the absolute target workspace's `.tmp/dogfood/`, never global temporary storage. Only copy a screenshot into the report's location if you intend to embed it in the final report.
 
 3. **Judge** both correctness and experience: right data, right destination, sensible content, no console errors, and does it feel aligned with the product? Then judge the scenario against each pack criterion attached to it in Phase 2: state whether the behavior you drove honors the rule or contradicts it, quoting the rule's text and what the browser showed. A contradicted criterion is a failure-class result carrying its citation, exactly like a functional failure; an honored one is recorded as honored.
 4. **Walk it as each persona.** Re-run the journey in your head from each primary persona's perspective (from Phase 1, pack personas included) and ask where they'd feel a **paper cut** — a small friction that wouldn't fail a functional test but degrades the experience: a confusing label, an extra click, an unexpected jump, a slow-feeling step, missing feedback, copy that doesn't match how that persona thinks. A scenario can be functionally `Pass` yet still carry paper cuts. Note each paper cut, which persona feels it, and its severity; a paper cut felt by a pack persona carries that persona's citation.

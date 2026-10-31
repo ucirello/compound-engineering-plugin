@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 set -e
+source "$(dirname "$0")/workspace-context"
 
 if [ $# -eq 0 ]; then
     echo "Usage: resolve-pr-thread THREAD_ID"

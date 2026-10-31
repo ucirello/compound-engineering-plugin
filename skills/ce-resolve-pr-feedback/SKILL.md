@@ -2,12 +2,16 @@
 name: ce-resolve-pr-feedback
 description: Judge PR feedback centrally, apply valid fixes, and complete review conversations with publication verified. Use when addressing feedback already left on a PR, preparing local fixes for a caller to publish, or completing a saved feedback batch. Use ce-code-review for reviewing code before feedback exists.
 argument-hint: "[mode:pipeline | mode:return-to-caller | mode:resume] [PR number, comment URL, or blank for current branch's PR] [handoff:<path>]"
-allowed-tools: Bash(gh *), Bash(git *), Bash(bash *), Bash(python3 *), Read, Write
+allowed-tools: Bash(gh *), Bash(jj *), Bash(bash *), Bash(python3 *), Read, Write
 ---
 
 # Resolve PR Review Feedback
 
-Judge fresh PR review feedback centrally, then dispatch generic subagents seeded with the bundled fixer prompt only for approved fixes. Publish the fixes before replying and resolving. Resume completes saved judgments without another fix pass.
+Judge fresh PR review feedback centrally, then dispatch generic native subagents seeded with the bundled fixer prompt only for approved fixes. Publish the fixes before replying and resolving. Resume completes saved judgments without another fix pass.
+
+**Repository context:** Capture the absolute target `workspace_root` before action. Run every JJ command from that absolute cwd, never using `-R` as a substitute. In every shell block performing repository-scoped `gh` operations, first run `cd "$workspace_root"` and `export GIT_DIR=$(jj git root)`; carry any Enterprise `GH_HOST` too. Bundled shell helpers establish this context themselves. Retain existing isolation unchanged. Verify the exact PR repository, remote, bookmark and head before publication; preserve unrelated and conflicted work and stop on uncertainty. Already authorized routine publication and factual description maintenance need no second approval; optional rewrites remain separate and declining them must not block authorized monitoring.
+
+**Delegation:** This skill's explicit fixer dispatch authorizes native subagents under user-or-applicable-skill policy, but never overrides unconditional denial. Discover available models with `opencode.models` only when selecting a permitted override; if overrides are forbidden without a user model request, omit the model argument and disclose any unmet tier. Inspect effective nesting configuration through supported discovery and distinguish depth/capacity, permission, model rejection and unavailable-tool failures. Never evade denial through shell or another harness. Sequential implementation is permitted here because fixers provide implementation, not independent review coverage. Deep delegation setup requires users to merge `experimental.subagent_depth >= 3` into their existing `opencode.json(c)` under the directory discovered by `opencode debug paths` / `opencode debug paths config`, preserving sibling fields and higher values; do not modify host configuration or create a competing file. Package-local settings alone do not enable it, and higher-precedence configuration must not lower it.
 
 **Done:** Every selected item has a verdict and verified conversation completion or a reported residual. Completed threads have a visible submitted reply with quoted context and authoritative resolution; `needs-human` threads stay open. Ordinary and pipeline runs publish valid fixes before completion. Return-to-caller preserves its local fix commit and exact pending actions in a readable validated handoff, or records actual no-change completion. Resume verifies fresh publication and returns checkpointed completion or pending saved actions with retry evidence. Pending actions are never reported as resolved.
 

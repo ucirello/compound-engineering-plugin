@@ -1,6 +1,6 @@
 # Product Pulse First-Run Interview
 
-Loaded from `references/setup.md` at the start of Phase 1. Captures the configuration that will be merged into `.compound-engineering/config.local.yaml` (the optional local override; interviews write here) as `pulse_*` keys. Subsequent runs re-read those keys from the local file first, then from `config.yaml`.
+Loaded from `references/setup.md` at the start of Phase 1. Captures the configuration that will be merged into `.rocketclaw/config.local.yaml` (the optional local override; interviews write here) as `pulse_*` keys. Subsequent runs re-read those keys from the local file first, then from `config.yaml`.
 
 For each section: ask the opening question, evaluate the answer against the quality bar, push back when it falls into a named anti-pattern, and capture the final answer in the user's own language.
 
@@ -137,9 +137,9 @@ Do not silently skip. Every un-instrumented strategy metric must land in exactly
 
 After each unique source is named, check MCP coverage:
 
-1. Call `search_mcp_registry` with the tool name to see if an official or community MCP exists. Do not guess from memory.
+1. Use an available native MCP discovery capability with the tool name to see if an official or community MCP exists. Do not assume `search_mcp_registry` or any other host-specific tool exists. If discovery is unavailable, disclose that and ask the user which connection is available; do not guess from memory.
 2. If one exists and the user already has it connected (ask: "Is the `{{tool}}` MCP already connected?"), note `using MCP for {{tool}}` in the config.
-3. If one exists but the user hasn't connected it, suggest: "There's an MCP for `{{tool}}`. Connecting it is the fastest way to let the agent query on each run - I can call `suggest_connectors` to walk you through it, or we can skip and I'll note the source as `manual - agent will need credentials or another path`."
+3. If one exists but the user hasn't connected it, suggest connecting it through OpenCode's MCP configuration or an available native connection flow, or record the source as `manual - agent will need credentials or another path`. Do not call an unavailable connector tool or collect credentials in chat.
 4. If no MCP exists, capture `manual` and note what shape of query the agent should use (CLI, API, etc.).
 
 Do not set up MCP connections inside this interview - that's a separate flow. Just record which tools have MCP coverage and which do not.
@@ -212,7 +212,7 @@ After the config is written and shown to the user, make a scheduling offer befor
 
 **Handling the answer:**
 
-- **Yes (daily or weekly)** -> "I'll hand this to the `schedule` skill. Confirm the time/day and it'll set up the recurring job." Do not schedule inline - hand off to the `schedule` skill explicitly, which is the single source of truth for recurring tasks. On Claude Code, this uses the Routines feature.
+- **Yes (daily or weekly)** -> Confirm the time/day and hand off to an available native scheduling primitive or the `schedule` skill if installed. Do not assume a scheduling tool exists or schedule inline. If none is available, explain that limitation and provide a brief cron or GitHub Actions setup hint without installing or activating it.
 - **Not now** -> capture `schedule: manual` in the config. No nag.
 - **Later** -> capture `schedule: ask-again-after-3-runs` in the config. The Phase 3 rule in `SKILL.md` re-surfaces the offer after 3 manual runs.
 
@@ -224,9 +224,9 @@ Skipping this entirely is fine - the skill does not require a schedule to functi
 
 ## Config File Shape
 
-After the interview completes, merge a `pulse_*` block into `<repo-root>/.compound-engineering/config.local.yaml`. Resolve the repo root with `git rev-parse --show-toplevel`. Preserve any non-pulse keys that already exist in the file (e.g., `plan_*`); only add or update `pulse_*` keys.
+After the interview completes, merge a `pulse_*` block into `<repo-root>/.rocketclaw/config.local.yaml`. Use the absolute workspace root verified with `jj root` in `SKILL.md` Phase 0; do not write repository settings if it is unresolved. Preserve any non-pulse keys that already exist in the file (e.g., `plan_*`); only add or update `pulse_*` keys.
 
-If the file does not yet exist, create the directory and file. If `.compound-engineering/config.local.yaml` is not already covered by `.gitignore`, offer to add the entry before writing.
+If the file does not yet exist, create the directory and file. Inspect applicable ignore files directly, including parent patterns and negations, without a Git executable; disclose uncertain coverage. If `.rocketclaw/config.local.yaml` is not already covered by `.gitignore`, offer to add the entry before writing.
 
 The pulse block uses skill-prefixed flat keys so it can share the config file without owning unrelated settings:
 

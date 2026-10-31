@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Compound Engineering environment health check.
+# RocketClaw environment health check.
 # Reports optional tool capabilities and repo-local config safety in one pass.
 
 set -o pipefail
@@ -103,8 +103,8 @@ resolve_real_best_effort() {
 # docs_root_source, docs_root_error, and docs_root_local_ignored.
 resolve_docs_root() {
   local repo_root="$1"
-  local local_cfg="$repo_root/.compound-engineering/config.local.yaml"
-  local tracked_cfg="$repo_root/.compound-engineering/config.yaml"
+  local local_cfg="$repo_root/.rocketclaw/config.local.yaml"
+  local tracked_cfg="$repo_root/.rocketclaw/config.yaml"
   local value="" source="" repo_real real local_docs probe
 
   docs_root_error=""
@@ -142,7 +142,7 @@ resolve_docs_root() {
   esac
   [ "$real" = "$repo_real" ] && { docs_root_error="resolves to the repository root itself"; return; }
   case "$real/" in
-    "$repo_real/.git/"*) docs_root_error="resolves inside .git/"; return ;;
+    "$repo_real/.git/"*|"$repo_real/.jj/"*) docs_root_error="resolves inside .git/"; return ;;
   esac
   if [ -e "$real" ] && [ ! -d "$real" ]; then
     docs_root_error="names an existing non-directory"; return
@@ -358,7 +358,7 @@ read_work_engine_effort_keys() {
   ' "$config_file"
 }
 
-# Same prerequisite the peer workers check before launching acpx. Sets
+# Optional legacy adapter-cache compatibility prerequisite; never dispatches. Sets
 # node_version and, when unmet, node_problem.
 check_node_prerequisite() {
   local major minor
@@ -392,9 +392,10 @@ if [ "$warm_acpx" = "yes" ]; then
   warm_failed=0
   # Run from an empty directory, as the peer workers do: npx resolves packages
   # from its working directory's node_modules and .npmrc first.
-  warm_dir="$(mktemp -d "${TMPDIR:-/tmp}/ce-acpx-warm-XXXXXX")" || { warn "Cannot warm the npm cache: no temporary directory"; echo ""; exit 1; }
+  mkdir -p "$PWD/.tmp"
+  warm_dir="$(mktemp -d "$PWD/.tmp/acpx-warm-XXXXXX")" || { warn "Cannot warm the npm cache: no temporary directory"; echo ""; exit 1; }
   for spec in "acpx@>=$ACPX_MIN_VERSION <=$ACPX_VERSION" $ACPX_ADAPTER_SPECS; do
-    if (cd "$warm_dir" && npx --yes --package="$spec" -- node --version >/dev/null); then
+    if (cd "$warm_dir" && npm_config_cache="$PWD/.npm-cache" npx --yes --package="$spec" -- node --version >/dev/null); then
       ok "cached $spec"
     else
       warn "could not fetch $spec"
@@ -407,7 +408,21 @@ if [ "$warm_acpx" = "yes" ]; then
 fi
 
 has_brew=$(command -v brew >/dev/null 2>&1 && echo "yes" || echo "no")
-in_repo=$(git rev-parse --is-inside-work-tree >/dev/null 2>&1 && echo "yes" || echo "no")
+repo_root="$PWD"
+while [ ! -e "$repo_root/.jj" ] && [ "$repo_root" != / ]; do repo_root="$(dirname "$repo_root")"; done
+if [ -e "$repo_root/.jj" ]; then
+  repo_root="$(cd "$repo_root" && jj root 2>/dev/null)"
+  in_repo="yes"
+else
+  in_repo="no"
+fi
+# Conservative exact-rule check: unknown patterns/negations never imply safety.
+ignore_covered() {
+  local rule="$1" file="$repo_root/.gitignore"
+  [ -f "$file" ] || return 1
+  grep -q '^!' "$file" && return 1
+  grep -Fxq "$rule" "$file"
+}
 
 # Retired Bun-era Codex tool map (#1099). The block is present only when a
 # standalone BEGIN line is followed by a standalone END line.
@@ -481,18 +496,18 @@ project_issues=0
 antigravity_configured="no"
 
 if [ "$in_repo" = "yes" ]; then
-  repo_root=$(git rev-parse --show-toplevel 2>/dev/null)
-  local_config_path="$repo_root/.compound-engineering/config.local.yaml"
-  tracked_config_path="$repo_root/.compound-engineering/config.yaml"
+  repo_root=$(cd "$repo_root" && jj root 2>/dev/null)
+  local_config_path="$repo_root/.rocketclaw/config.local.yaml"
+  tracked_config_path="$repo_root/.rocketclaw/config.yaml"
   resolve_docs_root "$repo_root"
   [ "$docs_root_status" = "invalid" ] && project_issues=$((project_issues + 1))
   legacy_cfg="missing"
-  [ -f "$repo_root/compound-engineering.local.md" ] && legacy_cfg="present"
+  [ -f "$repo_root/rocketclaw.local.md" ] && legacy_cfg="present"
 
   local_cfg="missing"
   if [ -e "$local_config_path" ]; then
     local_cfg="present"
-    if git check-ignore -q "$local_config_path" 2>/dev/null; then
+    if ignore_covered ".rocketclaw/*.local.yaml" || ignore_covered ".rocketclaw/config.local.yaml"; then
       repo_cfg_gitignore="ok"
     else
       repo_cfg_gitignore="missing"
@@ -502,7 +517,7 @@ if [ "$in_repo" = "yes" ]; then
   # Trailing slash is load-bearing: without it an existing directory-only rule
   # is missed before the directory exists, and a configured repo reads as bare.
   scratch_gitignore="missing"
-  if git -C "$repo_root" check-ignore -q .context/compound-engineering/ 2>/dev/null; then
+  if ignore_covered ".context/"; then
     scratch_gitignore="ok"
   fi
 
@@ -646,7 +661,7 @@ if [ "$in_repo" = "yes" ]; then
 
   script_dir="$(cd "$(dirname "$0")" && pwd)"
   template="$script_dir/../references/config-template.yaml"
-  example="$repo_root/.compound-engineering/config.example.yaml"
+  example="$repo_root/.rocketclaw/config.example.yaml"
   if [ ! -f "$example" ]; then
     example_cfg="missing"
   elif [ -f "$template" ] && ! diff -q "$template" "$example" >/dev/null 2>&1; then
@@ -702,6 +717,7 @@ if [ -n "$plugin_version" ]; then
   ok "Plugin version v${plugin_version}"
 fi
 
+detail "Native model discovery: use opencode.models; legacy adapter cache checks below are compatibility only."
 section "Optional capabilities  ${capability_ok}/${capability_total}"
 
 for result in "${results[@]}"; do
@@ -746,20 +762,20 @@ if [ "$in_repo" = "yes" ]; then
   section "Project config"
 
   if [ "$legacy_cfg" = "present" ]; then
-    warn "Obsolete compound-engineering.local.md exists"
+    warn "Obsolete rocketclaw.local.md exists"
     project_issues=$((project_issues + 1))
   else
-    ok "No obsolete compound-engineering.local.md"
+    ok "No obsolete rocketclaw.local.md"
   fi
 
   if [ "$tracked_cfg" = "present" ]; then
-    ok ".compound-engineering/config.yaml exists"
+    ok ".rocketclaw/config.yaml exists"
   else
-    skip "No repo config yet (.compound-engineering/config.yaml)"
+    skip "No repo config yet (.rocketclaw/config.yaml)"
   fi
 
   if [ "$local_cfg" = "present" ]; then
-    ok ".compound-engineering/config.local.yaml exists"
+    ok ".rocketclaw/config.local.yaml exists"
     if [ "$repo_cfg_gitignore" = "ok" ]; then
       ok "Local config is gitignored"
     else
@@ -767,14 +783,14 @@ if [ "$in_repo" = "yes" ]; then
       project_issues=$((project_issues + 1))
     fi
   else
-    skip "No local override yet (.compound-engineering/config.local.yaml)"
+    skip "No local override yet (.rocketclaw/config.local.yaml)"
   fi
 
   if [ "$scratch_gitignore" = "ok" ]; then
-    ok "CE scratch space is gitignored"
+    ok "RocketClaw scratch space is gitignored"
   else
-    skip "CE scratch space is not gitignored"
-    detail "Skills that keep local scratch write it under .context/compound-engineering/"
+    skip "RocketClaw scratch space is not gitignored"
+    detail "Skills that keep local scratch write it under .context/"
   fi
 
   if [ "$docs_root_status" = "default" ]; then
@@ -783,14 +799,14 @@ if [ "$in_repo" = "yes" ]; then
     ok "Artifact root: ${docs_root_value}/ (from ${docs_root_source})"
   elif [ "$docs_root_status" = "invalid" ]; then
     warn "Invalid docs_root '${docs_root_value}' in ${docs_root_source}: ${docs_root_error}"
-    detail "CE artifacts will not be written until docs_root is corrected or removed."
+    detail "RocketClaw artifacts will not be written until docs_root is corrected or removed."
   fi
   if [ -n "$docs_root_local_ignored" ]; then
     skip "Local docs_root '${docs_root_local_ignored}' is ignored; set docs_root only in config.yaml"
   fi
 
   if [ "$work_engine_cfg" = "native" ]; then
-    ok "CE Work implementation engine: native (${work_engine_detail})"
+    ok "RocketClaw Work implementation engine: native (${work_engine_detail})"
     if [ -n "$work_engine_preferences_note" ]; then
       if [ "$work_engine_preferences_note_level" = "warn" ]; then
         warn "$work_engine_preferences_note"
@@ -799,11 +815,11 @@ if [ "$in_repo" = "yes" ]; then
       fi
     fi
   elif [ "$work_engine_cfg" = "prefer" ] || [ "$work_engine_cfg" = "require" ]; then
-    ok "CE Work implementation engine: ${work_engine_cfg} -> ${work_engine_detail}"
+    ok "RocketClaw Work implementation engine: ${work_engine_cfg} -> ${work_engine_detail}"
   elif [ "$work_engine_cfg" = "unavailable" ]; then
-    warn "CE Work implementation engine unavailable: ${work_engine_detail}"
+    warn "RocketClaw Work implementation engine unavailable: ${work_engine_detail}"
   elif [ "$work_engine_cfg" = "invalid" ]; then
-    warn "CE Work implementation engine: ${work_engine_detail}"
+    warn "RocketClaw Work implementation engine: ${work_engine_detail}"
   fi
   [ -n "$work_engine_migration_note" ] && warn "$work_engine_migration_note"
   for effort_note in ${work_engine_effort_notes[@]+"${work_engine_effort_notes[@]}"}; do
@@ -814,7 +830,7 @@ if [ "$in_repo" = "yes" ]; then
   if [ "$example_cfg" = "ok" ]; then
     ok "Example config is current"
   elif [ "$example_cfg" = "missing" ]; then
-    warn "Example config missing (.compound-engineering/config.example.yaml)"
+    warn "Example config missing (.rocketclaw/config.example.yaml)"
     project_issues=$((project_issues + 1))
   elif [ "$example_cfg" = "outdated" ]; then
     warn "Example config outdated (new settings available)"
@@ -866,16 +882,19 @@ for r in roots:
                 _ssh = genv.get("GIT_SSH_COMMAND") or "ssh"
                 if "BatchMode" not in _ssh:
                     genv["GIT_SSH_COMMAND"] = _ssh + " -o BatchMode=yes"
-                names = ["refs/tags/" + ref + "^{}", "refs/tags/" + ref, "refs/heads/" + ref]
-                remote = subprocess.run(["git", "ls-remote", "--end-of-options", url, *names],
-                                        capture_output=True, text=True, timeout=10, env=genv)
-                targets = {}
-                for row in remote.stdout.splitlines() if remote.returncode == 0 else []:
-                    sha, _, name = row.partition("\t")
-                    if name:
-                        targets[name] = sha
-                rsha = next((targets[n] for n in names if n in targets), "")
-                local = subprocess.run(["git", "-C", r["dir"], "rev-parse", "HEAD"], capture_output=True, text=True, timeout=10)
+                workspace = os.path.abspath(r["dir"])
+                while not os.path.exists(os.path.join(workspace, ".jj")) and workspace != os.path.dirname(workspace):
+                    workspace = os.path.dirname(workspace)
+                subprocess.run(["jj", "git", "fetch", "--remote", "origin"], cwd=workspace,
+                               capture_output=True, text=True, timeout=10, env=genv, check=True)
+                quoted = json.dumps(ref)
+                revision = f"tags(exact:{quoted}) | remote_bookmarks(exact:{quoted}, exact:origin)"
+                remote = subprocess.run(["jj", "log", "--no-graph", "-r", revision, "-T", "commit_id ++ \"\\n\""],
+                                        cwd=workspace, capture_output=True, text=True, timeout=10)
+                targets = set(remote.stdout.splitlines()) if remote.returncode == 0 else set()
+                rsha = next(iter(targets)) if len(targets) == 1 else ""
+                local = subprocess.run(["jj", "log", "--no-graph", "-r", "@", "-T", "commit_id"],
+                                       cwd=workspace, capture_output=True, text=True, timeout=10)
                 lsha = local.stdout.strip() if local.returncode == 0 else ""
                 if rsha and lsha and rsha != lsha:
                     line += " -- cached resolution is behind upstream"
@@ -905,7 +924,7 @@ for e in errors:
   fi
 else
   section "Project config"
-  skip "Not inside a git repository"
+  skip "Not inside a JJ workspace"
 fi
 
 echo ""

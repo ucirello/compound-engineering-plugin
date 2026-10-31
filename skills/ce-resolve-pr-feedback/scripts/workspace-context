@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Source before repository-scoped gh calls; anchor JJ to an absolute cwd.
+workspace_root=$(pwd -P)
+workspace_root=$(cd "$workspace_root" && jj workspace root) || return 1
+cd "$workspace_root" || return 1
+GIT_DIR=$(cd "$workspace_root" && jj git root) || return 1
+export GIT_DIR
+mkdir -p "$workspace_root/.tmp"

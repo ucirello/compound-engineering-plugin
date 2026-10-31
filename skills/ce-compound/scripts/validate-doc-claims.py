@@ -47,7 +47,7 @@ decides per flag: fix, annotate as historical, or confirm intentional.
 Only the summary exit code distinguishes "clean" from "needs a look".
 
 The script never touches the network (no fetch); classification uses
-whatever refs exist locally. Run a best-effort `git fetch --quiet` first
+whatever refs exist locally. Run a best-effort `jj git fetch` at the absolute workspace root first
 when freshness matters. Pure stdlib (no third-party deps).
 """
 import os
@@ -102,15 +102,54 @@ def usage_fail(msg: str) -> "NoReturn":
 
 
 def git(args: list[str], cwd: str) -> tuple[int, str]:
+    """Compatibility query vocabulary implemented solely through native JJ."""
+    root = os.path.abspath(cwd)
+    while not os.path.isdir(os.path.join(root, ".jj")):
+        parent = os.path.dirname(root)
+        if parent == root:
+            return 1, ""
+        root = parent
+    def rev(value: str) -> str:
+        if value == "HEAD":
+            return "@"
+        if value.startswith("origin/"):
+            return value[7:] + "@origin"
+        return value
+    if args == ["rev-parse", "--show-toplevel"]:
+        return 0, root
+    command = args[0]
+    if command == "rev-parse":
+        if args[-1] == "origin/HEAD":
+            return 1, ""  # Do not invent a default bookmark.
+        query = ["log", "--no-graph", "-r", rev(args[-1]), "-T", "commit_id"]
+    elif command == "rev-list":
+        left, right = args[-1].split("..", 1)
+        query = ["log", "--no-graph", "-r", f"{rev(left)}..{rev(right)}", "-T", 'commit_id ++ "\\n"']
+    elif command == "cat-file":
+        value = args[-1]
+        if ":" in value:
+            revision, path = value.split(":", 1)
+            query = ["file", "show", "-r", rev(revision), "--", path]
+        else:
+            query = ["log", "--no-graph", "-r", value.removesuffix("^{commit}"), "-T", "commit_id"]
+    elif command == "merge-base":
+        query = ["log", "--no-graph", "-r", f"{rev(args[-2])} & ::{rev(args[-1])}", "-T", "commit_id"]
+    else:
+        return 1, ""
     try:
         result = subprocess.run(
-            ["git", *args],
-            cwd=cwd,
+            ["jj", *query],
+            cwd=root,
             capture_output=True,
             text=True,
             timeout=30,
         )
-        return result.returncode, result.stdout.strip()
+        output = result.stdout.strip()
+        if command == "rev-list" and result.returncode == 0:
+            output = str(len(output.splitlines())) if output else "0"
+        if command in ("merge-base", "rev-parse") and not output:
+            return 1, ""
+        return result.returncode, output
     except (OSError, subprocess.TimeoutExpired):
         return 1, ""
 
@@ -222,7 +261,7 @@ def strip_repo_prefix(token: str, base: str) -> str:
 
     Relative tokens, URL routes, and out-of-repo absolute paths are
     unchanged so the existing candidacy guard still drops them. Realpath
-    both sides so a host where /tmp is a symlink still matches. A
+    both sides so a host where the workspace path is a symlink still matches. A
     successful rewrite is slash-normalized so Windows relpath output
     stays a candidate.
     """

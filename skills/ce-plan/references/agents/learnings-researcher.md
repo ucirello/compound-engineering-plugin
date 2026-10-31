@@ -17,7 +17,7 @@ For planning invocations, search the full learning corpus described below, then 
 
 ## Search Roots
 
-The caller may pass a **search-root list**: `<root>/solutions/` plus zero or more Compound Packs, each as an `id` and an absolute directory, and optionally a list of pack files the origin document already cites. With no list, probe `<root>/solutions/` only — packs are declared in CE config and resolved by the caller, not rediscovered here. Every step below that names `<root>/solutions/` applies to each search root, except Step 2's subdirectory probe and Step 3b's critical-patterns read, which stay scoped to `<root>/solutions/`. Pack-specific rules:
+The caller may pass a **search-root list**: `<root>/solutions/` plus zero or more Compound Packs, each as an `id` and an absolute directory, and optionally a list of pack files the origin document already cites. With no list, probe `<root>/solutions/` only — packs are declared in RocketClaw config and resolved by the caller, not rediscovered here. Every step below that names `<root>/solutions/` applies to each search root, except Step 2's subdirectory probe and Step 3b's critical-patterns read, which stay scoped to `<root>/solutions/`. Pack-specific rules:
 
 - **A pack is small and prescriptive, so do not grep-filter it.** Skip the Step 3 pre-filter for a pack root: read the frontmatter of every top-level markdown file in the pack (Step 4), then score with Step 5. Subdirectories and non-markdown files are pack assets — never rules, never listed as skipped. Apply the Step 3 pre-filter to a pack only when it holds more than 25 files. The grep-first path for `<root>/solutions/` is unchanged.
 - **Match `applies_when`.** Pack files (and some learnings) carry an `applies_when:` list of conditions; treat it as a primary match field alongside `title` and `tags` in Steps 3-5.
@@ -87,7 +87,7 @@ Narrow the search to the discovered subdirectories that match the caller's Domai
 # Pick fields and synonym sets that match the caller's input shape; mix across shapes when the input is ambiguous.
 content-search: pattern="title:.*(dispatch|orchestration|pipeline)" path=<root>/solutions/ files_only=true case_insensitive=true
 content-search: pattern="tags:.*(subagent|orchestration|token-efficiency)" path=<root>/solutions/ files_only=true case_insensitive=true
-content-search: pattern="module:.*(compound-engineering|skill-design)" path=<root>/solutions/ files_only=true case_insensitive=true
+content-search: pattern="module:.*(rocketclaw|skill-design)" path=<root>/solutions/ files_only=true case_insensitive=true
 content-search: pattern="problem_type:.*(architecture_pattern|design_pattern|tooling_decision)" path=<root>/solutions/ files_only=true case_insensitive=true
 content-search: pattern="^\s*- .*(server data|page|props|endpoint)" path=<root>/solutions/ files_only=true case_insensitive=true   # applies_when conditions are list items
 ```

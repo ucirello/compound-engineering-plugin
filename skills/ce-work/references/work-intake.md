@@ -33,9 +33,9 @@ Read this when Phase 0 classifies a bare prompt, and again at Phase 1 before rea
 - If clarifying questions were needed above, get user approval on the resolved answers. If no clarifications were needed, proceed without a separate approval step — plan scope is the plan's authority, not something to renegotiate
 - **Do not skip this** - better to ask questions now than build the wrong thing
 
-## Compound Pack rules
+## RocketClaw Pack rules
 
-Compound Packs declared in CE config are rules that work in their domain must honor. A plan carries only the rules its planner matched, and a bare prompt carries none, so match them against the work itself. Do this once the files likely to change are known and before the first implementation write, on every route including Trivial. Resolve the declared packs by running this skill's resolver as one command:
+RocketClaw Packs declared in repository config are rules that work in their domain must honor. A plan carries only the rules its planner matched, and a bare prompt carries none, so match them against the work itself. Do this once the files likely to change are known and before the first implementation write, on every route including Trivial. Resolve the declared packs by running this skill's resolver as one command:
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";

@@ -1,5 +1,37 @@
 # Pre-ship quality steps (LFG steps 3–7)
 
+### Quoted Go source guidance (not a mandatory repository template)
+
+The following verbatim excerpts are from https://go.dev/wiki/CommitMessage. Repository-local syntax ALWAYS wins; the Go illustration does not prescribe message syntax here. Keep the runtime full-guide/history comparison below.
+
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+>
+> ```text
+> net/http: handle foo when bar
+>
+> [longer description here in the body]
+>
+> Fixes #12345
+> ```
+>
+> Notably, for the subject (the first line of description):
+>
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+>
+> For the body (the rest of the description):
+>
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - we **do not** use `Signed-off-by` lines. Don’t add them. Our Gerrit server & GitHub bots enforce CLA compliance instead.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
+> - when referencing CLs, prefer saying “CL nnn” or using a go.dev/cl/nnn shortlink over a direct Gerrit URL or git hash, since that’s more future-proof.
+> - when moving code between repos, include the CL, repository name, and git hash that it was moved from/to, so it is easier to trace history/blame.
+
 These are the quality steps that run after implementation and before shipping. On the defect route the implementation was `ce-debug`'s fix; `references/debug-return.md` names what each step below receives in place of the plan path. `ce-code-review` is review-only. LFG applies eligible fixes itself, then commits.
 
 ## The shipping precondition, in these steps
@@ -53,7 +85,13 @@ Do not treat `autofix_class` as permission to auto-apply.
 1. Filter `actionable_findings` (or markdown Actionable Findings) with the bar above.
 2. Apply eligible fixes in the working tree in severity order (`#` stable from the review).
 3. Run targeted tests when `requires_verification: true` on any applied finding.
-4. If `git status --short` shows changes, stage only review-driven files and commit `fix(review): apply review findings`. Then push before step 6 **when a remote is configured** (per LFG's shipping precondition) and, on the defect route, when everything the push would publish is work the user offered (`references/debug-return.md`). To push: if an upstream exists, run `git push`. If no upstream exists but a remote is configured (common on a fresh feature branch), pick a writable remote at run time: prefer `origin` when present, otherwise run `git remote` and choose the first configured remote. Then run `git push --set-upstream <remote> HEAD`. If there is no remote at all, do not push; the local commit suffices. If no eligible fixes were applied, say so explicitly and skip the commit.
+4. Inspect `jj status` and `jj diff` from the absolute target workspace cwd. If eligible fixes were applied, capture only the review-driven paths/hunks in a separate JJ change; never include unrelated implementation or pre-existing edits. Follow the message standards below, then use `jj describe -m "<message composed from the standards above>"` on that verified change. Then push before step 6 **when a remote is configured** (per LFG's shipping precondition) and, on the defect route, only when everything published is offered work (`references/debug-return.md`). Verify the intended PR/source bookmark and its exact revision; advance only that bookmark to the completed change and run `jj git push --remote <verified-writable-remote> --bookmark <verified-bookmark>` (add `--allow-new` only for an authorized new bookmark). Choose the existing tracked remote, otherwise prefer writable `origin`, otherwise verify a configured writable remote from `jj git remote list`; do not rename bookmarks or publish other work. With no remote the local change suffices. If no eligible fixes were applied, say so explicitly and skip the commit.
+
+### Commit-message standards (also applies to local-only shipping)
+
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards.
+
+Read the full guide before composing. In the absolute target workspace cwd, verify the history head belongs to this task, then inspect several recent full subjects **and bodies**, for example `jj log --no-graph -r '::<verified-history-head>' -n 10 -T 'description ++ "\\n"'`. Repository-local syntax always wins: compare prefixes/packages, casing, tense, subject/body separation, wrapping, and issue references. With no history, follow explicit instructions and compatible Go guidance without inventing precedent. Do not impose a fixed template or conventional prefix. Resulting messages contain no Markdown, Co-authored-by, or Assisted-by trailers; compatible local rules win. Preserve the semantic explanation of the review fix.
 
 ## Step 6 — residual handoff
 

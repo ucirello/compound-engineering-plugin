@@ -2,12 +2,16 @@
 
 Which orchestration shape fits each phase, and what breaks when you pick the wrong one.
 
-Two primitives are assumed, both platform-neutral:
+Use native OpenCode subagents, not shell dispatch bridges. This skill's explicit audit/reviewer dispatch authorizes delegation under a user-or-applicable-skill delegation policy; loading an unrelated skill does not. Unconditional prohibitions and tool denials still apply and must not be bypassed through shell or another harness. Two primitives are assumed:
 
 - **A dispatch primitive** that launches an independent agent with its own context window and returns a result to the orchestrator (in one host it is a subagent-spawning tool; in another a job runner). Only two properties matter: fresh context per agent, and a result the orchestrator can read.
-- **A concurrency cap** the host enforces on how many agents run at once (often around 10). Dispatches above the cap queue rather than fail, so a 31-unit fan-out is three waves, not one. Plan the wave count; do not assume flat cost.
+- **A concurrency cap** the host enforces on how many agents run at once. Discover the actual cap and whether excess dispatches queue or fail; schedule bounded waves accordingly rather than assuming flat cost or automatic queueing.
 
-Classify a rejected dispatch by whether an agent launched. Correct a pre-launch argument rejection once, and leave capacity-limited work queued. Any other launch failure follows the phase's own failure direction. In the corpus audit, the proposal and defense contexts must be independent for the audit to mean anything, so a launch failure there is a blocker: stop the audit rather than running the missing side inline.
+Discover configured model routes/tiers with `opencode.models` and preserve their intent. If optional model override is forbidden without an explicit user model request, omit the model argument, use a suitable inherited model, and disclose any unmet configured tier. Separate contexts satisfy the proposal/defense context requirement; same-model work is not cross-model independence. Any separately required cross-model coverage that is unavailable remains incomplete.
+
+Discover effective nesting depth through supported configuration discovery before deep delegation. Classify actual dispatch errors separately as permission denial, model rejection, depth exhaustion, capacity, or missing tool. Correct a permitted pre-launch argument error once; retry capacity only as supported by the actual tool, never assume all excess dispatches queue. Do not evade a denied or depth-limited operation. Any other launch failure follows the phase's own failure direction. In the corpus audit, the proposal and defense contexts must be independent for the audit to mean anything, so a launch failure there is a blocker: stop the audit rather than running the missing side inline. An inline or parent fallback is allowed only where the phase contract permits it, and never counts as unmet independent coverage.
+
+For setup, discover the actual OpenCode configuration directory using `opencode debug paths` / `opencode debug paths config`. Users must merge `experimental.subagent_depth` of at least `3` into the existing `~/.config/opencode/opencode.json` (or the discovered existing `opencode.json(c)`), preserving unrelated fields, sibling experimental fields, and any higher integer. Do not create a competing config or replace the entire file. Package-local configuration or plugin installation alone does not enable deep delegation, and higher-precedence configuration must not lower the depth. These are documentation instructions, not permission to modify host configuration.
 
 ## The shapes
 

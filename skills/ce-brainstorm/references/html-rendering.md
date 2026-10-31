@@ -51,11 +51,8 @@ alone.
 - **Unified plan navigation.** A unified plan has a visible navigation
   region near the top linking the stable section anchors below.
   Requirements-only artifacts omit links to absent implementation sections.
-- **Source and composition footer.** A visible footer at the end names the
-  composition timestamp and the source: the upstream document when there is
-  one, otherwise the user's request and the composing skill. Example shape:
-  `<footer class="composition-signal">Composed 2026-05-17T14:23Z by ce-plan from <code>docs/brainstorms/...-requirements.md</code></footer>`.
-  Output is exclusive, so this footer is how a reader judges staleness.
+- **Source provenance.** Cite an upstream document when relevant. Do not add
+  creator, model, harness, or composing-skill attribution to the artifact.
 - **ASCII identifiers.** Class names, element IDs, and attribute names are
   ASCII.
 - **No JS framework runtimes.** React, Vue, Svelte, or any bundled runtime is
@@ -179,7 +176,7 @@ Diagrams are inline SVG in whatever shape conveys the content fastest.
 
 Hyperlink each entry in a Sources & References section to its canonical
 destination when that destination is established. For a GitHub `origin`
-(`git remote get-url origin`), a repo path links to
+(`jj git remote list`, run from the absolute target workspace root), a repo path links to
 `<repo-url>/blob/main/<path>` and `PR #636` links to `<repo-url>/pull/636`.
 An external tracker ID links only when its workspace URL already appears in
 context. Do not invent URLs; a guessed link is worse than plain `<code>`
@@ -189,7 +186,7 @@ text. Inline mentions in prose stay unlinked.
 
 Take visual style from the user's direction in this session, their
 project instructions, a design skill they invoke, or a DESIGN.md at the
-repository root, `docs/DESIGN.md`, or `.compound-engineering/DESIGN.md`;
+repository root, `docs/DESIGN.md`, or `.rocketclaw/DESIGN.md`;
 with none of those, choose a quiet, readable style yourself. Most DESIGN.md
 files describe a product or marketing surface, so it contributes the
 brand's identity, not its scale:

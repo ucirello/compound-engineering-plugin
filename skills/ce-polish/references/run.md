@@ -4,9 +4,9 @@ This reference owns checkout safety, server startup, reachability, and browser h
 
 ## Resolve the workspace
 
-If the user named a PR or branch, first locate whether its branch is already checked out in a worktree. Enter that existing worktree when the harness can; if it cannot, report the blocker and stop. Only use the harness's checkout capability in the current workspace when no other worktree owns the target. With no argument, stay in the current checkout.
+Resolve the absolute workspace root with `jj root` from the absolute current directory. Run every subsequent JJ command with that absolute workspace root as cwd. If the user named a PR or bookmark, verify its repository, remote, bookmark, and exact revision, and inspect `jj workspace list` for existing isolation first. Reuse existing isolation unchanged, including its name and colocation, and enter it through the harness; if the harness cannot, report the blocker and stop. With no argument, stay in the current workspace. Repository-scoped `gh` commands must run from that root with `GIT_DIR=$(jj git root)`.
 
-Confirm the resulting branch is neither the repository's default branch nor detached. Report and stop when a safe feature-branch workspace cannot be reached; do not create another worktree behind the harness or move uncommitted user changes.
+Confirm the target is safe feature work, not the repository's default bookmark. An empty `@` above the verified feature head is valid; JJ does not require a Git-style attached branch. Report and stop when safe isolation cannot be reached; never move dirty or conflicted user work. Harness-native workspace lifecycle takes precedence. If new isolation is needed, follow `ce-worktree`: capture the local date once and persist one `YYYYMMDD-meaningful-kebab-slug` identity across retries for both the registered name and destination basename under the existing local `.tmp` parent. Check registrations and destinations, adding `-2`, `-3` on collisions without double-prefixing a supplied date. From the absolute source root use `jj workspace add --colocate --name NAME --revision VERIFIED_BASE ABSOLUTE_DEST`, then verify `jj git colocation status` in the resulting absolute root. If the native lifecycle cannot supply this naming and colocation, stop with a safe blocker. Do not rename existing source bookmarks or remove workspaces as part of polish completion.
 
 ## Resolve the start command
 
@@ -48,7 +48,7 @@ Startup may proceed only when the tuple has a usable command, working directory,
 
 ## Start and hand off
 
-Inspect the chosen port and select exactly one intended server instance before handoff. Reuse a process already serving that port only when evidence identifies it as the intended project server. Only when no intended instance is selected may the resolved command be launched in the background with the project's working directory and environment; that process becomes the selected instance. Keep its process or session handle, and write its output under a directory created with `mktemp -d "${TMPDIR:-/tmp}/ce-polish-XXXXXX"`.
+Inspect the chosen port and select exactly one intended server instance before handoff. Reuse a process already serving that port only when evidence identifies it as the intended project server. Only when no intended instance is selected may the resolved command be launched in the background with the project's working directory and environment; that process becomes the selected instance. Keep its process or session handle. Create and validate a private, non-symlink directory at `$WORKSPACE_ROOT/.tmp/polish`, then write output under `mktemp -d "$WORKSPACE_ROOT/.tmp/polish/server-XXXXXX"`; never fall back to global temporary storage.
 
 An occupied port that cannot be attributed to the intended project server remains an unresolved collision. Ask the user whether to stop that process, choose another port, or stop this run; never kill it or launch past it.
 

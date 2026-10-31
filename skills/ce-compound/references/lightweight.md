@@ -1,5 +1,7 @@
 # Lightweight mode
 
+Interactive context pressure first follows the ONE fresh native Full handoff in `SKILL.md`: pass source ID read from `$OPENCODE_SESSION_ID`, known title, absolute workspace root, existing doc path, and one-sentence topic, not a conversation digest. The delegate exports and reduces the source before reading it. This Lightweight workflow is fallback only after an actual classified unavailable-tool/permission/depth error; report it and recommend rerunning the same source session once delegation is available. Explicit `mode:non-interactive depth:lightweight` remains direct and launches no subagents.
+
 ### Lightweight Mode
 
 <critical_requirement>
@@ -12,7 +14,7 @@ Non-interactive mode enters Lightweight only when explicitly invoked with `depth
 
 The orchestrator (main conversation) performs ALL of the following in one sequential pass:
 
-1. **Extract from conversation**: Identify the problem and solution from conversation history. Also scan the "user's auto-memory" block injected into your system prompt, if present (Claude Code only). Use any relevant notes as supplementary context alongside conversation history. Tag any memory-sourced content incorporated into the final doc with "(auto memory [claude])". Before asserting how code behaves (enum values, status semantics, limits, defaults), Read the defining line at the current tree. Soften or attribute any claim you cannot verify. Cite PR numbers over bare commit SHAs, and phrase unmerged fixes as pending
+1. **Extract from conversation**: Identify the problem and solution from conversation history. Available memory notes are supplementary evidence only; omit model/harness attribution from the artifact. Before asserting code behavior, read its defining line at the current tree. Soften or attribute unverifiable claims. Cite PR numbers over bare commit SHAs and phrase unmerged fixes as pending.
 2. **Classify**: Read `references/schema.yaml` and `references/yaml-schema.md`, then determine track (bug vs knowledge), category, and filename. Sample existing docs under `<root>/solutions/` and choose `component`, `root_cause`, and the directory under the corpus-first rule in `references/yaml-schema.md` (it names what each is matched on and when the suggested defaults apply)
 3. **Write minimal doc**: Before writing, check whether the exact proposed `<root>/solutions/[category]/[filename].md` path exists. If it exists, read it: update it only when it covers the same problem, preserving its path and frontmatter structure and adding `last_updated: YYYY-MM-DD`; otherwise choose a distinct, descriptive filename and re-check that exact path is absent before writing. This is exact-path collision handling only — do not run Full mode's semantic overlap research or dispatch subagents. Create or update the doc using the appropriate track template from `assets/resolution-template.md`, with:
    - YAML frontmatter with track-appropriate fields, applying the YAML-safety quoting rule for array items (see `references/yaml-schema.md` > YAML Safety Rules)
@@ -46,7 +48,8 @@ a one-line mention helps agents find the shared vocabulary.
 
 Note: This was created in lightweight mode. For richer documentation
 (cross-references, detailed prevention strategies, specialized reviews,
-semantic grounding validation), re-run <rendered invocation> in a fresh session.
+semantic grounding validation), re-run <rendered invocation> in this same source
+session once delegation is available.
 ```
 
 **No subagents are launched. No parallel tasks. The solution doc is the one deliverable** (Phase 2.4's update-only vocabulary capture may also change an existing `CONCEPTS.md`).

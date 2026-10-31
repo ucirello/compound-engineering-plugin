@@ -2,6 +2,8 @@
 
 All non-setup paths use the bundled analyzer through this one invocation shape. The path reference supplies a concrete `INPUT_PATH`. Set `OUTPUT_DIR` only when that path owns an override; otherwise leave it empty so the script owns its default.
 
+Run from the absolute target workspace root (or the current local directory outside a repository). Disposable staging and recovery snapshots stay in that directory's `.tmp/`, regardless of environment temporary-directory settings. Output must be on the same filesystem as local staging for atomic promotion; if promotion fails, report the failure rather than using global temporary storage or silently downgrading snapshot safety.
+
 Set `SKILL_DIR` to the absolute directory containing the loaded `ce-riffrec-feedback-analysis` `SKILL.md`. Resolve Python by executing each candidate so a Windows Store stub is not mistaken for a working interpreter:
 
 ```bash

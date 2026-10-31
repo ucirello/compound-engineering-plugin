@@ -1,7 +1,7 @@
 ---
 name: ce-simplify-code
 description: "Simplify code for clarity, reuse, quality, and efficiency while preserving behavior, and prune tests and comments that carry no value. Use after implementation and before review, or to audit tests or comments in any part of a repo; use ce-debug for bugs."
-argument-hint: "[blank for current branch changes, or describe what to simplify or audit] [mode:pipeline] [proof-test:<path>]"
+argument-hint: "[blank for current change scope, or describe what to simplify or audit] [mode:pipeline] [proof-test:<path>]"
 ---
 
 Simplify code for clarity, reuse, quality, and efficiency, and prune tests and comments that carry no value, while preserving exact behavior. Prioritize readable, explicit code over compact code — fewer lines is not the goal.
@@ -18,10 +18,10 @@ Strip a `mode:pipeline` token and every `proof-test:<path>` token from the input
 Resolve the scope in this order:
 
 1. **User-named scope** is authoritative; do not widen it. In standalone mode it may be the whole repo, an area, or a path.
-2. **Otherwise, in git**, use the current branch versus its base. Without a usable base, use staged and unstaged changes (`git diff HEAD`).
-3. **Outside git or without a diff**, use files the user named or that were edited earlier in the conversation.
+2. **Otherwise, in a JJ workspace**, resolve and capture the task's verified base and head revisions, then use `jj diff --from <verified-base> --to <verified-head>`. Include working-copy changes in the verified head when they belong to the task. Without a usable task base, use `jj diff -r @` for the current change. Run every JJ command with the absolute target workspace root as its working directory, never rely on `-R` to change directories.
+3. **Outside a JJ workspace or without a diff**, use files the user named or that were edited earlier in the conversation.
 
-In pipeline mode the scope is what the caller passed, else the branch diff. Within it, prune only tests and comments the current work added or changed.
+In pipeline mode the scope is what the caller passed, else the captured base/head diff. Within it, prune only tests and comments the current work added or changed.
 
 If none of the above produces a non-empty scope, pipeline mode reports "nothing to simplify" and returns. Standalone mode asks the user what to simplify, as `references/standalone-report.md` describes.
 
@@ -31,7 +31,7 @@ When the platform's task-tracking capability is available, show the review, appl
 
 ## Step 2: Launch review agents in parallel
 
-Dispatch generic subagents via the platform's subagent primitive (`Agent`/`Task` in Claude Code, `spawn_agent` in Codex) where available; otherwise run the reviews inline or serially. For each reviewer, read its prompt asset from this skill's directory and pass the **full file content** as the subagent's prompt, together with the resolved scope (the full diff or file set), the mode, any proof test, the user's constraints, and the project standards governing the scope (or their file paths):
+Dispatch generic subagents via OpenCode's native subagent capability where available; otherwise run the reviews inline or serially as permitted by `references/reviewer-dispatch.md`. This skill explicitly authorizes these reviewer delegations, subject to active permission and nesting restrictions. For each reviewer, read its prompt asset from this skill's directory and pass the **full file content** as the subagent's prompt, together with the resolved scope (the full diff or file set), the mode, any proof test, the user's constraints, and the project standards governing the scope (or their file paths):
 
 - `references/personas/code-reuse-reviewer.md`
 - `references/personas/code-quality-reviewer.md`
@@ -45,7 +45,7 @@ Do not paraphrase these rubrics from memory. Read each file and pass it verbatim
 
 Read `references/reviewer-dispatch.md` before dispatching; it covers a full harness, releasing review agents, and the permission mode.
 
-**Model selection.** Use the platform's balanced mid-tier model for these reviewers when the current harness exposes a known override. In Claude Code this is the Sonnet class. In Codex, apply this tier only when the active dispatch primitive exposes an explicit model or custom-agent selector; task wording alone does not select a different model. Otherwise omit the override and inherit the parent model -- a working pass on the parent model beats a broken dispatch.
+**Model selection.** Use `opencode.models` to resolve the configured balanced mid-tier reviewer model when the native dispatch capability exposes an allowed model override; task wording alone does not select a different model. If model override is forbidden without an explicit user model request, omit the optional model argument and inherit a suitable parent model, disclosing any unmet configured tier. Do not use another harness or shell dispatcher to evade restrictions. Same-model review is not cross-model independent coverage; if a caller requires unavailable cross-model independence, report that coverage incomplete.
 
 If the user's or project's active instructions or the live prompt name a model for this subagent, use that model instead of the default tier above. They can name it by the subagent's tier, by its prompt-asset name, or for the subagents being dispatched. Without such an instruction, a model configured for this subagent's role takes precedence over the default tier.
 

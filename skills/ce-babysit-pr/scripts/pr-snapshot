@@ -298,18 +298,16 @@ def _run(cmd):
     env["NO_COLOR"] = "1"
     env.pop("CLICOLOR_FORCE", None)
     env.pop("GH_FORCE_TTY", None)
-    return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", env=env)
-
-
-def _run_git(cmd):
-    env = os.environ.copy()
-    env["GIT_TERMINAL_PROMPT"] = "0"
-    env["GCM_INTERACTIVE"] = "never"
-    env["GIT_ASKPASS"] = ""
-    env["SSH_ASKPASS"] = ""
-    return subprocess.run(
-        cmd, capture_output=True, text=True, encoding="utf-8", env=env, timeout=30,
-    )
+    workspace = os.path.abspath(os.environ.get("BABYSIT_WORKSPACE_ROOT", os.getcwd()))
+    root = subprocess.run(["jj", "root"], cwd=workspace, capture_output=True, text=True)
+    if root.returncode:
+        raise SystemExit("cannot resolve target JJ workspace: " + root.stderr.strip())
+    workspace = os.path.abspath(root.stdout.strip())
+    backing = subprocess.run(["jj", "git", "root"], cwd=workspace, capture_output=True, text=True)
+    if backing.returncode:
+        raise SystemExit("cannot resolve target backing store: " + backing.stderr.strip())
+    env["GIT_DIR"] = backing.stdout.strip()
+    return subprocess.run(cmd, cwd=workspace, capture_output=True, text=True, encoding="utf-8", env=env)
 
 
 def _run_checked(cmd, label):
@@ -518,31 +516,13 @@ def fetch_base_ref(owner, name, ref, merge_identity, host=None):
         "--jq", ".object.sha",
     ])
     current_oid = (r.stdout or "").strip()
-    if r.returncode != 0 and re.search(r"\bHTTP\s+404\b", r.stderr or "", re.IGNORECASE):
-        exact_ref = f"refs/heads/{ref}"
-        remote_url = (f"https://{host or 'github.com'}/"
-                      f"{quote(owner, safe='')}/{quote(name, safe='')}.git")
-        try:
-            # Reuse the gh session (GH_TOKEN or keyring) as git's credential source so a
-            # headless host with no configured Git credential helper is not anonymous here.
-            git_result = _run_git([
-                "git", "-c", "core.askPass=",
-                "-c", "credential.helper=",
-                "-c", "credential.helper=!gh auth git-credential",
-                "ls-remote", "--exit-code", "--refs",
-                remote_url, exact_ref,
-            ])
-        except (subprocess.TimeoutExpired, OSError):
-            git_result = None
-        if git_result is not None and git_result.returncode == 0:
-            matches = []
-            for line in (git_result.stdout or "").splitlines():
-                fields = line.split()
-                if len(fields) == 2 and fields[1] == exact_ref and _valid_oid(fields[0]):
-                    matches.append(fields[0])
-            if len(matches) == 1:
-                current_oid = matches[0]
-                r = git_result
+    if r.returncode != 0:
+        # Independent exact ref lookup; never use a direct Git transport fallback.
+        r = _run(["gh", "api", "graphql", *_host_args(host),
+                  "-f", "query=query($owner:String!,$name:String!,$ref:String!){repository(owner:$owner,name:$name){ref(qualifiedName:$ref){target{oid}}}}",
+                  "-f", f"owner={owner}", "-f", f"name={name}",
+                  "-f", f"ref=refs/heads/{ref}", "--jq", ".data.repository.ref.target.oid"])
+        current_oid = (r.stdout or "").strip()
     if r.returncode != 0 or not _valid_oid(current_oid):
         return base
     base["oid"] = current_oid
@@ -1399,7 +1379,7 @@ def _empty_trajectory():
 
 def _load_trajectory(state):
     """Load the trajectory, tolerating a partial or non-dict value from an older on-disk
-    state.json (persisted in /tmp across script versions) — backfill missing keys so a new
+    state.json (persisted in workspace .tmp across script versions) — backfill missing keys so a new
     field never KeyErrors an old state, and a null/garbage value never crashes."""
     tj = state.get("trajectory")
     if not isinstance(tj, dict):
@@ -3631,6 +3611,13 @@ def main():
     w.set_defaults(func=cmd_watch)
 
     args = p.parse_args()
+    workspace = os.path.abspath(os.environ.get("BABYSIT_WORKSPACE_ROOT", os.getcwd()))
+    local_tmp = os.path.join(workspace, ".tmp")
+    state_dir = os.path.abspath(args.state_dir)
+    if (os.path.commonpath([state_dir, local_tmp]) != local_tmp
+            or os.path.realpath(state_dir) != state_dir):
+        p.error("--state-dir must be beneath the target workspace .tmp without symlink components")
+    args.state_dir = state_dir
     if (args.cmd in ("snapshot", "watch")
             and args.invocation_budget_seconds is not None
             and args.invocation_budget_seconds <= 0):

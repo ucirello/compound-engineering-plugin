@@ -20,7 +20,7 @@ Read this before Phase 0 and follow it for the whole run. The body states the in
 
 ### The State Root
 
-`<state-root>` is the directory that holds the run's ledger. Resolve it once, in Phase 0, by the body's Execution Surface rule: when the harness names a durable state root, `<state-root>` is `<that location>/ce-optimize/<spec-name>/`, placed where that location's own conventions keep working state rather than user-facing documents; otherwise it is `.context/compound-engineering/ce-optimize/<spec-name>/` in the repo checkout, which is gitignored and survives a local resume only on this machine. A run's root is wherever its log already is: never move a ledger mid-run, and a resume that finds the log at one root uses that root even when the other is now available. Give every subagent and worker the resolved path, not the rule.
+`<state-root>` holds the run's ledger. For new runs resolve it once to the absolute source workspace's `.tmp/optimize/<spec-name>/`; it survives local resume only on that machine. Existing runs retain their discovered ledger path: never move a ledger mid-run. Give every subagent and worker the resolved absolute path, not the rule. The compatibility table below describes host capabilities only; it does not authorize new state outside workspace-local `.tmp` or another-harness dispatch.
 
 Examples of what the three capabilities look like on some harnesses. This table is not a tool list; the body's rule decides.
 

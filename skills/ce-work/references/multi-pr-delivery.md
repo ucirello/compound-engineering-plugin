@@ -43,6 +43,8 @@ Some hosts can start a separate long-lived session in its own checkout that outl
 
 Where the host offers such sessions and its own rules let the agent start them, hand each group to its own session automatically and coordinate from this one.
 
+Use native OpenCode sessions only, not another harness dispatcher. Every newly created isolated group workspace follows `workspace-setup.md`: persist one local-date meaningful identity across retries, use it for name and destination under local `.tmp`, request `--colocate` and verify colocation. Reuse existing isolation unchanged. Harness lifecycle takes precedence; inability to meet requirements is a safe blocker. Cleanup follows that reference's authority, evidence-preservation, session-move and `jj workspace remove` rules, never completion-driven deletion.
+
 - **What a session receives:** the plan path, its group label, the branch it builds on, the marker convention, the user's constraints and publishing authority for this run (for example, leave changes local, or open no PR), and the instruction to build only that group and ship it within that authority. A session does not inherit this conversation, so a limit not passed here does not exist for it.
 - **What the coordinator does:** keeps the group states; starts a group's session once the group it builds on is built and its start waits are met; watches each PR whose session the host does not let watch it.
 - **When a session cannot reach the branch:** a chain that builds on a branch the host's sessions cannot reach, such as a local branch from a cloud session, is built in the main thread.

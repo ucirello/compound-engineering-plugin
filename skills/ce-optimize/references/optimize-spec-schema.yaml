@@ -16,7 +16,7 @@ required_fields:
   name:
     type: string
     pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
-    description: "Unique identifier for this optimization run (lowercase kebab-case, safe for git refs and worktree paths)"
+    description: "Unique identifier for this optimization run (lowercase kebab-case, safe for JJ bookmarks and workspace paths)"
     example: "improve-issue-clustering"
 
   description:
@@ -414,8 +414,8 @@ optional_fields:
       backend:
         type: enum
         values:
-          - worktree  # git worktrees for isolation (default)
-          - codex     # Codex sandboxes for isolation
+          - worktree  # native JJ workspaces for isolation (default)
+          - codex     # legacy compatibility input; maps to native JJ workspace/subagent route
           - remote    # detached workers with their own checkout; results arrive as a pushed ref or store file
         default: worktree
         description: "Where experiments run. remote needs a detached-worker capability (SKILL.md Execution Surface); without one the run falls back to worktree. remote workers measure paired on their own machine, so it requires a relative or paired comparison."
@@ -423,7 +423,7 @@ optional_fields:
         type: integer
         default: 4
         minimum: 1
-        description: "Maximum experiments to run in parallel. Capped at 6 for worktree backend. 8+ only valid for Codex or remote backends. For remote this caps dispatched workers, not local worktrees."
+        description: "Maximum experiments to run in parallel. Capped at 6 for local workspace isolation, including legacy codex inputs. Higher remote limits remain subject to native capacity and depth. For remote this caps dispatched workers, not local workspaces."
       max_experiments_per_tick:
         type: integer
         default: null
@@ -435,7 +435,7 @@ optional_fields:
           - full-auto                                # --full-auto (workspace write)
           - yolo                                     # --dangerously-bypass-approvals-and-sandbox
         default: null
-        description: "Codex security posture. If null, user is asked once per session."
+        description: "Legacy compatibility field retained for reading old specs; never authorizes another-harness execution or bypasses native permissions."
 
   parallel:
     type: object
@@ -542,7 +542,7 @@ validation_rules:
   - "scope.immutable must have at least one entry"
   - "Gate check operators must be one of: >=, <=, >, <, ==, !="
   - "execution.max_concurrent must be >= 1"
-  - "execution.max_concurrent must not exceed 6 when execution.backend is 'worktree'"
+  - "execution.max_concurrent must not exceed 6 for local workspace isolation, including execution.backend 'worktree' and legacy 'codex' inputs"
   - "execution.backend must be one of: worktree, codex, remote"
   - "If execution.backend is 'remote', measurement.stability.comparison.method must be 'paired' or 'relative'; absolute numbers from different machines are not comparable"
   - "If parallel.exclusive_resources is non-empty, execution.mode should be 'serial'"

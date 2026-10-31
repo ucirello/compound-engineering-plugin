@@ -6,9 +6,9 @@ Use fresh contexts that receive neither the coordinator's preferred answer nor s
 
 Name the independent authors **Baker A**, **Baker B**, and so on in dispatch labels and payloads. Use “bakers” for the workers in progress updates and “candidates” for their proposed solutions.
 
-Honor explicit candidate model choices or mixes, otherwise the caller's resolved model preference. Without a model preference, seek different model families across the bakers. Prefer native host access to serve the selected models, then try available authorized model CLIs for families the host cannot serve. If those routes are unavailable or fail, use fresh agents on the host's own model and disclose the fallback. An explicit restriction on models or providers still applies; do not silently substitute for a required model.
+Honor explicit candidate model choices or mixes, otherwise the caller's resolved model preference. Without a model preference, seek different model families across the bakers. Discover exact model IDs with `opencode.models` and dispatch native fresh subagents. If a preferred model is unavailable, use fresh agents on the inherited model only when the contract permits and disclose the fallback and unmet configured tier. Same-model agents are not cross-model evidence; required unavailable cross-model coverage is incomplete. An explicit restriction on models or providers still applies; do not silently substitute for a required model.
 
-Bake-off owns candidate dispatch. Use the host's actual capabilities and each available CLI's current help to establish supported model selection, a fresh context, read scope, output collection, and cancellation. Keep CLI calls direct and scoped; do not invoke the peer-job Python framework or build a new dispatch system for this task. Do not invent model IDs or flags, install tools, or change credentials. A failed route should lead to the next usable route within budget, not repeated setup or troubleshooting. Cancel any outstanding attempt before replacing it, and count actual candidate launches against the run's allowance.
+Bake-off owns candidate dispatch through native subagents. Follow the permission, model-override, nesting, and setup rules in `SKILL.md`. Use actual native capabilities to establish supported model selection, fresh context, read scope, output collection, and cancellation. Do not use another harness, a shell dispatcher, or an elevation adapter to bypass a restriction; do not build dispatch machinery, invent model IDs, install tools, or change credentials. Classify actual failures rather than repeatedly troubleshooting. Cancel any outstanding attempt before replacing it, and count actual candidate launches against the run's allowance.
 
 Before external dispatch, briefly name the recipient and material it will inspect unless already disclosed. Stay within existing authority and read scope. CLI availability or authentication does not authorize a new recipient. Model diversity is a preference, not a completion requirement; fresh contexts remain required even when all bakers use the same model. Every baker is a read-only author returning its artifact to the coordinator, which owns persistence. Without enough fresh contexts through any permitted route, report incomplete rather than perform same-context roleplay.
 
@@ -20,18 +20,8 @@ Ask each candidate to return an approach sketch at the requested fidelity, with 
 
 Create private run scratch once:
 
-```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
-if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
-(umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
-if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
-chmod 700 "$SCRATCH_ROOT" || exit 1;
-(umask 077; mkdir -p "$SCRATCH_ROOT/ce-bakeoff") || exit 1;
-SCRATCH_DIR=$(mktemp -d "$SCRATCH_ROOT/ce-bakeoff/run-XXXXXX") || exit 1;
-echo "$SCRATCH_DIR";
-```
+Resolve the absolute workspace root, or absolute current directory outside a repository. Allocate private scratch only under its `.tmp/rocketclaw/bakeoff` directory. Validate every existing path component for symlinks and containment before creation, require current-user ownership, and create private directories with mode 700. Allocate a new exclusive `run-<counter>` directory, incrementing on collisions without overwriting earlier runs. Retain that absolute path throughout the run. Refuse unsafe paths rather than falling back to global temporary storage.
 
-Use separate candidate artifacts in this run directory, written by the session orchestrator from actual returns. Keep shared input separate from candidate outputs. When an elevation adapter creates a private handoff bundle, let it own that bundle; carry the same evidence into each candidate without exposing sibling results.
+Use separate candidate artifacts in this run directory, written by the session orchestrator from actual returns. Keep shared input separate from candidate outputs; carry the same evidence into each native payload without exposing sibling results.
 
 Inspect actual completion receipts and returned artifacts before counting candidates. Record launch failures, dropouts, and model attribution as observed; missing model receipts stay unverified. Do not count a dispatch announcement or promised file as a completed candidate. Cancel or reap outstanding workers through the owning lifecycle before closing the run.

@@ -19,25 +19,26 @@ and codebase findings take priority over these notes.
 [relevant entries here]
 ```
 
-5. Use this block as supplementary evidence when you classify and draft in Phase 1. If any memory notes end up in the final documentation (e.g., as part of the investigation steps or root cause analysis), tag them with "(auto memory [claude])" so their origin is clear to future readers.
+5. Use this block as supplementary evidence when classifying and drafting. Omit model/harness attribution fragments from the final artifact; verify substantive claims against primary evidence.
 
 If no relevant entries are found, proceed to Phase 1 without memory context.
 
 ### Phase 1: Research
 
-You classify the learning and draft its body in this context, because both depend on the conversation, which only this context holds. A fresh subagent sees only what you paste into its prompt. The Related Docs Finder runs as a subagent alongside, because its corpus search reads many docs this context does not need to keep. Each Phase 1 subagent writes its full output to a per-run scratch artifact and returns only the artifact path to the orchestrator.
+**Native dispatch policy:** this skill's explicit research/reviewer dispatch authorizes native subagents under user-or-applicable-skill delegation policy, not unrelated skill loading. Use `opencode.models` for configured routes/tiers when model selection is permitted. If overrides require a user model request and none exists, omit the optional model argument, inherit a suitable model, and disclose the unmet configured tier. Same-model review is not cross-model independence; required unavailable independent coverage remains incomplete. Respect unconditional prohibitions and tool denial. Discover effective nesting configuration through supported configuration discovery; distinguish actual depth/capacity errors from permission denial, model rejection, and missing tools. Never evade failures via shell or another harness, and use parent/inline fallback only where the review contract explicitly permits it.
+
+The Full orchestrator classifies and drafts from primary conversation evidence. In the context-pressure handoff it is the fresh delegate, which exports and reduces the supplied source session before reading; a parent digest is not a substitute. The Related Docs Finder runs alongside and returns a scratch artifact path.
 
 **Run ID and run dir (before dispatching the finder):** generate a unique run identifier and create the run directory. This scopes every Phase 1 artifact file to the same directory so the orchestrator can Read them back in Phase 2.
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+SCRATCH_ROOT="$workspace_root/.tmp/rocketclaw";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
 chmod 700 "$SCRATCH_ROOT" || exit 1;
 RUN_ID=$(date +%Y%m%d-%H%M%S)-$(head -c4 /dev/urandom | od -An -tx1 | tr -d ' ');
-RUN_DIR="$SCRATCH_ROOT/ce-compound/$RUN_ID";
+RUN_DIR="$SCRATCH_ROOT/compound/$RUN_ID";
 (umask 077; mkdir -p "$RUN_DIR") || exit 1; chmod 700 "$RUN_DIR" || exit 1;
 echo "$RUN_DIR";
 ```

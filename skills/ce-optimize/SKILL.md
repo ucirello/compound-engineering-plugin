@@ -6,7 +6,7 @@ argument-hint: "[path to optimization spec YAML, or describe the optimization go
 
 # Optimize a measurable target
 
-**Outcome:** confirmed improvements to the named target live on an `optimize/<spec-name>` branch, with a disk log. The user takes over at wrap-up.
+**Outcome:** confirmed improvements to the named target live on an `optimize/<spec-name>` JJ bookmark, with a disk log. The user takes over at wrap-up. References to an optimization branch below mean this bookmark's JJ history, not a Git branch.
 
 **Intent:** the next action is the cheapest step that would change what gets implemented. Attribute the cost of a named workload before searching implementations. Search and keep a scored variant space without requiring a profile.
 
@@ -14,7 +14,7 @@ argument-hint: "[path to optimization spec YAML, or describe the optimization go
 
 Invoking this skill authorizes reading the repo, building the harness, and (after the Phase 1 approval gate) isolated experiments and keep/revert commits on `optimize/<spec-name>`. Ask when spend is uncapped, when a new dependency appears, when wrap-up would push or open a PR, or when only the user can choose among the post-completion options. Do not ask again to run the next experiment inside those limits.
 
-Independent calls and dispatches go in one response; serialize only real dependencies.
+Independent calls and dispatches go in one response; serialize only real dependencies. Before any lifecycle, dispatch, or change-message operation, read `references/workspaces.md` and follow its native JJ, delegation, local scratch, description, and cleanup rules throughout all phases.
 
 Report findings, user decisions, blockers, and results. During longer work, give occasional updates on what was learned and what remains. Routine preparation and phase or batch transitions need no announcement. Keep accounting in the log and final recap unless it affects a current decision.
 
@@ -28,14 +28,14 @@ Use the host's blocking question tool already in the current tool list (match by
 
 ## Execution Surface
 
-Three capabilities decide where run state lives, how the loop waits, and where experiments run. A **durable state root** is a writable location the harness names that persists across turns and context resets, outside the repo checkout; without one, state lives under `.context/compound-engineering/ce-optimize/<spec-name>/`. A **wake after turn end** is a way to be re-invoked by an external event or timer without holding a tool call open; without one, the loop runs inside this session, and a wait it cannot hold ends the turn as a checkpoint with a resume invocation. A **detached worker** is a dispatch whose result arrives as a pushed ref, a store file, or a host-delivered message, not as edits in the local tree; `execution.backend: remote` needs one; without one that spec runs on `worktree`. Presence in the current tool list, or in context the harness gave you, is proof; a missing binary or environment variable proves nothing. Take a fallback without asking.
+Three capabilities decide how the loop waits and where experiments run. New run state lives under the absolute source workspace's `.tmp/optimize/<spec-name>/`, with the resolved path passed to every worker; retain an existing ledger's root on resume. A **wake after turn end** re-invokes the agent through an external event or timer without holding a tool call open; without one, run inside this session and checkpoint with a manual resume invocation when waiting cannot continue. A **detached worker** returns a pushed ref, store file, or host message rather than edits in the local tree; `execution.backend: remote` needs one, otherwise use native JJ workspace isolation (`worktree`). Presence in current tools or harness-provided context is proof; a missing binary or environment variable proves nothing. Record allowed fallbacks without asking.
 
 ## Artifact Root
 
 <!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only (`<repo-root>` is the absolute workspace root supplied by the harness, verified with `jj root` from that directory). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
 - **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
@@ -54,7 +54,7 @@ Four phases run in order; each names the reference it cannot start without. A fr
 
 **Phase 1: Measurement scaffolding.** Build or validate the harness, write the baseline (CP-1), probe parallelism, check the worktree budget. Two gates stop the run:
 
-- **Clean-tree gate.** Do not continue while any file in `scope.mutable` or `scope.immutable` has uncommitted changes. The reference defines the check and what to ask for.
+- **Clean-tree gate.** Stop for unexpected in-scope work or conflicts until preserved separately. JJ's automatic snapshot is not permission to overwrite work; the reference defines the check.
 - **User approval gate.** Present what Phase 1 assembled and offer proceed, fix issues, and adjust spec; the reference lists what to include. Disclose which spend is capped and which is uncapped. **Do not enter Phase 2 until the user explicitly approves.** Then record the approval and re-read the spec and baseline from disk.
 
 **Phase 2: Hypothesis generation.** Analyze the current approach, rank the hypotheses, record the backlog (CP-2). Do not dispatch an implementation experiment while a cheaper locating measurement would change keep or skip. **Read `references/loop.md`** for this phase and Phase 3. One gate: **dependency pre-approval** of every new dependency across all hypotheses, as one bulk list.

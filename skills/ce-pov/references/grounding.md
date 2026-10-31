@@ -14,18 +14,21 @@ If the user's or project's active instructions or the live prompt name a model f
 
 **When per-agent models cannot be chosen.** If the platform's subagent mechanism cannot select a model per agent, dispatch every scout on the inherited model and keep their read budgets. Cost control then comes from the read budgets and the tier-sensitive scout count, not from tiering.
 
-When a scout dispatch is rejected, first check whether an agent launched. If the rejection was a bad argument before launch, correct it once. If the platform is out of capacity, leave the work queued. If a launch still fails after the correction, gather that scout's bounded evidence inline and lower the verdict's stated confidence.
+Use native OpenCode subagents and discover model IDs with `opencode.models`. This skill explicitly authorizes these grounding delegations under a user-OR-applicable-skill policy; unrelated skill loading is not authority. Unconditional delegation prohibitions and tool denial still win. If optional model override is forbidden without a user model request, omit the model argument, inherit a suitable model, and disclose unmet configured tiers. Follow authoritative routing/tier intent in applicable `config.yaml`, `config.local.yaml`, and `config.example.yml`; do not replace explicit pins silently.
+
+Inspect effective nesting using supported configuration discovery. Deep delegation needs `experimental.subagent_depth` >= 3 merged by the user into the existing OpenCode config; see `references/cross-model-panel.md` for setup, discovery, and precedence. Do not modify the host. Distinguish permission denial, missing tool, model rejection, actual depth error, and capacity from observed errors. First check whether a scout launched; correct a malformed pre-launch argument once. Queue capacity only within the run deadline. If native dispatch cannot run, gather the same bounded evidence inline without evading any denied operation. Preserve all grounding floors: lower confidence cannot excuse missing required evidence. Inline grounding is not independent cross-model panel coverage.
 
 Create the scratch dir once, and reuse the echoed path for every scout this run:
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+WORKSPACE_ROOT="<verified absolute workspace root, or absolute local project directory without a repository>";
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw";
+if [ -L "$WORKSPACE_ROOT/.tmp" ]; then echo "unsafe local scratch parent symlink" >&2; exit 1; fi;
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
 chmod 700 "$SCRATCH_ROOT" || exit 1;
-SCRATCH_DIR="$SCRATCH_ROOT/ce-pov/$(openssl rand -hex 4)";
+SCRATCH_DIR="$SCRATCH_ROOT/pov/$(openssl rand -hex 4)";
 (umask 077; mkdir -p "$SCRATCH_DIR") || exit 1; chmod 700 "$SCRATCH_DIR" || exit 1;
 echo "$SCRATCH_DIR";
 ```

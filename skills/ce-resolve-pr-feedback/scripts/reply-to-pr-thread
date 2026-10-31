@@ -6,6 +6,7 @@
 # a pending review and return success before the reply is submitted or visible.
 
 set -e
+source "$(dirname "$0")/workspace-context"
 
 if [ $# -lt 2 ]; then
     echo "Usage: reply-to-pr-thread PR_NUMBER ROOT_COMMENT_ID [OWNER/REPO] < reply-body.md"

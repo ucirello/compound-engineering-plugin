@@ -27,6 +27,8 @@ If no access method is reachable, stop and return a message whose **first line i
 
 **Jira note:** Jira rides the same methodology and prose floor as GitHub and Linear, but has not been exercised against a live instance — treat a Jira run as lower-confidence and lean on the tracker's real status/field list rather than assumptions.
 
+For every repository-scoped `gh` call, run from the absolute target workspace root with `GIT_DIR=$(jj git root)`, for example `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh issue list ...)`. Discover remotes with `(cd "$workspace_root" && jj git remote list)`; never invoke Git.
+
 ## Two-axis state model (both modes)
 
 Trackers expose two different axes; keep them distinct.

@@ -82,9 +82,9 @@ Evaluate two things before planning:
 | Research need | Signals | Action |
 |--------------|---------|--------|
 | **None** | Generic, timeless, or conceptual plan (study curriculum methodology, project management approach, personal goal breakdown) | Skip research. Model knowledge is sufficient. After structuring the plan, offer: "I based this on general knowledge. Want me to search for [specific thing research would improve]?" — e.g., sourced recipes, current product recommendations, expert frameworks. Only if the user accepts. |
-| **Recommended** | Plan references specific locations, venues, dates, prices, schedules, seasonal availability, or current events — anything where stale information would break the plan (closed restaurants, changed prices, cancelled events, wrong seasonal dates). | Research before planning. Decompose into 2-5 focused research questions and dispatch parallel web searches. In Claude Code, use the Agent tool with `model: "haiku"` for each search to reduce cost. Collate findings before structuring the plan. |
+| **Recommended** | Plan references specific locations, venues, dates, prices, schedules, seasonal availability, or current events — anything where stale information would break the plan (closed restaurants, changed prices, cancelled events, wrong seasonal dates). | Research before planning. Decompose into 2-5 focused research questions and dispatch parallel native subagents at the configured low-cost research tier, resolving available models through `opencode.models` only when overrides are allowed. Collate findings before structuring the plan. |
 
-If the user's or project's active instructions or the live prompt name a model for this subagent, use that model instead of the default tier above. They can name it by the subagent's tier, by its prompt-asset name, or for the subagents being dispatched. Without such an instruction, a model configured for this subagent's role takes precedence over the default tier.
+If the user's or project's active instructions or the live prompt name a model for this subagent, resolve it through `opencode.models`, subject to SKILL.md's separate model-override permission rule. They may name it by tier, prompt-asset name, or dispatched group. Configured role models override defaults only when model overrides are permitted; otherwise inherit without an optional model argument and disclose the unmet tier.
 
 When research is recommended, do it — don't just offer. Stale recommendations (closed restaurants, rethemed attractions, outdated prices) are worse than no recommendations. The user invoked `ce-plan` because they want a good plan, not a disclaimer about training data.
 
@@ -158,7 +158,7 @@ After structuring the plan, ask the user how they want to receive it using the h
 1. **Save to disk** — Write the plan as a markdown file. Ask where:
    - `<root>/plans/` (only show if this directory exists)
    - Current working directory
-   - `/tmp`
+   - workspace-local `.tmp/`
    - A custom path
    - Use filename convention: `YYYY-MM-DD-HHMM-<descriptive-name>-plan.md`, taking `HHMM` from the local wall-clock time at write; reserve the path atomically and, on collision, retry with the smallest available numeric suffix before the extension rather than overwriting
    - Start the document with a `# Title` heading, followed by `Created: YYYY-MM-DD` on the next line. No YAML frontmatter.

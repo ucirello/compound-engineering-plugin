@@ -319,15 +319,18 @@ Qwen Code installs Claude Code-compatible plugins directly from GitHub and conve
 
 ### OpenCode
 
-Add Compound Engineering to the `plugins` array in your global or project `opencode.json`:
+For OpenCode V2, add this fork's RocketClaw package to the `plugins` array in your existing global or project `opencode.json(c)`:
 
 ```json
 {
-  "plugins": ["compound-engineering@git+https://github.com/EveryInc/compound-engineering-plugin.git"]
+  "plugins": ["<RocketClaw package URL or installed package name>"],
+  "experimental": { "subagent_depth": 3 }
 }
 ```
 
-On OpenCode 1.x, the config key is `plugin` (singular). Restart OpenCode after changing the config. The plugin registers the Compound Engineering skills and `/commands` directly; no Bun installer or generated skill copy is required. See [`.opencode/INSTALL.md`](.opencode/INSTALL.md) for pinning examples.
+Before installation, merge `"experimental": { "subagent_depth": 3 }` into `~/.config/opencode/opencode.json`. Use `opencode debug paths` or `opencode debug paths config` to locate your actual global configuration directory, and update its existing `opencode.json(c)` rather than creating a competing JSON/JSONC file. Preserve unrelated settings, sibling `experimental` fields, and an existing integer depth higher than `3`; do not replace the whole configuration. A depth of at least `3` is required for the skills' deep agentic delegation. Installing the plugin or shipping a package-local `opencode.json` alone does not enable this setting in consuming projects, and higher-precedence configuration must not lower it below `3`.
+
+Restart OpenCode after merging configuration. This plugin supports V2 only and registers RocketClaw skills and `/commands` directly; no Bun installer or generated skill copy is required. The package-local `opencode.json` loads the relative entrypoint when this package directory itself is the OpenCode project; it is not automatically merged by Git/npm plugin installation.
 
 ### Pi
 

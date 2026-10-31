@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 set -e
+source "$(dirname "$0")/workspace-context"
 
 if [ $# -lt 1 ]; then
     echo "Usage: get-pr-comments PR_NUMBER [OWNER/REPO]"
@@ -65,9 +66,9 @@ fi
 # resolver can weigh identity as evidence, including recognizing its own prior
 # replies as already-handled.
 
-tmp_threads=$(mktemp "${TMPDIR:-/tmp}/ce-pr-threads.XXXXXX")
-tmp_comments=$(mktemp "${TMPDIR:-/tmp}/ce-pr-comments.XXXXXX")
-tmp_reviews=$(mktemp "${TMPDIR:-/tmp}/ce-pr-reviews.XXXXXX")
+tmp_threads=$(mktemp "$workspace_root/.tmp/pr-threads.XXXXXX")
+tmp_comments=$(mktemp "$workspace_root/.tmp/pr-comments.XXXXXX")
+tmp_reviews=$(mktemp "$workspace_root/.tmp/pr-reviews.XXXXXX")
 trap 'rm -f "$tmp_threads" "$tmp_comments" "$tmp_reviews"' EXIT
 
 gh api graphql --paginate --slurp \

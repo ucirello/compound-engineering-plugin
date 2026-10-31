@@ -5,7 +5,7 @@
 # Location: <state-root>/experiment-log.yaml, where <state-root> is the durable
 # state root resolved in Phase 0 (references/persistence.md): the harness's
 # durable store when it names one, otherwise
-# .context/compound-engineering/ce-optimize/<spec-name>/
+# .tmp/optimize/<spec-name>/
 #
 # PERSISTENCE MODEL:
 # The experiment log on disk is the SINGLE SOURCE OF TRUTH. The agent's
@@ -453,7 +453,7 @@ experiment_entry:
 
     commit:
       type: string
-      description: "Git commit SHA on the optimization branch (only for 'kept' and 'runner_up_kept' outcomes)"
+      description: "Exact JJ commit ID in the optimization bookmark's history (only for 'kept' and 'runner_up_kept' outcomes)"
 
     deferred_reason:
       type: string

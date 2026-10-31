@@ -51,6 +51,8 @@ Detection is reasoning-based. Do not maintain an enumerated checklist of files t
 
 ## Probe timing and caching
 
+Run every repository-scoped `gh` operation (probes, issue creation, edits, and PR linking) from the absolute target workspace root with `GIT_DIR=$(jj git root)` set there. Every JJ subprocess uses that same absolute cwd; resolve source bookmark and exact head with JJ, never a direct Git executable. Keep any temporary ticket bodies under the workspace's `.tmp/`.
+
 Availability probes run **at most once per session** and **only when Defer execution is imminent**. Never speculatively at review start, never per-Defer, never per-walk-through-finding. The cached tuple is reused for every Defer action in the same run.
 
 Typical probe sequence:

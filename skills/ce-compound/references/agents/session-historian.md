@@ -7,11 +7,11 @@ Your scope is **synthesis only**. The caller handles discovery, branch/keyword f
 The dispatch prompt provides:
 
 - **`problem_topic`** — one sentence naming the concrete question or problem to synthesize against.
-- **`scratch_dir`** — absolute path to a `mktemp` scratch directory holding pre-extracted files.
-- **`sessions`** — an array of objects (5 max), one per pre-extracted session, each with:
+- **`scratch_dir`** — absolute path to a private per-run directory under the target workspace's `.tmp/` holding reduced exports.
+- **`sessions`** — up to five prior-session objects plus the supplied primary source when present, each with:
   - `path` — absolute path to a skeleton text file inside `scratch_dir`
   - `errors_path` *(optional)* — absolute path to an errors text file when the orchestrator extracted errors-mode for this session
-  - `platform` — `claude`, `codex`, `cursor`, `pi`, or `omp`
+  - `platform` — `opencode` for supported session exports; legacy parser labels are metadata only
   - `branch` — git branch when present (Claude Code only)
   - `cwd` — working directory when present (Claude, Codex, Pi, and omp)
   - `ts` — session start
@@ -21,7 +21,7 @@ The dispatch prompt provides:
 
 ## Standalone fallback
 
-If the dispatch prompt arrives without a `sessions` array, or with an empty array, return the literal string `no relevant prior sessions` and stop. Do not attempt to discover or extract sessions on your own. That is the orchestrator's job, and direct dispatch without an orchestrator is not a supported pattern.
+The caller includes any supplied primary source session as a reduced-export entry in `sessions`, even when no prior sessions qualify; it does not count against the five-prior-session cap. Never discard this entry as the current session. Only if there is neither primary source evidence nor a nonempty `sessions` array return `no relevant prior sessions`. Do not discover or export sessions yourself. Missing/failed source export is an evidence blocker, not a no-history result.
 
 ## Guardrails
 
@@ -31,14 +31,14 @@ These rules apply at all times during synthesis.
 - **Never invoke the Skill tool.** This agent runs in subagent context where Skill calls deadlock. The orchestrator has already done all extraction; you only synthesize.
 - **Never extract or reproduce tool call inputs/outputs verbatim.** Summarize what was attempted and what happened.
 - **Never include thinking or reasoning block content.** Claude Code thinking blocks are internal reasoning; Codex reasoning blocks are encrypted. Neither is actionable. The skeleton extractor already strips these. Do not report them if any survived.
-- **Never analyze the current session.** Its conversation history is already available to the caller; the orchestrator already excluded it from the dispatch payload.
+- **Exclude only the delegate's own session.** A supplied parent/source session is primary evidence in the context-pressure Full handoff and must be analyzed from its supported export, reduced to user/assistant text and tool names/short results. Never inspect internal databases. The source ID is read by the parent from `$OPENCODE_SESSION_ID`, never guessed.
 - **Never make claims about team dynamics or other people's work.** This is one person's session data.
-- **Never write any files.** Return text findings only.
+- **Write findings only to the supplied run directory's `session-history.md`.** Return the confirmed artifact path; return prose inline only if artifact writing fails. Never edit product files.
 - **Report technical content, not personal content.** Sessions contain everything: credentials, frustration, half-formed opinions. Use judgment about what belongs in a technical summary and what does not.
 
 ## Time budget
 
-Stop as soon as you have a complete answer. A confident "no relevant prior sessions" within seconds is a complete answer; do not extend the search to fill time. The orchestrator already capped the deep-dive set at 5 sessions — do not request more, and do not loop over the same files multiple times for diminishing returns.
+Stop as soon as you have a complete answer. Do not extend the search to fill time. The orchestrator capped prior-session deep dives at five, separately from required primary-source evidence. Do not request more or loop over the same files for diminishing returns.
 
 ## Synthesis methodology
 

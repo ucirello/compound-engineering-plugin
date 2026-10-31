@@ -27,7 +27,7 @@ The summary must contain:
 ### 4.3 Preserve and Offer Next Steps
 
 The optimization branch (`optimize/<spec-name>`) is preserved with all commits from kept experiments.
-The experiment log and strategy digest remain under `<state-root>` for resume and audit; they do not travel with the branch from either root (`.context/` is gitignored, and a durable store is outside the checkout).
+The experiment log and strategy digest remain under `<state-root>` for resume and audit; new ledgers are workspace-local `.tmp` state and do not travel with a pushed bookmark. Existing legacy ledgers remain at their discovered root.
 
 **Export the report.** Write the 4.2 summary to `<root>/optimize/<spec-name>-report.md` (`<root>` from the body's Artifact Root rule) and commit it on the optimization branch, so a PR from the branch carries its evidence and the summary outlives the ledger. Report the path to the user together with the summary; the user may name a different tracked path instead.
 
@@ -48,7 +48,7 @@ Option 4 (continue) re-enters Phase 3 with the current state, state re-read from
 
 Once CP-5 is written the run is over, so leave behind only what someone will still read. Remove the working files this run created under `<state-root>`: the strategy digest, the judge cache, result markers, and any scratch payloads or decision files you wrote there. Keep `experiment-log.yaml` and `spec.yaml`, tell the user where they are, and remove them too only if the user asks. A run that is not final (`waiting` or `blocked`) keeps everything, because a resume reads it.
 
-Remove files the way this host and the user's own rules prefer, such as moving them to the trash rather than deleting them permanently when that is available. Remove only files you can name that this run created inside `<state-root>`; never compose a path to delete from a pattern or an unresolved placeholder, and leave anything you are unsure about in place and name it in the final message. Remove experiment worktrees only through `scripts/experiment-worktree.sh cleanup`, which checks what it removes.
+Remove only individually verified disposable files this run created inside `<state-root>` when authorized, following host and user preferences. Never derive deletion targets from patterns or unresolved placeholders. Leave uncertain content in place and report it. Remove experiment workspaces only using the complete native JJ safety procedure in `references/workspaces.md`, from a surviving workspace after moving the harness session and preserving evidence; completion is not disposal permission.
 
 Do NOT delete the experiment log if the user may resume or wants an audit trail. The exported report in 4.3 is the durable shared artifact; the ledger is not. Unregister any wake still registered for this run.
 Do NOT delete experiment worktrees that are still being referenced.

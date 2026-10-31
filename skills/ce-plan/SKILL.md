@@ -6,6 +6,38 @@ argument-hint: "[optional: feature description, requirements doc path, plan path
 
 # Create Technical Plan
 
+### Quoted Go source guidance (not a mandatory repository template)
+
+The following verbatim excerpts are from https://go.dev/wiki/CommitMessage. Repository-local syntax ALWAYS wins; the Go illustration does not prescribe message syntax here. Keep the runtime full-guide/history comparison below.
+
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+>
+> ```text
+> net/http: handle foo when bar
+>
+> [longer description here in the body]
+>
+> Fixes #12345
+> ```
+>
+> Notably, for the subject (the first line of description):
+>
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+>
+> For the body (the rest of the description):
+>
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - we **do not** use `Signed-off-by` lines. Don’t add them. Our Gerrit server & GitHub bots enforce CLA compliance instead.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
+> - when referencing CLs, prefer saying “CL nnn” or using a go.dev/cl/nnn shortlink over a direct Gerrit URL or git hash, since that’s more future-proof.
+> - when moving code between repos, include the CL, repository name, and git hash that it was moved from/to, so it is easier to trace history/blame.
+
 **Outcome:** a plan for carrying out and checking the agreed work while preserving its outcome and constraints. Resolve technical choices from evidence; leave adequate instructions unchanged. `ce-brainstorm` defines **WHAT**, `ce-plan` plans **HOW**, and `ce-work` executes. A prior brainstorm is optional.
 
 **An explicit invocation always produces a plan.** Never classify a direct invocation as "not a planning task" and route out. It may select any output contract below, and the smallest valid plan is a few sentences in chat.
@@ -51,7 +83,13 @@ Phases run in order unless a reference routes out or short-circuits. Read a phas
 ### Phase 5: Review, Write, Deepen, and Hand Off
 
 7. Read `references/final-review.md` before the pre-write review; it defines Phase 5.1 through 5.3.2. On an interactive run from a brainstorm, the user sees the Phase 5.1.5 scoping synthesis in chat before the write: a confirmation to wait on, or its one-line auto-proceed announcement.
-8. **Model elevation.** Immediately before authoring, read `references/reasoning-elevation.md`, resolve the choice at this boundary, and follow it. Do not author until activation resolution has completed and any selected dispatch or transparent fallback has settled.
+8. **Model elevation.** Immediately before authoring, read `references/reasoning-elevation.md`, resolve the choice at this boundary, and follow it. Do not author until activation resolution has completed and any selected native dispatch or transparent fallback has settled.
+
+## Native delegation and message standards
+
+All explicit research, reviewer, deepening, and elevation dispatch in this skill uses OpenCode native subagents. Under user-OR-applicable-skill policy this skill authorizes those calls without second approval; unconditional prohibitions and tool denials win. Resolve configured tiers through `opencode.models`. Model override permission is separate from delegation permission: if an override requires an explicit user model request and none exists, omit the optional model argument, inherit a suitable model, and disclose unmet configured tier. Same-model work is not independent cross-model coverage. Inspect effective depth through supported config discovery and classify actual permission, model rejection, missing tool, depth, and capacity errors separately. Never evade restrictions via shell/another harness; use parent fallback only where the specific contract permits and mark missing required coverage incomplete. Apply `references/reasoning-elevation.md` setup guidance for deep delegation.
+
+Whenever recommending, composing, or validating a commit/change message, use this strongest instruction: "Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards." Read the full guide and compare several recent subjects AND bodies with `jj log --no-graph -r '::<verified-history-head>' -n 10 -T 'description ++ "\\n"'`, with cwd set to the absolute target workspace root and the head verified for this task. Repository-local syntax always wins: examine prefixes/packages, casing, tense, subject/body separation, wrapping, and issue references. Without history use explicit instructions and compatible Go guidance, never invented precedent. Resulting messages contain no Markdown or Co-authored-by/Assisted-by attribution; compatible local rules win. Do not prescribe a fixed message template.
 9. In pipeline mode, evidence that invalidates a decision settled earlier in the session stops the write. Return the exact token `settled-decision-invalidated`, the decision, and the reason; do not resolve it silently.
 10. Write the plan before presenting options, then complete the confidence path `final-review.md` defines.
 

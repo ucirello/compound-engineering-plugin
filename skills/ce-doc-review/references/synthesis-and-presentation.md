@@ -1,5 +1,9 @@
 # Phases 3-5: Synthesis, Presentation, and Next Action
 
+## Coverage truth overrides completion wording
+
+Apply the dispatch and cross-model coverage contracts before any completion marker below. Undispatched required personas stop this review incomplete without synthesis or edits. Missing/unverified owed cross-model passes permit local synthesis but require `Coverage incomplete` instead of `Review complete`, in interactive reports, structured results, result.md and the final three-line handoff alike. Name every missing lens and whole-doc sweep, actual failure category, and unmet model tier/pin. Same-model or parent/inline work never repairs cross-model independence. Preserve receipts and unresolved evidence; no success handoff may conceal missing coverage.
+
 ## Phase 3: Synthesize Findings
 
 Process findings from all agents through these steps in order. Each step depends on the previous one. Together they move every finding through the same lifecycle: **Raised → (Confidence Gate | FYI-eligible | Dropped) → Deduplicated → Classified → SafeAuto | GatedAuto | Manual | FYI**. Re-evaluate each finding's state at every step; do not carry an assumption from an earlier step forward as a shortcut.
@@ -280,13 +284,12 @@ Omit any section with zero items. The bucket names are the user-facing vocabular
 **Deliver the result through a file.** Write the block, exactly as specified, to `result.md` in a private run directory, then print only the three lines below as your final output. Create the directory with this block (`<run-id>` is the current date and time plus a short random suffix, e.g. `20261030-0114-a3f9c1`):
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+SCRATCH_ROOT="<absolute-workspace-root>/.tmp";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
 chmod 700 "$SCRATCH_ROOT" || exit 1;
-RUN_DIR="$SCRATCH_ROOT/ce-doc-review/<run-id>"; (umask 077; mkdir -p "$RUN_DIR") || exit 1; chmod 700 "$RUN_DIR" || exit 1; echo "$RUN_DIR"
+RUN_DIR="$SCRATCH_ROOT/doc-review/<run-id>"; (umask 077; mkdir -p "$RUN_DIR") || exit 1; chmod 700 "$RUN_DIR" || exit 1; echo "$RUN_DIR"
 ```
 
 ```
@@ -337,7 +340,7 @@ This rule prevents two failure modes: (1) regressions where a fix didn't actuall
 
 ### Protected Artifacts
 
-During synthesis, discard any finding that recommends deleting or removing a CE pipeline artifact: any file **under** a `plans/`, `solutions/`, `ideation/`, `explainers/`, `pulse-reports/`, `dogfood-reports/`, `feedback-sweep/`, or `personas/` directory (or the legacy `brainstorms/` one) **whose immediate parent is the artifact root**. The artifact root is a directory named `docs` — the default, and where unmigrated legacy artifacts stay even after a project sets `docs_root` — or the configured `docs_root` when this run resolved it. Matching by that parent covers nested category files (`solutions/<category>/foo.md`) while leaving a same-named directory elsewhere — a skill's own `references/personas/` prompt assets, whose parent is `references` — as ordinary code whose deletion finding stands. A review that never resolved a configured root still protects the `docs`-parented tree (default and legacy). An artifact under a configured root seen by such a run is the one case this rule does not cover.
+During synthesis, discard any finding that recommends deleting or removing a RocketClaw pipeline artifact: any file **under** a `plans/`, `solutions/`, `ideation/`, `explainers/`, `pulse-reports/`, `dogfood-reports/`, `feedback-sweep/`, or `personas/` directory (or the legacy `brainstorms/` one) **whose immediate parent is the artifact root**. The artifact root is a directory named `docs` — the default, and where unmigrated legacy artifacts stay even after a project sets `docs_root` — or the configured `docs_root` when this run resolved it. Matching by that parent covers nested category files (`solutions/<category>/foo.md`) while leaving a same-named directory elsewhere — a skill's own `references/personas/` prompt assets, whose parent is `references` — as ordinary code whose deletion finding stands. A review that never resolved a configured root still protects the `docs`-parented tree (default and legacy). An artifact under a configured root seen by such a run is the one case this rule does not cover.
 
 ## Phase 5: Return to the Caller
 

@@ -1,6 +1,38 @@
 # Shipping (LFG steps 9–11)
 
-The shipping steps are the last stretch of the run: commit, push, PR, CI, and close-out. LFG's SKILL.md defines the shipping precondition (the `git remote` check) and the two invocation strings. This file defines everything else: which handoff runs, what LFG passes into it, what it does with the result, and how the run closes out.
+### Quoted Go source guidance (not a mandatory repository template)
+
+The following verbatim excerpts are from https://go.dev/wiki/CommitMessage. Repository-local syntax ALWAYS wins; the Go illustration does not prescribe message syntax here. Keep the runtime full-guide/history comparison below.
+
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+>
+> ```text
+> net/http: handle foo when bar
+>
+> [longer description here in the body]
+>
+> Fixes #12345
+> ```
+>
+> Notably, for the subject (the first line of description):
+>
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+>
+> For the body (the rest of the description):
+>
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - we **do not** use `Signed-off-by` lines. Don’t add them. Our Gerrit server & GitHub bots enforce CLA compliance instead.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
+> - when referencing CLs, prefer saying “CL nnn” or using a go.dev/cl/nnn shortlink over a direct Gerrit URL or git hash, since that’s more future-proof.
+> - when moving code between repos, include the CL, repository name, and git hash that it was moved from/to, so it is easier to trace history/blame.
+
+The shipping steps are the last stretch of the run: commit, push, PR, CI, and close-out. LFG's SKILL.md defines the shipping precondition (the `jj git remote list` check) and the two invocation strings. This file defines everything else: which handoff runs, what LFG passes into it, what it does with the result, and how the run closes out. Every JJ command uses the absolute target workspace cwd. Every repository `gh` invocation, including the PR lookup below, uses that cwd and `GIT_DIR=$(jj git root)`.
 
 ## Step 9 — a project-defined process may replace the default handoff
 
@@ -14,7 +46,11 @@ Pass the recorded plan path from step 1 into the `ce-commit-push-pr` invocation,
 
 This commits any remaining changes, pushes the branch, and opens a pull request, non-interactively because of the `mode:pipeline` token. If it prints a `New concepts:` trailer after the PR URL, record the concept name(s) for step 11. If a PR already exists for the branch (check with `gh pr view --json number,url,state 2>/dev/null`), skip PR creation but still commit and push any uncommitted changes. Pipeline mode leaves an existing PR body alone by default, so the description context above would be lost there; after the push, invoke `ce-commit-push-pr mode:pipeline` again in its description-update mode on that PR with the same context, so the record reaches the reviewer without a confirmation prompt.
 
-**Per the shipping precondition, when no remote is configured, do NOT invoke `ce-commit-push-pr` or a project-defined shipping process.** The default's commit step pushes unconditionally (`git push -u origin HEAD`), so a literal invocation would still hit the impossible push. Instead commit the files this run changed, by name (the work source's files, the review fixes, and any captured learning), and skip the push and PR creation entirely. Never `git add -A`: a file that was already dirty before the run, or one the defect route's `pre_fix_scope` lists, stays uncommitted and is named in the report.
+**Per the shipping precondition, when no remote is configured, do NOT invoke `ce-commit-push-pr` or a project-defined shipping process.** Instead capture only the files/hunks this run changed in a JJ change (the work source's files, review fixes, and captured learning), and skip push and PR creation entirely. A file already dirty before the run, or listed in the defect route's `pre_fix_scope`, stays outside that change and is named in the report; never capture all files indiscriminately. Apply the full commit-message standards in `references/review-followup.md`: read https://go.dev/wiki/CommitMessage in full and inspect several recent subjects and bodies from task-verified history before composing. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards. Use `jj describe -m "<message composed from the standards above>"`; repository-local syntax always wins.
+
+### Authorized maintenance is not a new approval gate
+
+Pass the existing run authority to shipping and babysitting: routine factual PR-description refresh applies without preview or yes/no, preserving unrelated text and issue links. Description-only mode remains draft-only. Clean alignment to the exact verified pushed PR head and authorized monitoring/re-arm need no new approval; an empty `@` above that head is already aligned, not evidence of no work (inspect `@-`, bookmarks, remotes, and eligible PRs too). Verify repository, bookmark, remote, commit, and authority, preserve dirty/conflicted/ignored/untracked content, and stop safely when uncertain or denied; never reset. Optional rewrites outside authorized maintenance or explicit apply still need approval, but declining them never blocks authorized monitoring. Do not bundle rewrite approval with alignment or monitoring. Preserve merge, scope-expansion, human-decision, and opt-out boundaries.
 
 ## Step 10 — stack handoff from step 9
 

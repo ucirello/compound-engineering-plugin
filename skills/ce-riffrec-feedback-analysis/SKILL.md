@@ -30,4 +30,4 @@ When the input is ambiguous (e.g., a zip arrived without context), inspect the r
 - Text/metadata artifacts (requirements kickoff material, analysis summaries, problem analyses, source manifests) may be committed when they are needed for traceability and contain no sensitive data.
 - Use repo-relative screenshot paths in any committed doc so later agents can open the evidence without absolute local paths.
 
-The Compound Engineering output format used by the extensive path is documented in `references/compound-engineering-feedback-format.md`.
+The RocketClaw output format used by the extensive path is documented in `references/rocketclaw-feedback-format.md`.

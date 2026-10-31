@@ -107,26 +107,22 @@ The Phase 3 blocks below each set `SKILL_DIR` inline as well (the loaded `ce-opt
 
 **One dispatch recipe, per experiment.** The backend changes where the experiment runs and how its result comes back, not what the worker is told.
 
-1. **Isolate.** For `worktree` and `codex`, create the experiment worktree on the optimization branch:
+1. **Isolate.** For `worktree` and legacy `codex` specs, use native JJ workspace isolation; read `references/workspaces.md` first:
    ```bash
-   SKILL_DIR="<absolute path of the directory containing this SKILL.md>";
-   WORKTREE_PATH=$(bash "$SKILL_DIR/scripts/experiment-worktree.sh" create "<spec_name>" <exp_index> "optimize/<spec_name>" <shared_files...>)  # creates optimize-exp/<spec_name>/exp-<NNN>
+   (cd "$workspace_root" && jj workspace add --colocate --name "$identity" --revision "$verified_base" "$absolute_destination")
+   (cd "$absolute_destination" && jj git colocation status)
    ```
-   Apply port parameterization if configured (set env vars for the measurement script). For `remote`, isolation is the worker's own checkout: record `base_sha` (`git rev-parse optimize/<spec_name>`) and make sure that commit is pushed to the remote the worker will fetch from.
+   Copy explicitly declared shared files without overwriting unrelated files, preserving relative paths; apply configured port environment variables. For `remote`, record the exact verified base commit ID with `jj log` from the absolute source root and publish its result-source bookmark with `jj git push --bookmark` only when authorized.
 2. **Brief.** Fill the experiment prompt template (`references/experiment-prompt-template.md`): iteration number and spec name; hypothesis description and category; current best and baseline metrics; mutable and immutable scope; constraints and approved dependencies; the rolling window of the last 10 experiments as concise summaries; the source digest; and the current best's relevant `worst_cases`, from its kept entry or the baseline before any keep. For `remote`, append the template's measure-and-report delta with `base_sha`, the result ref `optimize-exp/<spec_name>/exp-<NNN>`, the measurement command, and the paired sample count the current ladder step needs.
 3. **Dispatch** by `execution.backend`, then record the return shape.
 
 | Backend | Dispatch | What returns |
 |---|---|---|
 | `worktree` | A subagent with the filled prompt, working in the experiment worktree | The subagent's completion, with its edits in the worktree |
-| `codex` | Write the filled prompt to a temp file and run `cat /tmp/optimize-exp-XXXXX.txt \| codex exec --skip-git-repo-check - 2>&1`, with the security posture from `execution.codex_security` (ask once per session when unset) | The process exit, with its edits in the worktree |
+| `codex` (legacy input) | Use the native subagent route with the filled prompt in the JJ workspace; record the compatibility fallback, never launch another harness | Native completion or receipt, with isolated edits |
 | `remote` | The detached-worker dispatch the body's Execution Surface names, with the filled prompt; when no such capability is in the tool list, use the `worktree` row for the whole run and log the fallback | A receipt naming the launch. The result is the pushed result ref (`result.yaml` at its root) or, when the host delivers results as a store file or terminal message, that file or message |
 
-**Codex delegation condition.** Delegate to `codex exec` only when this session is not itself running inside a Codex sandbox and `.git` is writable; otherwise use the `worktree` row for that experiment and log the fallback. A set sandbox marker in your environment is proof you are inside one; an unset marker proves nothing on its own, which is why the writable-`.git` check stays in the test:
-```bash
-# any true branch means: do not delegate this experiment to codex
-test -n "${CODEX_SANDBOX:-}" || test -n "${CODEX_SESSION_ID:-}" || test ! -w .git
-```
+**Native dispatch policy.** This skill authorizes its explicit research, experiment, and judge subagents unless a higher-priority rule or tool denial prohibits them. Keep `.rocketclaw/config.yaml`, `config.local.yaml`, and `config.example.yml` model routes and tiers authoritative; resolve available model IDs with `opencode.models`. If optional model override is forbidden without a user model request, omit it, inherit a suitable model, and disclose unmet tiers. Same-model contexts are not cross-model independence; required unavailable cross-model coverage is incomplete. Inspect supported effective-depth configuration; classify actual permission, missing-tool, model-rejection, depth, and capacity errors separately. Never evade denial or depth limits through shell or another harness. Judges still require independent contexts and cannot fall back inline.
 
 **Return shape.** A dispatch returns either a **result** (the work is done and its edits are where the table says) or a **receipt** (a handle for work that will finish after this call returns). A result goes straight to 3.3. A receipt is a pending wait: record it in `run_state.pending_waits` as `references/persistence.md` specifies, including the observable that will carry the result and the action to take (collect it through 3.3), and verify the write before dispatching the next experiment. Collect a receipt's result when that observable arrives, never by polling in a foreground loop.
 
@@ -203,24 +199,24 @@ After all experiments in the batch have been measured:
 4. **If the winner's deciding result is `keep` with `next_measurement: none`: KEEP**
    - For a `remote` winner, the deciding result is the independent decision from step 3. For any other winner, it is the last `decide.mjs` result from 3.3.
    - A `keep` has already passed held-out confirmation when the spec configures one; an entry whose last decision is `promising` with `next_measurement: holdout` is not a keep until the holdout pair is collected and the script decides again
-   - Commit the experiment branch first so the winning diff exists as a real commit before any merge or cherry-pick (a `remote` winner is already a commit at `head_sha`; merge `head_sha`, not the result ref's tip, which only adds `result.yaml`)
+   - Capture and describe the exact JJ candidate first, following `references/workspaces.md`, so the winning diff has a stable recoverable revision before integration (a `remote` winner already has `head_sha`; integrate that revision, never the result-marker tip)
    - Include only mutable-scope changes in that commit; if no eligible diff remains, treat the experiment as non-improving and revert it
-   - Merge the committed experiment branch into the optimization branch
-   - Use the message `optimize(<spec-name>): <hypothesis description>` for the experiment commit
-   - After the merge succeeds, clean up the winner's experiment worktree and branch; the integrated commit on the optimization branch is the durable artifact
+   - Integrate the verified candidate into optimization-bookmark history using the native JJ procedure in `references/workspaces.md`
+   - Compose the experiment description using the commit-message standards in `references/workspaces.md`; preserve the hypothesis and measured evidence without imposing a fixed subject syntax
+   - After verified JJ integration, cleanup is conditional on the complete safety and authority checks in `references/workspaces.md`; preserve recovery bookmarks and evidence
    - This is now the new baseline for subsequent batches
 
 5. **Check file-disjoint runners-up** (up to `max_runner_up_merges_per_batch`):
    - For each runner-up that also improved, check file-level disjointness with the kept experiment
    - **File-level disjointness**: two experiments are disjoint if they modified completely different files. Same file = overlapping, even if different lines.
-   - If disjoint, cherry-pick the runner-up onto the new baseline and run the same decide loop as step 3.3 against a fresh sample set for that combined snapshot. Do not reuse the standalone experiment's accumulated samples; they were measured against the previous baseline. Collect further measurement whenever `next_measurement` is not `none`. Persist the combined pairing as `kind: integrated` on that same log entry without replacing the standalone comparison. Keep the original standalone log entry for audit.
-   - Keep the cherry-pick only when that result is eligible and `next_measurement` is `none` (outcome: `runner_up_kept`); then clean up that runner-up's experiment worktree and branch
-   - Otherwise revert the cherry-pick, log it as "promising alone but neutral/harmful in combination" (outcome: `runner_up_reverted`), then clean up the runner-up's experiment worktree and branch
+   - If disjoint, duplicate/rebase the exact runner-up change onto the new baseline using native JJ integration from `references/workspaces.md`, and run the same decide loop as step 3.3 against fresh samples for that combined snapshot. Do not reuse standalone samples from the previous baseline. Collect further measurement whenever `next_measurement` is not `none`. Persist the combined pairing as `kind: integrated` on that same log entry without replacing the standalone comparison. Keep the original standalone entry for audit.
+   - Keep the JJ integration only when eligible and `next_measurement` is `none` (outcome: `runner_up_kept`); cleanup remains subject to `references/workspaces.md`
+   - Otherwise preserve the candidate and return safely to the verified pre-integration revision, log "promising alone but neutral/harmful in combination" (outcome: `runner_up_reverted`); cleanup remains conditional on authority and evidence preservation
    - Stop after first failed combination
 
 6. **Handle deferred dependencies.** Experiments that need unapproved dependencies get outcome `deferred_needs_approval`
 
-7. **Close the rest.** Cleanup worktrees; a `remote` result ref may be deleted once its entry is verified in the log and its `result.yaml` copy is in `<state-root>`. `kept` and `runner_up_kept` are only for diffs on the optimization branch. Eligible candidates that were not integrated become `not_selected`. Leave `inconclusive`, `censored`, and `degenerate` as `decide.mjs` returned them.
+7. **Close the rest.** Apply only cleanup authorized by `references/workspaces.md`; completion does not authorize workspace or recovery-bookmark deletion. A remote result bookmark can be deleted only when disposable and no longer needed for recovery, after verifying its ledger entry and reading back its `result.yaml` copy outside the target. `kept` and `runner_up_kept` require integrated diffs. Eligible candidates not integrated become `not_selected`. Leave `inconclusive`, `censored`, and `degenerate` as returned by `decide.mjs`.
 
 ### 3.5 Update State (CP-4)
 
@@ -275,7 +271,7 @@ If none is met, cross the tick boundary.
 
 ### 3.7 Cross-Cutting Concerns
 
-**Codex failure cascade**: Track consecutive Codex delegation failures. After 3 consecutive failures, auto-disable Codex for remaining experiments and fall back to subagent dispatch. Log the switch.
+**Native failure cascade**: Record dispatch failures and their classified causes. After three consecutive recoverable route failures, use an allowed native route and log the switch; never bypass permission, independence, or depth restrictions.
 
 **Error handling**: Classify a failed measurement from what `measure.sh` actually signaled. The censored stderr marker (with exit 125) is `censored`. Exit 124 is `timeout`. Any other non-zero exit (including 125 without that marker) is `error`. Log that outcome with the error message, revert the experiment, and continue the batch.
 

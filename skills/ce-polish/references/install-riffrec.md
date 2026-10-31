@@ -28,6 +28,8 @@ Follow riffrec's own README when it names a different mount point for the framew
 
 ## Commit
 
+Apply the complete "Change message standards" in `SKILL.md` before composing: read the full https://go.dev/wiki/CommitMessage and compare several recent subjects and bodies in `jj log` from the absolute target workspace root at the task-verified history head. Repository syntax takes precedence; do not impose a fixed template or attribution trailer.
+
 Commit the dependency change, the lockfile, and the mount edit as one setup commit on the current branch through `ce-commit`, with a message that says it adds riffrec live mode for polish sessions. Keep its hash: the live-mode report names it, including when the riffer later declines the consent screen and no session runs (the commit stays; riffrec remains in the app after the session, as disclosed).
 
 ## When it fails

@@ -504,7 +504,7 @@ function inspectServerProcess(options, pid) {
   const isHelper = tokens.some((token) => path.basename(token) === path.basename(scriptPath))
   // Flattened command line (`ps`): argv boundaries are gone, so the root must
   // be followed by the next flag or the end of the line. A root that is this
-  // one plus more words (`--root /tmp/root other`) is ambiguous and reads as
+  // one plus more words (`--root .tmp/root other`) is ambiguous and reads as
   // foreign rather than owned.
   const rootArgument = new RegExp(`(^|\\s)--root\\s+${escapeRegExp(options.root)}(\\s+--|\\s*$)`)
   const forThisRoot = rootArgument.test(args)

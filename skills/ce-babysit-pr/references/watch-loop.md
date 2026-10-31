@@ -41,7 +41,7 @@ Use the harness's tools to run the detector and wait for its output. A skill dri
 
 **Checkpoint:** Use checkpoint mode only when the user requests it or the harness cannot keep the session active while waiting for the detector's output. Run one tick, persist state, report, and print the exact host-rendered resume invocation. Say monitoring is paused. Never fake a loop with a foreground `sleep` or an unmanaged detached process.
 
-**Durability:** the in-session watch dies with the session. Re-invoking the skill resumes from disk, because `/tmp` persists across ticks. For an unattended multi-day watch, escalate to a durable scheduler: Grok's `scheduler_create --durable`, or cron running `<cli> exec '<host-rendered resume invocation>'`. A fresh headless run has no memory of this conversation, so persist consequential decisions to disk.
+**Durability:** the in-session watch dies with the session. Re-invoking the skill resumes from its workspace-local `.tmp` state, which persists across ticks. For an unattended multi-day watch use an available native durable scheduler or cron running `<cli> exec '<host-rendered resume invocation>'` from the same absolute target workspace root with its backing-store environment. A fresh headless run has no conversation memory, so persist consequential decisions to disk.
 
 ## Cadence (the watch interval)
 
@@ -84,7 +84,7 @@ A loop can churn without finishing. Three shapes: CI **ping-pong** (fix A surfac
 
 ## On-disk state contract
 
-State lives at `<scratch-root>/ce-babysit-pr/<host>-<owner>-<repo>-<pr>/state.json`. That path is stable and reusable across invocations, so any later tick (scheduled or hand-run) finds it. The `<host>` segment (from the PR URL; `github.com` on the public host) is required for GitHub Enterprise: without it, two PRs sharing `owner/repo#N` on different hosts would reuse one `state.json` and cross-contaminate dispositions. The `pr-snapshot` script performs all reads and writes under a file lock. Shape:
+State lives at `<absolute-workspace-root>/.tmp/rocketclaw/babysit-pr/<host>-<owner>-<repo>-<pr>/state.json`. That path is stable and reusable across invocations, so later ticks find it. The PR URL host (`github.com` publicly) prevents cross-host contamination. The helper performs all reads and writes under a file lock. Shape:
 
 ```json
 {

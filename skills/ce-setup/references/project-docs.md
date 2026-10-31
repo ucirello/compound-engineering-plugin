@@ -1,6 +1,6 @@
 # Project review docs (Step 10)
 
-This step needs a writable git checkout of the repository; without one, say so and write nothing.
+This step needs a writable JJ workspace of the repository; without one, say so and write nothing.
 
 **Outcome:** the repository has a `CODING_STANDARDS.md` and `REVIEW.md` drawn from its own history and current with it. Its root agent-instructions file points to them, and so does the file each AI code reviewer it uses reads. Teams rarely write these files from a blank page, so setup offers a draft for the user to correct rather than asking them to author one. Nothing is written until the user approves the drafts.
 
@@ -64,7 +64,7 @@ When evidence concentrates in a subtree that has its own instructions file, draf
 
 When a review doc already exists, the goal is to bring it up to date with what the team has learned since it was last written. Teams change how they work, so newer pull requests and review feedback can do more than add a rule. They can show that the team now applies a written rule differently, or that a rule no longer earns its place. Signs of that include findings under the rule that the team keeps declining, a check that now enforces it, or the code it guarded being gone. Finding only new rules misses half the job.
 
-Focus on evidence the file has not yet accounted for. Usually that is what came after its rules last changed, which its git history shows. When the file was written without that history, or is newer than most of it, weigh the whole history. Check every existing rule against that evidence as well as looking for missing rules. Edit the file in place, in its own style. Propose each change or retirement with the evidence behind it, and remove nothing without naming it in the preview. When none of that evidence changes the file, say so and leave it alone.
+Focus on evidence the file has not yet accounted for. Usually that is what came after its rules last changed, which its JJ history shows. When the file was written without that history, or is newer than most of it, weigh the whole history. Check every existing rule against that evidence as well as looking for missing rules. Edit the file in place, in its own style. Propose each change or retirement with the evidence behind it, and remove nothing without naming it in the preview. When none of that evidence changes the file, say so and leave it alone.
 
 ## Preview and write
 

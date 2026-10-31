@@ -4,7 +4,7 @@ Read this before editing any file in Phase 3. SKILL.md runs the branch check and
 
 *One change at a time. If you are changing multiple things, stop.*
 
-**Compound Pack rules.** Compound Packs declared in CE config are rules that work in their domain must honor, and no plan has checked this fix against them. Before the first edit, including a test edit, resolve the declared packs by running this skill's resolver as one command:
+**RocketClaw Pack rules.** RocketClaw Packs declared in project config are rules that work in their domain must honor, and no plan has checked this fix against them. Before the first edit, including a test edit, resolve the declared packs by running this skill's resolver as one command:
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";

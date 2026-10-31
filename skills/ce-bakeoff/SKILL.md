@@ -21,6 +21,12 @@ Invocation authorizes scoped reading, candidate and judge delegation through ava
 
 ## Announce and develop
 
+### Native delegation permissions and setup
+
+This skill's explicit candidate and reviewer dispatch authorizes scoped native subagents under a user-OR-applicable-skill delegation policy without a second approval; merely loading an unrelated skill does not. Unconditional prohibitions and tool denial still win. Never evade them through shell or another harness. Permission, model override, and nesting are separate: when model override is forbidden without an explicit user model request, omit the optional model argument, use a suitable inherited model where allowed, and disclose any unmet configured tier. Inspect effective depth through supported configuration discovery. Classify actual errors as depth/capacity, permission, model rejection, or missing tool. Inline or parent fallback cannot satisfy this skill's required independent contexts; return incomplete when they are unavailable.
+
+Deep delegation requires users to merge `experimental.subagent_depth >= 3` into their existing OpenCode user configuration. Discover the actual directory with `opencode debug paths` / `opencode debug paths config`; update the existing `opencode.json` or `opencode.jsonc`, preserving unrelated fields, sibling fields, and higher integers. Do not create a competing file or replace the whole config. Higher-precedence configuration must not lower this value. Plugin installation and package-local shipped configuration alone do not enable it. Document this setup only; never modify host configuration during a run.
+
 Before dispatch, announce that a **Bake-off** is happening to explore multiple approaches to the subject and choose the strongest. If the caller already announced that, do not repeat it. No candidate preview is required. Updates help the user follow the decision. At meaningful boundaries, say what was learned, what changed, or what happens next. During a long wait, give an update when it adds useful information about progress or expectations; do not repeat that you are still waiting. Keep operational bookkeeping in the run record unless it changes expectations or explains a limitation. Do not end the turn on work merely described.
 
 Read `references/candidates.md` before dispatch. It defines fresh-context payloads, model handoff, scratch isolation, and candidate completion. Launch independent work together where capacity permits; serialize only dependencies or capacity-limited launches.

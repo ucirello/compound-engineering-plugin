@@ -18,12 +18,12 @@ Return:
 - `requested_model` and `actual_model`: the model that was requested and the model identity the route's receipt reports as served (`unverified` when the route supplies no trustworthy receipt)
 - `requested_effort`: the reasoning effort requested for the external worker, or `null` when none was requested or execution was native
 - `fallback_reason`: `null` when none, otherwise the observed route-unavailable or substitution reason
-- `run_id`: durable external run identifier, or `null` for native execution
-- `source_kind` and `source_digest`: what the controller recorded as the implementation source (`plan` plus its digest in Return-to-Caller Mode; standalone bare-prompt runs use `prompt`)
-- `unit_receipts`: route, model, detached-process, integration, verification, canonical-commit, and cleanup state for each attempted unit
+- `run_id`: durable native delegated-run identifier, or `null` for inline execution without a durable run
+- `source_kind` and `source_digest`: what the durable native run recorded as source (`plan` plus digest in Return-to-Caller Mode; standalone bare prompts use `prompt`)
+- `unit_receipts`: requested/actual route/model, native worker handle/status, source/packet digests, integration, verification, canonical revision, fallback and cleanup state for each attempted unit
 - `plan_checkpoint`: the disclosed checkpoint commit when the selected plan was the only canonical dirt, otherwise `null`
 - `blockers`
-- `recovery_path`: the run/workspace location the controller preserved and checked, when recovery remains; otherwise `null`
+- `recovery_path`: the native durable run/workspace location preserved and checked when recovery remains; otherwise `null`
 - `settled_decision_conflicts`: conflicts with `session-settled:`-labeled KTDs or Key Decisions encountered during implementation — each entry names the labeled entry, the evidence, and how it was routed (proceeded-and-flagged vs blocker); empty when none
 - `behavior_change`: whether behavior-bearing code changed
 - `standalone_shipping_skipped: true`

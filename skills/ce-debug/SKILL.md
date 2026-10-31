@@ -6,6 +6,38 @@ argument-hint: "[issue reference, error message, test path, or description of br
 
 # Debug and Fix
 
+### Quoted Go source guidance (not a mandatory repository template)
+
+The following verbatim excerpts are from https://go.dev/wiki/CommitMessage. Repository-local syntax ALWAYS wins; the Go illustration does not prescribe message syntax here. Keep the runtime full-guide/history comparison below.
+
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+>
+> ```text
+> net/http: handle foo when bar
+>
+> [longer description here in the body]
+>
+> Fixes #12345
+> ```
+>
+> Notably, for the subject (the first line of description):
+>
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+>
+> For the body (the rest of the description):
+>
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - we **do not** use `Signed-off-by` lines. Don’t add them. Our Gerrit server & GitHub bots enforce CLA compliance instead.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
+> - when referencing CLs, prefer saying “CL nnn” or using a go.dev/cl/nnn shortlink over a direct Gerrit URL or git hash, since that’s more future-proof.
+> - when moving code between repos, include the CL, repository name, and git hash that it was moved from/to, so it is easier to trace history/blame.
+
 Find the root cause of a failure, then — when the user chooses to — fix it with test-first discipline.
 
 **Done when:** the causal chain from trigger to symptom is stated with no gaps and file:line evidence, and either a verified fix has been handed off (PR, commit, or the user's chosen stop) or a diagnosis-only summary has been delivered. **Escalate rather than persist:** 2-3 hypotheses exhausted without confirmation, or 3 failed fix attempts, means diagnose *why* instead of trying again — that is the smart escalation `references/investigate.md` describes. One hypothesis, one change at a time; changing several to see what helps is shotgun debugging.
@@ -34,9 +66,9 @@ Debugging surfaces raw output constantly — command results, captured payloads,
 Resolve `<root>` only when you first compose a `<root>/` path — a run that composes none skips this entirely.
 
 <!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only (`<repo-root>` = `jj root`, run from the absolute enclosing workspace root). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
 - **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
@@ -79,8 +111,22 @@ If the user chose "Diagnosis only," skip to Phase 4's summary. If they chose "Re
 
 **Read `references/fix.md` before editing any file** — the test-first sequence, the failed-fix rule, the check of other places the fix affects, and the post-mortem trigger. Two rules decide whether the fix may start at all, so they stay here:
 
-- **Branch.** Check `git status`; if the user has unstaged work in files that need modification, confirm before editing. If the current branch is the default branch, create a feature branch without asking — derive a name from the bug, `git checkout -b <name>`, and say which branch you moved to. Detect the default by comparing against `main`, `master`, or `git rev-parse --abbrev-ref origin/HEAD` **with its `origin/` prefix stripped** — the raw output is `origin/<name>`, so an unstripped comparison never matches.
-- **Record the pre-fix scope:** current `HEAD`, whether `git status --short` is clean, and any pre-existing changed files. Then keep a list of **fix-owned files** (the tests and implementation changed for this bug) as you work. Phase 4 answers both of its questions from this record and cannot reconstruct it afterwards.
+- **Workspace/bookmark.** Inspect `jj status`, `jj diff`, conflicts, ignored and untracked files before editing; confirm overlapping user edits. Detect existing isolation first and reuse it unchanged, including its name and colocation. Otherwise invoke `ce-worktree` with the verified base and bug-derived slug under the workspace lifecycle contract below, then create a feature bookmark with `jj bookmark create <bug-derived-name> -r @`; never rename existing source or PR bookmarks. No Git checkout, staging, or stash is used.
+- **Record the pre-fix scope:** immutable commit ID of `@`, whether `jj status` and `jj diff` show a clean working copy, and all pre-existing changed files. Keep a list of **fix-owned files** as you work; Phase 4 cannot reconstruct this record afterwards.
+
+### Workspace and repository command contract
+
+Run every JJ command with the absolute target workspace root as cwd, using `(cd "$workspace_root" && jj ...)`, not `jj -R`. Repository-scoped `gh` commands also run there with `GIT_DIR=$(jj git root)` exported in that cwd. Inspect `jj git remote list`, bookmarks and the verified remote head rather than assuming a default bookmark.
+
+Harness-native lifecycle takes precedence. For every new workspace, including `ce-worktree` calls, capture local date once and persist one identity `YYYYMMDD-meaningful-kebab-slug` (for example `20261008-fix-email-validation`), stripping an existing date prefix before normalization. Use that identity both as registered name and destination basename under the existing local `.tmp` parent; check registrations and destinations and append `-2`, `-3` on collisions. Preserve it across retries and midnight. From the absolute source root create only `jj workspace add --colocate --name NAME --revision VERIFIED_BASE ABSOLUTE_DEST`, then verify `jj git colocation status` from the resulting absolute root. If the harness cannot meet required naming or colocation for a new workspace, report a safe blocker rather than bypassing it.
+
+Completion is not cleanup permission. Before authorized destructive cleanup, stop workers, leave the target, move the harness session to a surviving workspace, verify exact registration/path/run ownership and disposal authority, and required integration. Inspect tracked/conflicted/ignored/untracked content, preserve recovery bookmarks, and copy/read back evidence outside the target. Never remove unrelated, referenced, non-disposable or ambiguous content. From the surviving absolute root use `jj workspace remove VERIFIED_NAME`; `jj workspace forget` only unregisters and preserves files, never a cleanup substitute. Verify both registration and directory are gone; warnings/failures retain state and report a blocker, with no force-delete fallback.
+
+### Change messages
+
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards.
+
+Before composing any message, read the full guide and compare several recent subjects **and bodies** from the task-verified history head: `(cd "$workspace_root" && jj log --no-graph -r '::<verified-history-head>' -n 10 -T 'description ++ "\\n"')`. Repository-local syntax always wins: inspect packages/prefixes, casing, tense, subject/body separation, wrapping and issue references. With no history use explicit instructions and compatible Go guidance, never invented precedent. No Markdown, Co-authored-by or Assisted-by in resulting messages. Use `jj describe -m "<message composed from the standards above>"`; isolate only authorized fix-owned paths with the commit skill, preserving unrelated work and recovery references.
 
 ### Phase 4: Handoff
 
@@ -119,8 +165,8 @@ If the user chose "Diagnosis only," skip to Phase 4's summary. If they chose "Re
   - `ce-commit-push-pr` pushes the **whole branch**, and its PR spans every commit on it, not just your fix. So the question is about the branch, not your diff. It also pushes *before* creating the PR, so a remote `gh` cannot open a PR against leaves the branch published with no PR.
   - Already pushed is not already **offered**. Commits in an open PR are under review, so they are offered, and this run updates that PR rather than opening a second one. Commits pushed for backup or to trigger CI are not offered, and a first PR would publish them. Compare against the remote rather than a local ref: a local branch, including the default branch Phase 3 may have branched off, can itself be ahead of what was pushed.
 
-  If you cannot establish all three, take the local route instead; that is the safe direction, and the preview is not a substitute for it. Otherwise preview what will be committed, on what branch, and whether a PR opens or updates, then **invoke the `ce-commit-push-pr` skill with `branding:on`.** It commits under question 1's scope, so do not commit first. The preview is a statement, not a question. Surface the resulting PR URL.
+  If you cannot establish all three, take the local route instead; that is the safe direction, and the preview is not a substitute for it. Otherwise preview the fix-owned commit scope, verified bookmark and PR action, then **invoke `ce-commit-push-pr`** without generated attribution. Do not commit first. The preview is a statement, not a question. Surface the resulting PR URL.
 - **Stays local** when any of those three fails. Invoke the `ce-commit` skill under question 1's scope and push nothing. Say in one line what stayed local and why, and that you will push and open the PR on request. Do not ask first; a local commit is reversible.
-- **Not a git repo**: nothing commits. Stop after the summary and the quality block.
+- **Not a JJ repository**: nothing commits. Stop after the summary and the quality block.
 
 **Contextual override** ("don't open PRs from skills", "commit only", "stop after the fix") — follow what the user said, and **Stop here** without committing when that is what they asked for. A vague tonal cue is not an override.

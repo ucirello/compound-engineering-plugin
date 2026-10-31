@@ -4,6 +4,8 @@ Load this file when the active run uses a confirmed managed stack (`manager_stat
 
 Always non-interactive. Prefer JSON/view probes and explicit branch names; never rely on interactive prompts. Substitute `<tracking-remote>` with the stack branches' actual tracking remote (often `origin`, but may be `upstream` or a fork remote) — never hard-code `origin` when SKILL.md already resolved a different tracking remote.
 
+Every recipe runs from the absolute target JJ workspace root with `GIT_DIR=$(jj git root)` set in that same shell call. Confirm the manager identifies the exact target bookmark/remote/OID, including when `@` is an empty child of the pushed head; a manager unable to prove that binding is a safe blocker, never permission to checkout/reset or rename the PR bookmark. Use `jj git fetch`, `jj bookmark list --all-remotes` and `jj log` for surrounding repository state reads, never direct Git commands.
+
 ## After an owned push on the active layer (dependents exist)
 
 ```bash
@@ -11,7 +13,7 @@ gh stack rebase "<first-open-dependent-branch>" --upstack --no-trunk --remote <t
 gh stack push --remote <tracking-remote>
 ```
 
-Starting at the first dependent excludes the active target from the cascading rebase. Quote the branch name — git branch names may contain shell metacharacters. On conflict: `gh stack rebase --abort`, then surface a needs-human / stack-sync residual.
+Starting at the first dependent excludes the active target from the cascading rebase. Quote the branch/bookmark name because it may contain shell metacharacters. On conflict: `gh stack rebase --abort`, then surface a needs-human / stack-sync residual.
 
 ## Discover order / next open layer
 

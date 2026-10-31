@@ -5,6 +5,7 @@
 # thread whose comments contain the target ID.
 
 set -e
+source "$(dirname "$0")/workspace-context"
 
 if [ $# -lt 2 ]; then
     echo "Usage: get-thread-for-comment PR_NUMBER COMMENT_NODE_ID [OWNER/REPO]"
@@ -37,7 +38,7 @@ fi
 # more than one page of threads can still resolve a comment to its parent
 # thread. Per-thread comments are still capped at 100 -- threads exceeding
 # that depth are not paginated here.
-tmp_threads=$(mktemp "${TMPDIR:-/tmp}/ce-pr-threads.XXXXXX")
+tmp_threads=$(mktemp "$workspace_root/.tmp/pr-threads.XXXXXX")
 trap 'rm -f "$tmp_threads"' EXIT
 
 gh api graphql --paginate --slurp \

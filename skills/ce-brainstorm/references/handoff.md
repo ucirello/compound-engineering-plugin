@@ -108,7 +108,7 @@ Immediately load the `ce-plan` skill in the current session. Pass the unified
 plan artifact path when one exists; otherwise pass a concise summary of the
 finalized brainstorm decisions. When the Phase 1.1 grounding scout produced a
 dossier and the file still exists, also pass its path
-(`<scratch-root>/ce-brainstorm/<run-id>/grounding.md`) — it gives
+(`<workspace-root>/.tmp/brainstorm/<run-id>/grounding.md`) — it gives
 planning verified quotes with `file:line` pointers to start from instead of
 re-scanning the repo. Do not print the closing summary first.
 
@@ -131,7 +131,7 @@ autonomously — plan, implement (`ce-work` in `return-to-caller` mode), simplif
 independent code review and applied fixes, commit/push/open PR, and CI watch to
 green. Do not also load `ce-work` directly; `lfg` orchestrates it. `lfg` is
 host-agnostic: it works wherever
-skills run (plus `git`/`gh` for the PR and CI steps, which it guards when absent).
+skills run (plus `jj`/`gh` for the PR and CI steps, which it guards when absent). Run JJ from the absolute target workspace root; repository-scoped `gh` calls must use `GIT_DIR=$(jj git root)` from that same root.
 
 Where the host exposes no skill-invocation primitive, print the `lfg <plan-path>`
 invocation for the user to run and note that it will plan, build, review, and

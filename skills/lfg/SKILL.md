@@ -1,10 +1,10 @@
 ---
 name: lfg
-description: "Take a request all the way to done, hands-off, through the right Compound Engineering skills. A code change ends as an open pull request, pushed without stopping. Use only when the user explicitly asks for autonomous end-to-end work or invokes lfg directly. Use ce-plan, ce-work, ce-debug, or ce-commit-push-pr for work the user reviews step by step."
+description: "Take a request all the way to done, hands-off, through the right RocketClaw skills. A code change ends as an open pull request, pushed without stopping. Use only when the user explicitly asks for autonomous end-to-end work or invokes lfg directly. Use ce-plan, ce-work, ce-debug, or ce-commit-push-pr for work the user reviews step by step."
 argument-hint: "[feature, bug, issue reference, or plan path; optionally assign planning and/or implementation to a model or harness]"
 ---
 
-**Outcome.** The request reaches the end state its shape calls for, produced by the Compound Engineering skill whose job that is, with everything unresolved recorded where the user will see it. Most requests end with that skill's result and no branch. A change to the code is the one shape with more steps of its own: it ends in an open pull request whose URL you hold, with CI decided, after being implemented, simplified, reviewed with the eligible findings applied and the rest recorded, any durable learning captured, committed, and pushed. Merging stays with the user unless they granted it for this run.
+**Outcome.** The request reaches the end state its shape calls for, produced by the RocketClaw skill whose job that is, with everything unresolved recorded where the user will see it. Most requests end with that skill's result and no bookmark. A change to the code is the one shape with more steps of its own: it ends in an open pull request whose URL you hold, with CI decided, after being implemented, simplified, reviewed with the eligible findings applied and the rest recorded, any durable learning captured, committed, and pushed. Merging stays with the user unless they granted it for this run.
 
 **Work source.** On the routes that change the code, nothing is implemented without a work source verified this run, and only two things qualify: an implementation-ready plan, which `ce-work` implements; or a `fixed` return from `ce-debug`, where the fix is the implementation. The plan is one the session identifies, as `references/intake.md` defines. Never search the plans directory for a candidate or act on a file you discovered. Never plan from scratch over an existing plan.
 
@@ -30,7 +30,9 @@ When unsure, take the route that asks more of the evidence.
 
 A stop leaves nothing pushed that was not already pushed.
 
-Resolve every skill named here against the host's available-skills list and invoke that exact entry; some hosts namespace it (`compound-engineering:ce-plan`). Read `references/task-visibility.md` before starting: it defines the stage view published through the platform's task-tracking capability, the chat narration, and the completion rule that a step is done only after it ran, a child skill's return resumes the next numbered step in the same turn, and the turn does not end before DONE or a stop.
+Resolve every skill named here against the host's available-skills list and invoke that exact entry; some hosts namespace it (`rocketclaw:ce-plan`). Read `references/task-visibility.md` before starting: it defines the stage view published through the platform's task-tracking capability, the chat narration, and the completion rule that a step is done only after it ran, a child skill's return resumes the next numbered step in the same turn, and the turn does not end before DONE or a stop.
+
+**Repository execution contract.** Capture the absolute target workspace root; run every JJ subprocess with that root as its cwd, using `(cd "$workspace_root" && jj ...)` in shell. All repository-scoped `gh` commands run there with `GIT_DIR=$(jj git root)` set. No direct Git executable, installation, version detection, or Git fallback. Keep temporary artifacts under the target workspace's `.tmp/`. Detect isolation before requesting any workspace: reuse existing isolation unchanged and let the native harness lifecycle take precedence. If a child needs new isolation, pass the task-derived identity requirements: capture local date once and persist `YYYYMMDD-meaningful-kebab-slug`, use it for both registration and destination basename under the existing local `.tmp` parent, normalize an existing date prefix, and check registrations and paths for `-2`, `-3` collisions. From the absolute source root create with `jj workspace add --colocate --name NAME --revision VERIFIED_BASE ABSOLUTE_DEST`, then verify `jj git colocation status` in the destination. A native lifecycle unable to supply these properties is a safe blocker; do not rename existing bookmarks. Completion does not authorize cleanup; leave isolation intact unless ce-worktree's verified removal and recovery contract is explicitly authorized.
 
 ## The run (routes that change the code)
 
@@ -42,7 +44,7 @@ Resolve every skill named here against the host's available-skills list and invo
 
 4. Invoke the `ce-code-review` skill with `mode:agent plan:<plan-path-from-step-1>`; on the defect route omit `plan:`. A `settled_conflict` finding whose evidence shows the settled decision cannot work (infeasible, wrong-thing, or destructive) stops the pipeline as blocked, with the finding reported, before the shipping precondition.
 
-**Shipping precondition (every push from step 5 on).** Run `git remote` once. No remote means local-only: make every commit the steps call for, but skip every push, PR create/edit, and CI-watch action, including step 10 in full. That is terminal, not an error.
+**Shipping precondition (every push from step 5 on).** Run `(cd "$workspace_root" && jj git remote list)` once. No remote means local-only: make every commit the steps call for, but skip every push, PR create/edit, and CI-watch action, including step 10 in full. That is terminal, not an error.
 
 5. **Apply and persist review fixes** as that file defines. Do not proceed to the residual handoff, run browser tests, or output DONE while eligible review fixes remain only in the working tree uncommitted.
 

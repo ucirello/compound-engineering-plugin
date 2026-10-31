@@ -2,6 +2,8 @@
 
 This reference owns evidence collection after the app launches.
 
+Save screenshots, exported logs, and any run-created temporary evidence beneath the absolute target workspace's `.tmp/` directory established during setup. Include those evidence paths in the report and preserve them through handoff; do not use global temporary storage or delete evidence as part of simulator cleanup.
+
 ## Exercise the requested surfaces
 
 Derive the key screens and flows from the user's request and the changed iOS surface. For each one:

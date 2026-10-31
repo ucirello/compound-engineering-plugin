@@ -46,22 +46,32 @@ Depth is chosen only by an explicit token, only in non-interactive mode, and at 
 Resolve `<root>` when you first compose a `<root>/solutions/` path, and pass a subagent the resolved path rather than the config.
 
 <!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only (`<repo-root>` is the absolute enclosing JJ workspace root containing `.jj`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
 - **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
 
 ## Write boundary
 
+In a context-pressure handoff the fresh Full delegate becomes the orchestrator. After it finishes, the interactive parent may apply the expressly consented discoverability edit or settle the eligible pack destination, without re-running Full or editorially reworking the learning. Destination changes must preserve one learning rather than create duplicate artifacts. These are the only handoff exceptions to the ordinary mode-specific boundaries below.
+
 **Only the orchestrator writes product files.** Phase 1 subagents write to per-run scratch only, and never touch `<root>/`, project instruction files, or any other tracked path.
 
-The orchestrator writes the one learning under `<root>/solutions/`, plus two maintenance side effects that its own step describes: `CONCEPTS.md` during vocabulary capture, and — **only in interactive Full mode after consent** — a small discoverability line in a project instruction file. Two further writes exist **only in interactive Full mode when the user selects them at the assembly destination step**: a rule file inside a writable declared Compound Pack, and the `packs:` entry appended to `.compound-engineering/config.yaml`. Creating `CONCEPTS.md` when it is absent is expected rather than a violation. An instruction file is only ever edited, never created. Nothing else in the tree is written. Edits to *other* docs belong to `ce-compound-refresh`, which this skill recommends or invokes with a narrow scope but never stands in for.
+The orchestrator writes the one learning under `<root>/solutions/`, plus two maintenance side effects that its own step describes: `CONCEPTS.md` during vocabulary capture, and — **only in interactive Full mode after consent** — a small discoverability line in a project instruction file. Two further writes exist **only in interactive Full mode when the user selects them at the assembly destination step**: a rule file inside a writable declared Compound Pack, and the `packs:` entry appended to `.rocketclaw/config.yaml`. Creating `CONCEPTS.md` when it is absent is expected rather than a violation. An instruction file is only ever edited, never created. Nothing else in the tree is written. Edits to *other* docs belong to `ce-compound-refresh`, which this skill recommends or invokes with a narrow scope but never stands in for.
 
 ## Choosing the path
 
-**Read `references/modes.md` before step 1.** An interactive run picks its own depth rather than asking the user, and that reference says why neither the depth choice nor session history is a question. Default to **Full**. Choose **Lightweight** only when the session is near its context limit.
+**Read `references/modes.md` before step 1.** Default to **Full**. Under interactive context pressure, delegate Full using the handoff below rather than choosing Lightweight. Explicit non-interactive depth tokens retain their meaning.
+
+### Context-pressure Full handoff
+
+Read the source ID with shell `printf '%s\n' "$OPENCODE_SESSION_ID"`; never guess it. Pass that ID, the known title (or explicitly unknown), absolute JJ workspace root, existing learning doc path (or none), and one-sentence topic to ONE fresh native subagent loading `ce-compound mode:non-interactive depth:full`. Do not pass a predigested conversation. This explicit dispatch authorizes delegation subject to unconditional tool/permission prohibitions. Discover effective depth using supported configuration discovery; deep delegation requires `experimental.subagent_depth >=3`. Setup must merge that value into the existing `opencode.json(c)` discovered with `opencode debug paths` / `opencode debug paths config`, preserving sibling fields and higher integers; never modify host configuration during this run or create a competing file. Package-local configuration alone is insufficient.
+
+The delegate is the Full orchestrator and may write the single learning and normal Full side effects; its research children remain scratch-only. Before reading source evidence it exports the supplied source through `opencode session export ID` or `opencode api get /api/session/ID/message`, saves under the supplied workspace's `.tmp/`, and reduces it to user/assistant text plus tool names and short results (no reasoning, secrets, or internal database access). The supplied source is primary evidence, not an excluded current session. Exclude only the delegate's own session.
+
+Parent relays the delegate's report and doc path without a second Full run or re-edit. Offer consent-based interactive discoverability editing and, for eligible prescriptive captures, a writable Compound Pack destination; avoid duplicate learning artifacts. Lightweight fallback is permitted only after an actual unavailable-tool, permission, or depth failure, classified from its error. Model rejection and capacity failures are distinct; do not evade denial through shell/another harness. Report reduced coverage and advise rerunning in the same source session once delegation is available.
 
 Lightweight mode skips session history entirely; non-interactive Full runs the same automatic probe, which asks nothing and so preserves the non-interactive contract.
 

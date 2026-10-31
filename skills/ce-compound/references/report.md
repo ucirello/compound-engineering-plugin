@@ -1,5 +1,9 @@
 # Completion reports
 
+For context-pressure delegation, parent relays the Full delegate's report and document path verbatim without another Full run or re-edit, then offers consent-based interactive discoverability editing or an eligible writable Compound Pack destination. If actual unavailable-tool/permission/depth error forced Lightweight, report the precise classification, reduced coverage, and advice to rerun the same source session once delegation is available. Do not claim Full coverage for that fallback.
+
+This parent-only consent follow-up is an explicit exception to the ordinary “summary is last” rule below. The delegated non-interactive run itself asks no questions and performs no interactive follow-up. The Full delegate is the product-writing orchestrator; the scratch-only subagent rule applies to its research children, not to that orchestrator.
+
 ## Success Output
 
 **User-runnable refresh rendering.** The reports below print a `ce-compound-refresh` invocation for the user to copy. Default to `/ce-compound-refresh <scope>`; use `$ce-compound-refresh <scope>` only when the active host is Codex or explicitly documents dollar-prefixed skill invocation. Render only the invocation as inline code and output one form only.
@@ -106,7 +110,7 @@ File updated:
 
 | ❌ Wrong | ✅ Correct |
 |----------|-----------|
-| Subagents write product files into `docs/` or edit tracked paths | Subagents write only scratch artifacts under `<run-dir>/` and return the path; orchestrator writes the one final doc |
+| Research subagents write product files into `docs/` or edit tracked paths | Research children write only scratch artifacts; the Full orchestrator (including the context-pressure delegate) writes the one final doc |
 | Subagent returns a long prose body only as its inline response | Subagent writes full output to its run artifact; orchestrator Reads it back (inline return is fallback only) |
 | Research and assembly run in parallel | Research completes → then assembly runs |
 | Non-interactive Discoverability Check edits AGENTS.md/CLAUDE.md | non-interactive Full reports `Instruction-file edit: gap noted, not applied`; non-interactive Lightweight emits a discoverability tip; only interactive Full applies the edit after consent |

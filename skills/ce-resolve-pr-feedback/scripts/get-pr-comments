@@ -2,6 +2,14 @@
 
 set -e
 
+workspace_root=$(pwd -P)
+if root=$(jj root 2>/dev/null); then workspace_root=$root; fi
+cd "$workspace_root"
+GIT_DIR=$(jj git root)
+export GIT_DIR
+scratch_root="$workspace_root/.tmp"
+mkdir -p "$scratch_root"
+
 if [ $# -lt 1 ]; then
     echo "Usage: get-pr-comments PR_NUMBER [OWNER/REPO]"
     echo "Example: get-pr-comments 123"
@@ -65,9 +73,9 @@ fi
 # resolver can weigh identity as evidence, including recognizing its own prior
 # replies as already-handled.
 
-tmp_threads=$(mktemp "${TMPDIR:-/tmp}/ce-pr-threads.XXXXXX")
-tmp_comments=$(mktemp "${TMPDIR:-/tmp}/ce-pr-comments.XXXXXX")
-tmp_reviews=$(mktemp "${TMPDIR:-/tmp}/ce-pr-reviews.XXXXXX")
+tmp_threads=$(mktemp "$scratch_root/pr-threads.XXXXXX")
+tmp_comments=$(mktemp "$scratch_root/pr-comments.XXXXXX")
+tmp_reviews=$(mktemp "$scratch_root/pr-reviews.XXXXXX")
 trap 'rm -f "$tmp_threads" "$tmp_comments" "$tmp_reviews"' EXIT
 
 gh api graphql --paginate --slurp \

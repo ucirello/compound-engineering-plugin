@@ -39,11 +39,22 @@ Disjoint paths in one tree are enough when nothing an agent runs mutates state o
 Pay for a worktree (or equivalent per-agent checkout) when any of these is true:
 
 - Agents run builds, formatters, generators, or anything that writes outside its unit, such as lockfiles, caches, generated output, or a repo-root config.
-- An agent needs to run the suite or the harness to check its own edit. Concurrent runs in one tree race on scratch and on git index state.
-- Agents commit, stage, or use branch operations. One git index shared by parallel agents corrupts staging.
+- An agent needs to run the suite or the harness to check its own edit. Concurrent runs in one tree race on scratch and working-copy state.
+- Agents describe changes or move bookmarks. Shared JJ working-copy mutations interfere with other agents' changes.
 - A pass may need to be abandoned wholesale, and a clean discard is worth more than a shared diff.
 
 Otherwise the isolation cost is real: N checkouts to create, N results to merge, and merge conflicts reintroduced on exactly the files the manifest was designed to keep apart.
+
+Use absolute target workspace cwd for every JJ command. Detect existing isolation first; preserve harness ownership and lifecycle, and reuse an existing verified workspace name without renaming or recreating it. For new workspaces, resolve the exact base first, then create explicitly:
+
+```sh
+(cd "$workspace_root" && jj workspace add --colocate --name "$name" --revision "$verified_base" "$absolute_owned_destination")
+(cd "$absolute_owned_destination" && jj git colocation status)
+```
+
+When calling `ce-worktree`, capture local YYYYMMDD once and use a meaningful kebab task/PR/revision slug. Normalize a caller-supplied name without doubling the date; use the same name and destination basename under the absolute workspace `.tmp` parent. Check both workspace registrations and destination paths for collisions, appending `-2`, `-3`, and so on. Persist the selected name across retries, resume, and midnight; do not use PID, randomness, or timestamps. Preserve existing PR/source bookmarks. A harness unable to honor colocation and the requested name is a compatibility blocker, not grounds for a fallback checkout. All scratch, including failure artifacts, belongs under the absolute workspace `.tmp` (local absolute `.tmp` outside JJ).
+
+Retirement requires explicit authorization; completion alone is not authorization. Stop workers, leave the target, and move the harness session to a surviving absolute root first. Verify the registered name, path, and run ownership; preserve required integration/recovery references and copy evidence outside the target, then read it back. Inspect tracked changes, conflicts, ignored and untracked files: snapshots do not protect ignored/untracked content. Retain unrelated, ambiguous, referenced, or non-disposable content. Only then run `(cd "$surviving_root" && jj workspace remove "$verified_name")`. Verify both deregistration and directory absence; on failure retain/report, never force-delete or fall back to Git. `jj workspace forget` is only unregister-and-preserve-files, not destructive retirement. Bookmark cleanup is separate and must retain best/archive/recovery references.
 
 ## The shared-asset trap
 
@@ -125,5 +136,29 @@ A failure that moves to a later phase is progress and names the next target. A f
 ## Ship (Phase 6)
 
 Commit each pass separately with its own message so the history says which change was made and why, and so release tooling can classify intent. Keep the measurement artifacts.
+
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards. Before composing, read the FULL Go guide and compare several recent full subjects and bodies from the absolute target workspace cwd using `jj log --no-graph -r '::<verified-history-head>' -n 10 -T 'description ++ "\n"'`. Resolve the actual task/repository history anchor, never hardcode main or replace the review range with this sample. Infer prefixes, package naming, case, tense, body separation, wrapping, and issue conventions from several messages. Repository instructions and history syntax win; apply compatible Go quality guidance only. With no history, use project/user instructions plus Go guidance without inventing precedent. Use `jj describe -m "<message composed from the standards above>"` in the absolute target cwd; preserve the pass scope and semantic explanation, not a fixed message template.
+
+Illustrative Go source, NOT a mandatory repository template:
+
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+```text
+net/http: handle foo when bar
+
+[longer description here in the body]
+
+Fixes #12345
+```
+> Notably, for the subject (the first line of description):
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+> For the body (the rest of the description):
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
 
 Then write the finding down where the next person will hit it: the mechanism, the before and after, the measured numbers, and the hypotheses that died. **Record the ones that died.** They are what stops the next attempt from re-running a dead end, and they are the part every write-up omits.

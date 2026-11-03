@@ -17,7 +17,7 @@ These are a floor plus a goal, not an algorithm. You are smart enough to read th
 
 Detect the reachable access method by **category**, never by assuming a specific binary exists:
 
-- **GitHub** — the `gh` CLI, or a GitHub MCP server (tools matching `mcp__github__*`).
+- **GitHub** — the `gh` CLI, or a GitHub MCP server (tools matching `mcp__github__*`). Run every repository-scoped CLI call as `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh ...)`, with `workspace_root` the absolute target workspace root. Resolve remote names and URLs with `jj git remote list` from that directory; preserve upstream-versus-origin selection. Outside JJ use an explicit verified repository argument for remote-only queries, never implicit discovery in an unrelated directory.
 - **Linear** — a Linear MCP server, or the `orca linear` CLI.
 - **Jira** — a Jira MCP server, or a documented Jira CLI.
 

@@ -8,16 +8,17 @@ Before generating ideas, gather grounding. The dispatch set depends on the mode 
 
 **Surprise-me grounding depth.** In surprise-me mode, grounding goes deeper than specified mode — apply the 0.2 table's `1 grounding` row, and pass issue themes as first-class input rather than a footnote when issue intelligence runs. Specified mode keeps the shallower scan: the user's named subject anchors what is relevant.
 
-**Pre-resolve the scratch directory.** Generate a `<run-id>` once (8 hex chars) and reuse it for the web-research cache and the Phase 2/4 checkpoints so they share one per-run directory. Scratch lives beneath the effective user's private CE root — `/tmp/compound-engineering-<uid>` when it is usable, else the validated `$TMPDIR` fallback the block below selects — never `.context/`. Run this to validate the owner-private root, create the run directory, and capture its absolute path:
+**Pre-resolve the scratch directory.** Generate a `<run-id>` once (8 hex chars) and reuse it for the web-research cache and the Phase 2/4 checkpoints so they share one per-run directory. Set `workspace_root` to the absolute target workspace root resolved with `jj root` from the absolute target directory, or the absolute current directory outside JJ. Scratch stays beneath its `.tmp/ideate/`; never use OS temp or `$TMPDIR`. Validate the owner-private root, create the run directory, and capture its absolute path:
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+case "$workspace_root" in /*) ;; *) echo "absolute workspace root required" >&2; exit 1 ;; esac
+[ ! -L "$workspace_root/.tmp" ] || exit 1
+SCRATCH_ROOT="$workspace_root/.tmp/ideate";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
 chmod 700 "$SCRATCH_ROOT" || exit 1;
-SCRATCH_DIR="$SCRATCH_ROOT/ce-ideate/<run-id>";
+SCRATCH_DIR="$SCRATCH_ROOT/<run-id>";
 (umask 077; mkdir -p "$SCRATCH_DIR") || exit 1; chmod 700 "$SCRATCH_DIR" || exit 1;
 echo "$SCRATCH_DIR";
 ```
@@ -123,9 +124,11 @@ Sub-agent dispatch is tiered by task shape, never hardcoded to a model name:
 - **Generation tier** — evidence-driven ideation frames and basis verification. Use the platform's mid-tier model when the harness exposes a known override.
 - **Ceiling tier** — ceiling ideation frames, cross-cutting synthesis, and final arbitration. Inherit the orchestrator's model by omitting the model parameter.
 
-If model names are unknown, omit the override and inherit rather than guessing.
+Resolve model names through `opencode.models` before native subagent dispatch; never guess names or invoke another harness. If discovery is unavailable, inherit and disclose unmet configured tier intent rather than claiming the intended model ran.
 
-If the user's or project's active instructions or the live prompt name a model for this subagent, use that model instead of the default tier above. They can name it by the subagent's tier, by its prompt-asset name, or for the subagents being dispatched. Without such an instruction, a model configured for this subagent's role takes precedence over the default tier.
+The user's or project's active instructions, live prompt, and role configuration remain authoritative model intent, ahead of default tiers. Apply an override only when host policy permits it (including any explicit-user-model-request requirement); otherwise inherit a suitable model and disclose unmet intent. Same-model agents are not cross-model independence.
+
+**Dispatch permission and capacity.** These skill instructions explicitly request native subagent delegation and satisfy a host user-OR-loaded-skill exception without another approval. Respect unconditional bans and tool denial. Distinguish delegation permission, model permission, missing tools, and actual nesting/depth exhaustion; depth does not grant permission. Never evade a rejection through shell or another harness. Use supported native subagents (or native shell execution for ordinary research commands), keep independent verifier payloads fresh, and report failed agents and incomplete coverage truthfully. The documented facilitator-only verifier fallback is degraded, not equivalent independent verification.
 
 **Degradation rule.** When the platform's subagent primitive does not support per-agent model selection, dispatch everything on the inherited model and keep the read budgets and dossier caps — cost control then comes from structure, not tiering.
 

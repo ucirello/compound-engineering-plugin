@@ -1,6 +1,6 @@
 # Dispatching the reviewers
 
-Dispatch generic subagents with **bounded parallelism** using the platform's subagent primitive (e.g., `Agent` in Claude Code, `spawn_agent` in Codex) where available; otherwise run the work inline or serially. Omit the `mode` parameter so the user's configured permission settings apply.
+Dispatch generic subagents with **bounded parallelism** using OpenCode's native subagent primitive. This loaded skill explicitly requests reviewer delegation and satisfies a host user-OR-skill delegation exception without second approval. Respect unconditional bans and tool denials. Distinguish actual nesting exhaustion from permission/model rejection or a missing tool; never evade these with shell or another harness. Inline/serial parent judgment is permitted only when the review contract allows it and never counts as independent reviewer coverage. Omit the `mode` parameter so the user's configured permission settings apply.
 
 A spawned worker or peer starts a new context and does not continue the parent conversation.
 
@@ -18,7 +18,7 @@ Each selected reviewer needs three files in full: its persona asset `references/
 - `security-lens-reviewer`, `feasibility-reviewer`, `product-lens-reviewer`, `adversarial-document-reviewer`: inherit the parent model unless the harness has an established high-capability review tier.
 - `design-lens-reviewer`, `scope-guardian-reviewer`: platform mid-tier model.
 
-If the user's or project's active instructions or the live prompt name a model for this subagent, use that model instead of the default tier above. They can name it by the subagent's tier, by its prompt-asset name, or for the subagents being dispatched. Without such an instruction, a model configured for this subagent's role takes precedence over the default tier.
+Resolve available exact model IDs/variants with `opencode.models`. User/project/configured role choices remain authoritative intent over default tiers, but obey host model-selection policy: when overrides require an explicit user model request, skill/config preferences do not authorize one. Inherit a suitable parent model instead and disclose unmet model or independence requirements; do not silently claim the configured cross-model pass ran.
 
 Each subagent receives the subagent template, by path or inlined as above. On the path route the reviewer fills `{persona_file}` and `{schema}` itself; the orchestrator fills the rest:
 

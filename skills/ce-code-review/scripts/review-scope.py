@@ -87,20 +87,26 @@ AGENT_SURFACE_PATTERN = re.compile(
 )
 
 
-def git(*args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ["git", *args], capture_output=True, text=True, check=False
-    )
+def jj(*args: str) -> subprocess.CompletedProcess[str]:
+    command = ["jj", "--no-pager", "--color=never", *args]
+    try:
+        return subprocess.run(
+            command, cwd=Path.cwd().resolve() if args[0] == "root" else repo_root(),
+            capture_output=True, text=True, check=False, timeout=60,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return subprocess.CompletedProcess(command, 1, "", str(exc))
 
 
 def valid_commit(ref: str | None) -> bool:
     if not ref:
         return False
-    return git("rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}").returncode == 0
+    result = jj("log", "--no-graph", "-r", ref, "-T", 'commit_id ++ "\n"')
+    return result.returncode == 0 and len(result.stdout.splitlines()) == 1
 
 
 def unique_merge_base(base: str, head: str) -> str | None:
-    result = git("merge-base", "--all", base, head)
+    result = jj("log", "--no-graph", "-r", f"heads(::({base}) & ::({head}))", "-T", 'commit_id ++ "\n"')
     candidates = [line for line in result.stdout.splitlines() if line]
     if result.returncode != 0 or len(candidates) != 1:
         return None
@@ -127,15 +133,8 @@ def normalize_docs_root(docs_root: str | None) -> str:
 
 @functools.lru_cache(maxsize=None)
 def repo_root() -> Path:
-    """The repository root, matching how docs_root is resolved everywhere else.
-
-    docs_root is repo-relative (``<repo-root>/<docs_root>``), so the corpus
-    check must resolve against the git toplevel, not the current working
-    directory. ce-code-review can run from a subdirectory (``git diff`` still
-    works there), where ``Path.cwd()`` would join docs_root under the subdir and
-    wrongly report the corpus absent. Fall back to cwd when git can't answer.
-    """
-    result = git("rev-parse", "--show-toplevel")
+    """Resolve docs from the JJ workspace root; outside JJ use absolute cwd."""
+    result = jj("root")
     if result.returncode == 0 and result.stdout.strip():
         return Path(result.stdout.strip()).resolve()
     return Path.cwd().resolve()
@@ -166,10 +165,10 @@ PACKS_RESOLVER_TIMEOUT = 30.0
 
 
 def declared_packs() -> tuple[bool | None, int]:
-    """Whether the local CE config declares Compound Packs, from the config alone.
+    """Whether the local RocketClaw config declares packs, from config alone.
 
     Runs the sibling resolver in `--declared-only` mode, which parses the
-    `packs:` list from both CE config layers and shape-checks each entry with no
+    `packs:` list from both config layers and shape-checks each entry with no
     git or cache work. Its `declared` is true when any entry parsed or the block
     is malformed -- a broken declaration is still one the learnings pass must
     surface in Coverage. ``None`` means the helper could not tell (resolver
@@ -274,19 +273,58 @@ def matching_classes(
     ]
 
 
-def numstat_path(name: str) -> str:
-    """Return the destination path from a `git diff --numstat` rename display name."""
-    if " => " not in name:
-        return name
-    if "{" in name and "}" in name:
-        prefix, rest = name.split("{", 1)
-        old_new, suffix = rest.split("}", 1)
-        _, new = old_new.split(" => ", 1)
-        # A collapsed segment (`a/{b => }/c`) leaves an empty side, so the
-        # rebuilt path would carry `//` and miss every path-class pattern.
-        return re.sub(r"/{2,}", "/", f"{prefix}{new}{suffix}")
-    _, new = name.split(" => ", 1)
-    return new
+def patch_records(text: str) -> list[tuple[str, str, str, str, bool]]:
+    """Count JJ's Git-format data, not a Git executable's output.
+
+    Decode quoted path bytes losslessly; reject unsupported/malformed headers
+    rather than silently awarding a small scope. Pure renames and mode changes
+    have zero changed lines. Binary deletions remain uncounted.
+    """
+    def path(value: str) -> str:
+        if value.startswith('"'):
+            import ast
+            value = (ast.literal_eval("b" + value).decode("utf-8")
+                     if value.isascii() else ast.literal_eval(value))
+        return value
+
+    records = []
+    for block in re.split(r"^diff --git ", text, flags=re.MULTILINE)[1:]:
+        lines = block.splitlines()
+        header = lines[0]
+        match = re.fullmatch(r'("a/.*?"|a/.*?) ("b/.*"|b/.*)', header)
+        if not match:
+            raise ValueError("unrecognized JJ patch path header")
+        name = path(match.group(2))[2:]
+        mode, removed, binary = "", False, False
+        added = deleted = 0
+        in_hunk = False
+        for line in lines[1:]:
+            if not in_hunk and line.startswith("+++ ") and line != "+++ /dev/null":
+                name = path(line[4:])[2:]
+            elif not in_hunk and line.startswith("--- ") and removed:
+                name = path(line[4:])[2:]
+            elif line.startswith("rename to "):
+                name = path(line[len("rename to "):])
+            elif line.startswith("deleted file mode "):
+                mode, removed = line.split()[-1], True
+            elif line.startswith(("new file mode ", "new mode ")):
+                mode = line.split()[-1]
+            elif line.startswith("index ") and len(line.split()) == 3 and not mode:
+                mode = line.split()[-1]
+            elif line.startswith(("Binary files ", "GIT binary patch")):
+                binary = True
+            elif line.startswith("@@ "):
+                in_hunk = True
+            elif in_hunk and line.startswith("+"):
+                added += 1
+            elif in_hunk and line.startswith("-"):
+                deleted += 1
+        binary = binary or mode in {"120000", "160000"}
+        records.append((name, "-" if binary else str(added),
+                        "-" if binary else str(deleted), mode, removed))
+    if text.strip() and not records:
+        raise ValueError("unrecognized JJ patch output")
+    return records
 
 
 def main() -> int:
@@ -294,11 +332,12 @@ def main() -> int:
     parser.add_argument("--base", required=True)
     parser.add_argument("--head")
     parser.add_argument("--docs-root", default="docs")
+    parser.add_argument("--scope-mode", default="local-aligned")
     args = parser.parse_args()
 
     # Remote scope (pr-remote / branch-remote) always passes --head, even when a
     # best-effort fetch left it empty; the local config is not that tree's config.
-    repo = repo_signals(args.docs_root, local_scope=args.head is None)
+    repo = repo_signals(args.docs_root, local_scope=args.scope_mode not in {"pr-remote", "branch-remote"})
 
     if not valid_commit(args.base):
         print(json.dumps(fail_closed("invalid base endpoint", repo), sort_keys=True))
@@ -307,38 +346,24 @@ def main() -> int:
         print(json.dumps(fail_closed("invalid head endpoint", repo), sort_keys=True))
         return 0
 
-    diff_args = [args.base]
-    if args.head:
-        merge_base = unique_merge_base(args.base, args.head)
-        if merge_base is None:
-            print(json.dumps(fail_closed("merge base unavailable or ambiguous", repo), sort_keys=True))
-            return 0
-        diff_args = [merge_base, args.head]
-
-    # Unquoted non-ASCII paths keep extension checks and manifest paths usable.
-    numstat = git("-c", "core.quotePath=false", "diff", "--numstat", *diff_args)
-    raw = git("-c", "core.quotePath=false", "diff", "--raw", *diff_args)
-    if numstat.returncode != 0 or raw.returncode != 0:
-        print(json.dumps(fail_closed("git diff failed", repo), sort_keys=True))
+    # Use the exact captured endpoints, never an implicit single revision or a
+    # newly computed merge base. This preserves multi-commit review ranges.
+    patch = jj("diff", "--git", "--context=0", "--from", args.base, "--to", args.head or "@")
+    if patch.returncode != 0:
+        print(json.dumps(fail_closed("jj diff failed", repo), sort_keys=True))
         return 0
-
+    try:
+        records = patch_records(patch.stdout)
+    except (ValueError, SyntaxError, UnicodeError) as exc:
+        print(json.dumps(fail_closed(str(exc), repo), sort_keys=True))
+        return 0
     executable_mode_paths: set[str] = set()
     deleted_paths: set[str] = set()
-    for line in raw.stdout.splitlines():
-        if "\t" not in line:
-            continue
-        meta, path_field = line.split("\t", 1)
-        fields = meta.lstrip(":").split(" ")
-        if len(fields) < 2:
-            continue
-        if fields[-1] == "D":
-            deleted_paths.add(path_field)
-        old_mode, new_mode = fields[0], fields[1]
-        mode = old_mode if new_mode == "000000" else new_mode
-        if not mode.endswith("755"):
-            continue
-        for path in path_field.split("\t"):
-            executable_mode_paths.add(path)
+    for name, added, deleted, mode, removed in records:
+        if removed:
+            deleted_paths.add(name)
+        if mode == "100755":
+            executable_mode_paths.add(name)
 
     files: list[str] = []
     executable_lines = 0
@@ -348,12 +373,8 @@ def main() -> int:
     uncounted = 0
     deleted_files: list[str] = []
     deleted_exec_nontest_lines = 0
-    for line in numstat.stdout.splitlines():
-        parts = line.split("\t")
-        if len(parts) < 3:
-            continue
-        added, deleted, name = parts[0], parts[1], parts[2]
-        resolved_name = numstat_path(name)
+    for name, added, deleted, mode, removed in records:
+        resolved_name = name
         files.append(resolved_name)
         ext = Path(resolved_name).suffix.lower()
         is_exec = ext in CODE_EXTENSIONS or resolved_name in executable_mode_paths
@@ -364,6 +385,8 @@ def main() -> int:
                 changed_lines += int(deleted)
                 if is_exec and not is_test:
                     deleted_exec_nontest_lines += int(deleted)
+            else:
+                uncounted += 1
             continue
         if added == "-" or deleted == "-":
             uncounted += 1

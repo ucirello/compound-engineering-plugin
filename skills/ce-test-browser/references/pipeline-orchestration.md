@@ -19,27 +19,39 @@ Run the whole thing as **one** command. Shell variables do not survive between s
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
-PORT=$(bash "$SKILL_DIR/scripts/resolve-port.sh" --free);   # append the explicit port as a further argument when you have one
+workspace_root="<verified absolute target workspace root>"
+cd "$workspace_root" || exit 1
+mkdir -p "$workspace_root/.tmp" || exit 1
+export TMPDIR="$workspace_root/.tmp"
+PORT=$(bash "$SKILL_DIR/scripts/resolve-port.sh" --free) || exit 1 # append the explicit port as a further argument when you have one
+SERVER_LOG=$(mktemp "$workspace_root/.tmp/browser-server-${PORT}.XXXXXX") || exit 1
 echo "Using dev server port: $PORT"
 
-# start in the background (the scan guarantees this port is free), then wait up to 30s
+# Start in the background, then wait up to 30s. Another process can race the scan.
 echo "Starting dev server on port ${PORT}..."
 if [ -f "bin/dev" ]; then
-  PORT=${PORT} bin/dev > /tmp/dev-server-${PORT}.log 2>&1 &
+  PORT=${PORT} bin/dev > "$SERVER_LOG" 2>&1 &
 elif [ -f "bin/rails" ]; then
-  bin/rails server -p ${PORT} > /tmp/dev-server-${PORT}.log 2>&1 &
+  bin/rails server -p ${PORT} > "$SERVER_LOG" 2>&1 &
 elif [ -f "package.json" ]; then
-  PORT=${PORT} npm run dev > /tmp/dev-server-${PORT}.log 2>&1 &
+  PORT=${PORT} npm run dev > "$SERVER_LOG" 2>&1 &
+else
+  echo "No supported dev-server entrypoint; preflight blocked. Log: $SERVER_LOG"
+  exit 1
 fi
+SERVER_PID=$!
+echo "Owned server PID: $SERVER_PID; log: $SERVER_LOG"
 for i in $(seq 1 30); do
   lsof -i ":${PORT}" -sTCP:LISTEN -t >/dev/null 2>&1 && break
   sleep 1
 done
 if ! lsof -i ":${PORT}" -sTCP:LISTEN -t >/dev/null 2>&1; then
   echo "Server did not start in 30s. Last output:"
-  tail -20 /tmp/dev-server-${PORT}.log 2>/dev/null
+  tail -20 "$SERVER_LOG" 2>/dev/null
   exit 1
 fi
 ```
+
+Record the server PID and absolute log path in run evidence. Verify startup output and root response belong to this server, not a process that raced the port scan; an exited child or port collision is a preflight blocker, not a passing startup. At completion or failure, stop only the verified process owned by this run (and its verified children), never an unrelated listener. Preserve logs and screenshots under the target workspace's absolute `.tmp/`, including failure evidence; do not use global temporary directories.
 
 The scan may land on a different port than the resolved one, and `$PORT` does not survive into later shell calls. Note the number this block echoes ("Using dev server port: N") and use that literal port in every subsequent selected-driver navigation — do not rely on `${PORT}` carrying over. Then return to the "Test Each Affected Page" step, navigate to `http://localhost:<N>`, inspect the rendered state, and test each route.

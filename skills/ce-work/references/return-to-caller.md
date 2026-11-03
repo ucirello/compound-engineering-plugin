@@ -18,7 +18,7 @@ Return:
 - `requested_model` and `actual_model`: the model that was requested and the model identity the route's receipt reports as served (`unverified` when the route supplies no trustworthy receipt)
 - `requested_effort`: the reasoning effort requested for the external worker, or `null` when none was requested or execution was native
 - `fallback_reason`: `null` when none, otherwise the observed route-unavailable or substitution reason
-- `run_id`: durable external run identifier, or `null` for native execution
+- `run_id`: durable native bounded-unit manifest identifier when one was created, otherwise `null`; native migration does not erase recoverable cross-model state
 - `source_kind` and `source_digest`: what the controller recorded as the implementation source (`plan` plus its digest for a plan; `prompt` for a bare prompt or work statement)
 - `unit_receipts`: route, model, detached-process, integration, verification, canonical-commit, and cleanup state for each attempted unit
 - `plan_checkpoint`: the disclosed checkpoint commit when the selected plan was the only canonical dirt, otherwise `null`

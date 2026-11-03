@@ -53,7 +53,7 @@ Do not treat `autofix_class` as permission to auto-apply.
 1. Filter `actionable_findings` (or markdown Actionable Findings) with the bar above.
 2. Apply eligible fixes in the working tree in severity order (`#` stable from the review).
 3. Run targeted tests when `requires_verification: true` on any applied finding.
-4. If `git status --short` shows changes, stage only review-driven files and commit `fix(review): apply review findings`. Then push before step 6 **when a remote is configured** (per LFG's shipping precondition) and, on the defect route, when everything the push would publish is work the user offered (`references/debug-return.md`). To push: if an upstream exists, run `git push`. If no upstream exists but a remote is configured (common on a fresh feature branch), pick a writable remote at run time: prefer `origin` when present, otherwise run `git remote` and choose the first configured remote. Then run `git push --set-upstream <remote> HEAD`. If there is no remote at all, do not push; the local commit suffices. If no eligible fixes were applied, say so explicitly and skip the commit.
+4. Inspect `(cd "$workspace_root" && jj status)` and the exact review-driven paths. Persist only those changes, using path-scoped `jj commit <review-paths> -m "<message composed from the standards above>"` from that absolute workspace; leave unrelated work untouched. Before composing here or at any local commit site in this pipeline: **Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards.** Read the FULL Go guide at runtime, resolve the actual verified task/repository history head, and inspect several full subjects and bodies with `(cd "$workspace_root" && jj log --no-graph -r '::<verified-history-head>' -n 10 -T 'description ++ "\n"')`. Infer prefixes, package names, case, tense, body separation, wrapping, and issue references from that history; repository instructions and history syntax win over compatible Go quality guidance. If history is unavailable, use project/user instructions and Go guidance without inventing precedent. Never substitute this sample for the review range. Then push before step 6 **when a remote is configured** (per LFG's shipping precondition) and, on the defect route, when everything the push would publish is work the user offered (`references/debug-return.md`). Resolve the exact publication bookmark and its remote tracking from JJ; prefer its configured remote, otherwise writable `origin`, otherwise the first configured writable remote from `jj git remote list`. Update only that verified bookmark to the intended committed head and run `(cd "$workspace_root" && jj git push --remote "<verified-remote>" --bookmark "<verified-bookmark>")`, adding `--allow-new` only for a verified new publication bookmark. Do not publish unrelated changes/bookmarks or force a rejected push. With no remote, the local commit suffices. If no eligible fixes were applied, say so explicitly and skip the commit.
 
 ## Step 6 — residual handoff
 
@@ -72,6 +72,30 @@ A residual at this point is undecided, not accepted debt. Step 5 declined it bec
 Close the section with the review run context (`run_id`, `artifact_path`). Hand the section to step 9 as PR-description context; `references/shipping.md` says where step 9 passes it into `ce-commit-push-pr`. Step 9 writes the body, so nothing here edits the PR directly, and nothing posts a PR comment for these.
 
 **When no PR will exist (no remote):** load `references/tracker-defer.md` in **non-interactive mode** with the same items, collect `{ filed: [...], failed: [...], no_sink: [...] }`, and state every `failed` and `no_sink` item verbatim in the DONE report. The report is the only record those get.
+
+## Illustrative Go source for message composition — not a mandatory template
+
+These verbatim source excerpts supplement, but never replace, the mandatory FULL runtime Go-guide read before composing. Repository instructions and observed history determine the emitted syntax; do not copy this example as a prescribed message.
+
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+```text
+net/http: handle foo when bar
+
+[longer description here in the body]
+
+Fixes #12345
+```
+> Notably, for the subject (the first line of description):
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+> For the body (the rest of the description):
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
 
 ## Step 7 — compound before shipping
 

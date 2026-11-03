@@ -6,7 +6,7 @@ Full and targeted feedback scopes keep their existing judgment and fix flow. A c
 
 ## Prepare the destination before editing
 
-Run the bundled helper from the absolute directory containing this skill's `SKILL.md`; set the anchor in each shell call because shell state does not persist. Preflight happens before edits, not after the commit:
+Run the bundled helper from the absolute target workspace cwd; set `SKILL_DIR` to the absolute directory containing this skill's `SKILL.md` in each shell call because shell state does not persist. Preflight happens before edits, not after the commit:
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the ce-resolve-pr-feedback SKILL.md>";
@@ -14,7 +14,7 @@ PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c 
 "$PY" "$SKILL_DIR/scripts/pending-feedback.py" preflight
 ```
 
-When the invocation supplies `handoff:<path>`, append `--path '<caller path>'` to that command, preserving the actual argument. Preflight refuses an existing destination, including a dangling symlink, and probes exclusive temporary-file creation in its parent directory. Without a supplied path it allocates a private OS scratch directory and returns an unused `pending.json` path. Retain the returned absolute `handoff` path. Do not clean it up at skill completion; the caller owns retention.
+When the invocation supplies `handoff:<path>`, append `--path '<caller path>'` to that command, preserving the actual argument. Preflight refuses an existing destination, including a dangling symlink, checks parent write/search access, and probes temporary-file creation only in the workspace `.tmp/`. It requires that staging and the destination parent share a filesystem for atomic checkpoints; unsupported cross-filesystem destinations fail without a fallback or destination replacement. Without a supplied path it allocates a private directory under the absolute workspace `.tmp/` (absolute current-directory `.tmp/` outside JJ) and returns an unused `pending.json` path. Retain the returned absolute `handoff` path. Do not clean it up at skill completion; the caller owns retention. Run the helper from the target absolute workspace cwd, not the skill installation directory; `SKILL_DIR` anchors only the script path.
 
 If preflight fails, stop before editing and return the blocker. Do not substitute another destination for a rejected caller path. Creation also refuses overwrite, so a destination that appears during preparation cannot be replaced.
 

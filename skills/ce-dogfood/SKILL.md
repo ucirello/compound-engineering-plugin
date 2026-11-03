@@ -21,7 +21,7 @@ This is **diff-scoped**, not whole-app exploration. You test what *this branch* 
 - Never dogfood the trunk on a branch-name or blank target — there is no diff. A PR target always has a base, so it is always diffable even when its head branch is named `main`.
 - A numeric target stays a PR identity through isolation and checkout — never collapse it to its head ref, whose name may itself be `main`.
 - Never switch the primary checkout out from under the user. Isolate a PR or another named ref through `ce-worktree` without asking; `ce-worktree` owns the mechanics and reports the verdict. A blank or current-branch target runs in place.
-- Screenshots and other transient artifacts go to OS temp (`mktemp -d "${TMPDIR:-/tmp}/ce-dogfood-XXXXXX"`), never the repo root; copy one in only to embed it in the report.
+- Screenshots and transient artifacts go under the absolute target workspace's `.tmp/` (`mkdir -p "$workspace_root/.tmp"; mktemp -d "$workspace_root/.tmp/dogfood-XXXXXX"`); copy one in only to embed it in the report.
 - Auto-fix only what is small, well-understood, and low-risk. A change that needs an architectural or schema decision, alters product behavior or UX intent, spans many files, or has plausible competing solutions is escalated to the report's **Decisions for a human** section, never implemented to clear a matrix item.
 
 ## Prerequisites
@@ -36,18 +36,20 @@ This is **diff-scoped**, not whole-app exploration. You test what *this branch* 
 Reports live under `<root>/dogfood-reports/` and personas under `<root>/personas/`. Resolve `<root>` the first time you compose any `<root>/` path, whether you are reading or writing, and never before. A run that composes none skips it.
 
 <!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only (`<repo-root>` = `jj workspace root`, run from the absolute target workspace cwd). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/` or `.jj/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
 
 ## Delegation
 
-`ce-dogfood` is an orchestrator: prefer an existing CE skill over re-deriving its behavior. Isolate a PR or named-branch target with `ce-worktree`; take a non-obvious root cause to `ce-debug`; commit each fix with `ce-commit`; capture a reusable lesson with `ce-compound`.
+`ce-dogfood` is an orchestrator: prefer an existing skill over re-deriving its behavior. Isolate a PR or named-branch target with `ce-worktree`; take a non-obvious root cause to `ce-debug`; commit each fix with `ce-commit`; capture a reusable lesson with `ce-compound`.
 
 ## Compound Packs
+
+When a loaded skill explicitly requests native reviewers/delegation, a host user-OR-skill exception is satisfied without a second approval. Respect unconditional bans and actual tool denials. Select permitted models through `opencode.models` and native `subagents`/`shell`, never another harness. Configured tiers remain intent; if model overrides require an explicit user request, omit the override and use a suitable inherited model. Separate reviewers on the same model do not establish cross-model independence. Distinguish permission denial, missing tools, model rejection and actual nesting-capacity failures; never evade them. Use inline/parent fallback only if the called skill permits it, reporting unmet independence or coverage as incomplete.
 
 The repo's declared Compound Packs supply personas and criteria. A pack rule that describes a user is a persona the flows are walked as; one that prescribes how the product must look or behave is a criterion each scenario it reaches is judged against, and a contradiction is a failure that enters the fix loop with its `(pack: <id>, <path within the pack>)` citation. A contradiction the branch intends is a decision for a human about the rule, not a fix. Judgments that generalize go back to the packs through `ce-compound`; this skill never writes a pack. `references/phases.md` defines how packs are applied.
 

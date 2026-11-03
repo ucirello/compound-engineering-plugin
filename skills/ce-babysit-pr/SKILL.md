@@ -22,6 +22,8 @@ One PR named → `target` (ask once if a confirmed multi-layer stack exists); as
 
 ## Non-negotiable boundaries
 
+- **JJ/OpenCode execution:** all JJ commands run from the absolute target workspace cwd; all repository `gh` calls (including reference snippets) use `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh ...)`. Never run Git directly or through a checkout/stack mutation helper. Read-only stack discovery remains supported; manager mutation recipes are conditional on verified JJ-native capability, otherwise return a compatibility residual without attempting them. Use native OpenCode subagents and model discovery, never another harness dispatch. Mechanical helpers remain.
+- **Parent-head fallback and routine authority:** before reporting no PR, an empty `@` requires checking `@-` bookmarks/remote/open PR. Empty `@` immediately above the verified pushed head is aligned. Authorized exact-head clean alignment, factual description refresh preserving user prose/issues, monitoring and re-arm do not need another approval. Optional standalone rewrites require approval, stay description-only/draft-only and are never prerequisites to monitoring; decline does not stop an authorized watch. Dirty/conflicted/uncertain alignment preserves all work and returns a safe decision.
 - **Merge-readiness is never merge authorization** except under `stack-land`.
 - **Branch currency is consumption-only.** A base-into-head update happens only for the exact `branch_currency` item the snapshot emitted — `BEHIND`, `DIRTY`, a branch-protection requirement, or an explicit always-current policy — after an atomic claim, per `references/branch-currency.md` (`BEHIND` = host `update-branch` with `expected_head_sha`, never a local merge). Never infer an item from prose, base movement, a sibling PR merging, `CLEAN`/`MERGEABLE`, `BLOCKED` while your own push's checks rerun, or anyone saying "update the branch"; a push that restarts green CI without a claimed item is a defect. The only history rewrite is the user-authorized update in `references/intake.md`.
 - **Authority comes from the babysit invocation, bounded both ways.** Downward: delegates get target = this head, actions = fix/commit/push/reply/resolve, exclusions = merge (except the caller-owned stack-land step), rebase, force-push, approve-CI, unrequested branch update; they may narrow, never broaden — reject a result that did an excluded one. Upward: a coordinator supplies target, posture, budget, mode — never a mutation the snapshot does not call for. A live user instruction can narrow this scope ("stop pushing"); "update the branch" with no item is a broaden, not a narrow.
@@ -33,10 +35,10 @@ One PR named → `target` (ask once if a confirmed multi-layer stack exists); as
 ## Step 1: Resolve and arm
 
 1. `gh repo view` must succeed, else say GitHub-only, stop.
-2. Resolve the PR from the argument or current branch (`references/setup.md`); none → report, stop.
+2. Resolve the PR from the argument or verified bookmark, including the empty-`@` parent fallback (`references/setup.md`); no eligible PR after both candidates → report, stop.
 3. **Old-PR intake** (fresh invocation, before the checkout gate): read `references/intake.md`; it decides whether this PR still belongs. A user request to take the PR over: `references/takeover.md`.
 4. Chain classification comes from the snapshot, never the user; resolve posture before semantic work.
-5. **Checkout must be the PR's head branch with matching upstream** before any delegated mutation; default `gh pr checkout <ref>`; no push access or dirty checkout → stop, say so.
+5. **Verify exact PR head repository/bookmark/remote/commit alignment** before delegated mutation (`references/setup.md`); clean authorized alignment uses JJ, never Git-backed checkout. Empty `@` above that head is aligned; unavailable authority or unsafe alignment returns a safe decision.
 6. **Sustain mode** (`references/setup.md`, `references/watch-loop.md`): keep monitoring until a stop condition is met, one tick per wake from one wake source: the `pr-snapshot watch` detector, or the host's own mechanism when its instructions dictate PR waits. Never collapse the loop into a script. Checkpoint mode only when the user asks or nothing can wake this agent. **Pipeline** (`mode:pipeline`): bounded synchronous ticks, structured return (`references/pipeline.md`).
 
 ## Step 2: One tick (ordering invariant)
@@ -52,6 +54,8 @@ Snapshot first, then in this order:
 7. **Managed upstack maintenance** after a delegate pushed a confirmed managed target (`references/stack.md`).
 
 ## Step 3: Stop conditions
+
+For description-refresh handoff to `ce-commit-push-pr mode:pipeline`, explicitly carry authorized babysit maintenance scope: factual refresh from verified run results, preserve user prose/issue links, no standalone rewrite or renewed approval gate, no second watcher. A delegate offering an optional rewrite must keep it separate, description-only/draft-only; decline cannot prevent this run's authorized monitoring or re-arm. If that delegate cannot honor maintenance authority, report the refresh limitation and continue otherwise authorized monitoring rather than fabricate completion.
 
 **True stops** (`references/settle.md`): **Terminal**; **Looks ready** — `mergeability_certain`, `MERGEABLE`, `CLEAN`, no `base_ref_blocker`, checks terminal, zero backlog, `open_needs_human == 0`, `branch_currency_blocker == null`, settle elapsed, review-still-expected guard clear or its bounded stale protocol says stop; **blocked-external-drained**; **Budget** (active budget or 3-day backstop). Refresh a drifted PR description via `ce-commit-push-pr mode:pipeline` before reporting ready. In interactive runs, **standing residuals** (`needs-human`, `blocked-failing`, `stack-blocked`) block "ready" while independent work continues; stopping the run there is the primary failure mode. `mode:pipeline` returns the canonical decision set when autonomous work ends. After an interactive tick with no true stop, re-arm the detector, which exits on each wake, or leave a host watch that stays on, then wait; its silence tells you nothing about the PR's state.
 

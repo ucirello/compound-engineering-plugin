@@ -22,6 +22,8 @@ Also stop with the missing prerequisite when Xcode, its command-line tools, a va
 
 ## Discover and launch
 
+Resolve the target's absolute workspace root before running project commands. Run shell commands from that absolute directory. Keep run-owned screenshots, captured logs, exported evidence, and temporary files under an absolute `<workspace_root>/.tmp/xcode-test/` directory; outside a JJ workspace, use the target project's absolute local `.tmp/` directory. Configure tool output paths there when supported. Do not use OS `/tmp`, global temporary storage, or an unscoped `mktemp`; if an adapter cannot honor a required local output path, report that limitation rather than silently claiming compliant evidence storage. Preserve evidence through handoff.
+
 1. Discover projects and workspaces, then list schemes for the selected project. An empty argument or `current` selects the default or last-used scheme; a named argument selects that scheme. Ask only when no such scheme can be resolved or project discovery itself remains materially ambiguous.
 2. List simulators. Reuse a compatible booted simulator when practical; otherwise prefer an available iPhone 15 Pro and boot it by UUID. Wait until it is ready.
 3. Build the simulator app with the selected project/workspace and scheme. On failure, report the relevant build errors and stop; do not install or launch a missing artifact.

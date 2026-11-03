@@ -2,6 +2,8 @@
 
 Load this file when the active run uses a confirmed managed stack (`manager_status == "confirmed"`) and needs `gh stack` command recipes. Soft-depend on the CLI: if `gh stack` is missing or exits unavailable (e.g. code 9), surface a clear residual — do not invent managed membership from topology.
 
+**Execution gate for every recipe below:** repository commands use `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh ...)`. Read-only API discovery is supported. Before any manager mutation, prove that its implementation uses JJ natively without invoking Git, including checkout, rebase, push, abort and sync. If not proven, do not execute the recipe: retain its intended bounded transaction as a compatibility residual. Never replace manager membership/order/atomicity with guessed local topology or a different ref. This gate also applies to every caller in `stack.md`, `tick.md`, `setup.md`, `envelope.md` and SKILL.md.
+
 Always non-interactive. Prefer JSON/view probes and explicit branch names; never rely on interactive prompts. Substitute `<tracking-remote>` with the stack branches' actual tracking remote (often `origin`, but may be `upstream` or a fork remote) — never hard-code `origin` when SKILL.md already resolved a different tracking remote.
 
 ## After an owned push on the active layer (dependents exist)
@@ -13,13 +15,9 @@ gh stack push --remote <tracking-remote>
 
 Starting at the first dependent excludes the active target from the cascading rebase. Quote the branch name — git branch names may contain shell metacharacters. On conflict: `gh stack rebase --abort`, then surface a needs-human / stack-sync residual.
 
-## Check out a layer on a fresh checkout
+## Align a layer on a fresh workspace
 
-```bash
-gh stack checkout <PR_NUMBER>
-```
-
-Use the PR number, which pulls the stack from GitHub. A branch name only resolves stacks already known locally, and `gh pr checkout` leaves the manager unaware of the branch.
+Follow `setup.md`'s exact repository/bookmark/remote/commit gate, fetch with JJ and create an empty working-copy change above the verified head only when clean and authorized. Never use Git-backed checkout. If the manager cannot recognize the resulting JJ workspace natively, report a compatibility residual rather than importing or guessing stack membership.
 
 ## Discover order / next open layer
 

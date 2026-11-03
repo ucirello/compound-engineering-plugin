@@ -23,6 +23,7 @@ If the CLI exists but cannot launch its browser, follow the current core trouble
 ## Commands Used by This Skill
 
 Add `--headed` to commands when manual mode selected a visible browser. Pipeline mode defaults this fallback driver to headless.
+Run from the verified absolute target workspace root. Create its `.tmp/` directory and set `TMPDIR` to that absolute path before invoking the CLI. Replace screenshot output placeholders below with absolute paths beneath that directory; keep failure evidence there as well.
 
 ```bash
 # Navigate and inspect

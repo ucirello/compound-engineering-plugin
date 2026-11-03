@@ -14,13 +14,13 @@ If the user's or project's active instructions or the live prompt name a model f
 
 **When per-agent models cannot be chosen.** If the platform's subagent mechanism cannot select a model per agent, dispatch every scout on the inherited model and keep their read budgets. Cost control then comes from the read budgets and the tier-sensitive scout count, not from tiering.
 
-When a scout dispatch is rejected, first check whether an agent launched. If the rejection was a bad argument before launch, correct it once. If the platform is out of capacity, leave the work queued. If a launch still fails after the correction, gather that scout's bounded evidence inline and lower the verdict's stated confidence.
+Use native OpenCode subagents, discovering models with `opencode.models` only when model selection is permitted. Delegation permission, model-override permission, and remaining nesting depth are separate checks. This loaded skill explicitly requests scouts and satisfies a host user-OR-skill delegation exception without another user approval; unconditional bans and tool denials still apply. Configured role models and the tiers above remain authoritative intent, not permission to override: if the host requires an explicit user model request and none exists, use inherited scouts and disclose unmet tier intent. Never use another harness or shell-launched model to bypass restrictions. Classify permission, model rejection, missing tools, and actual depth exhaustion separately. Correct one pre-launch bad argument once; queue actual temporary capacity shortages. When native dispatch remains unavailable, gather bounded evidence inline and lower confidence; do not claim independent scout coverage.
 
 Create the scratch dir once, and reuse the echoed path for every scout this run:
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+PROJECT_ROOT="<absolute target workspace root, or absolute project directory outside JJ>";
+SCRATCH_ROOT="$PROJECT_ROOT/.tmp/rocketclaw";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;

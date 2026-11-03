@@ -2,6 +2,8 @@
 
 ### Lightweight Mode
 
+Interactive context pressure first delegates one fresh native Full run under `modes.md`; this workflow is used only when its native tool/permission/actual-depth fallback applies. Explicit non-interactive depth tokens keep their existing meaning. Record the precise fallback reason, not a generic depth claim.
+
 <critical_requirement>
 **Single-pass alternative — same artifact type, reduced research and validation.**
 
@@ -52,7 +54,7 @@ a one-line mention helps agents find the shared vocabulary.
 
 Note: This was created in lightweight mode. For richer documentation
 (cross-references, detailed prevention strategies, specialized reviews,
-semantic grounding validation), re-run <rendered invocation> in a fresh session.
+semantic grounding validation), re-run <rendered invocation> from the SAME source session once native delegation is available.
 ```
 
 **No subagents are launched. No parallel tasks. The chosen form, plus at most one learning, is the deliverable** (Phase 2.4's update-only vocabulary capture may also change an existing `CONCEPTS.md`).

@@ -17,10 +17,12 @@ It works **with or without Spiral**: with nothing installed it drafts directly f
 
 A free-form description in the arguments is the source of truth. Otherwise derive it from context, using what is available and never waiting on any single source:
 
-- **Merged/active PR** — `gh pr view --json title,body,url` (the title and body usually state the user-facing value)
-- **The diff** — `git diff main...HEAD --stat`, skimming notable changes so the claim is grounded in what actually changed
+- **Merged/active PR** — `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh pr view <verified-pr> --json title,body,url,baseRefOid,headRefOid)` (the title and body usually state the user-facing value). Resolve the actual PR explicitly rather than guessing from an empty working-copy revision.
+- **The diff** — resolve the exact shipped/PR head and its actual target base from task or PR evidence; verify both revisions, then use `(cd "$workspace_root" && jj diff --from 'latest(common_ancestors(<verified-base>, <verified-head>))' --to '<verified-head>' --stat)`, skimming notable changes so the claim is grounded in what actually changed. This preserves merge-base-to-head coverage; never substitute a presumed default branch or the empty working-copy revision.
 - **Changelog** — the top or `[Unreleased]` entry in `docs/changelog.md`, `CHANGELOG.md`, or similar
-- **Recent commits** — `git log --oneline -15` for the arc of the change
+- **Recent commits** — `(cd "$workspace_root" && jj log --no-graph -r '::<verified-head>' -n 15)` for the arc of the change
+
+Resolve `workspace_root` to the absolute target JJ workspace root (using `jj root` in the known target directory) before these commands. Run every JJ and repository-scoped `gh` command from that absolute root. If PR/ref evidence is unavailable, use the remaining sources or ask; never claim an unverified range was reviewed.
 
 Then write a 1-3 sentence summary of the **user-facing value**: what a user can now do that they couldn't before, and why they'd care. Outcome, not implementation — "You can now export any report to CSV in one click", not "Added a CsvSerializer and an export endpoint." If you can't confidently tell what shipped, ask one short question rather than guessing.
 

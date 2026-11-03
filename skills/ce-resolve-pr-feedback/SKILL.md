@@ -2,12 +2,22 @@
 name: ce-resolve-pr-feedback
 description: Judge PR feedback centrally, apply valid fixes, and complete review conversations with publication verified. Use when addressing feedback already left on a PR, preparing local fixes for a caller to publish, or completing a saved feedback batch. Use ce-code-review for reviewing code before feedback exists.
 argument-hint: "[mode:pipeline | mode:return-to-caller | mode:resume] [PR number, comment URL, or blank for current branch's PR] [handoff:<path>]"
-allowed-tools: Bash(gh *), Bash(git *), Bash(bash *), Bash(python3 *), Read, Write
+allowed-tools: Bash(gh *), Bash(jj *), Bash(bash *), Bash(python3 *), Read, Write
 ---
 
 # Resolve PR Review Feedback
 
 Judge fresh PR review feedback centrally, then dispatch generic subagents seeded with the bundled fixer prompt only for approved fixes. Publish the fixes before replying and resolving. Resume completes saved judgments without another fix pass.
+
+## Execution boundaries
+
+Resolve the target workspace to an absolute `workspace_root`; execute every JJ command with that directory as cwd, not merely `-R`. Run every `gh` call and bundled helper from that root with `GIT_DIR=$(jj git root)` (for example `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh ...)`). Helpers enforce this scope themselves. Never invoke the Git executable. Allocate all scratch and reply files under the absolute workspace `.tmp/`, including failure paths; outside JJ use the absolute current directory's `.tmp/`.
+
+These fixer instructions explicitly authorize native delegation when the host permits user-OR-loaded-skill delegation; do not ask again. Respect unconditional bans and tool denials. Use OpenCode native subagents, never another harness or shell dispatch. Distinguish delegation permission, model permission and actual nesting capacity. Resolve configured model intent through `opencode.models`; override models only when host policy permits the explicit user model request, otherwise inherit a suitable model and disclose unmet cross-model independence. Same-model peers are not cross-model evidence. A depth error is not permission denial, nor vice versa. If dispatch is unavailable, the implementation-only inline fallback below is allowed; required independent adjudication remains incomplete when unavailable.
+
+For nesting setup, document merging `experimental.subagent_depth` >= 3 into the user's existing `~/.config/opencode/opencode.json` (locate via `opencode debug paths`), preserving higher integers, JSONC and unrelated settings. Never edit host configuration. Bundled plugin configuration alone does not enable consumer depth, and higher-precedence settings must not lower it.
+
+Authorized routine PR maintenance and caller handoff require no repeated approval. Preserve user prose, issues, unrelated tracked/ignored work and all watch/merge/scope boundaries. Unknown authority, dirty/conflicted state or identity uncertainty is a blocker, not permission to reset or broaden scope.
 
 **Done:** Every selected item has a verdict and verified conversation completion or a reported residual. Completed threads have a visible submitted reply with quoted context and authoritative resolution; `needs-human` threads stay open. Ordinary and pipeline runs publish valid fixes before completion. Return-to-caller preserves its local fix commit and exact pending actions in a readable validated handoff, or records actual no-change completion. Resume verifies fresh publication and returns checkpointed completion or pending saved actions with retry evidence. Pending actions are never reported as resolved.
 

@@ -296,18 +296,12 @@ def _run(cmd):
     env["NO_COLOR"] = "1"
     env.pop("CLICOLOR_FORCE", None)
     env.pop("GH_FORCE_TTY", None)
-    return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", env=env)
-
-
-def _run_git(cmd):
-    env = os.environ.copy()
-    env["GIT_TERMINAL_PROMPT"] = "0"
-    env["GCM_INTERACTIVE"] = "never"
-    env["GIT_ASKPASS"] = ""
-    env["SSH_ASKPASS"] = ""
-    return subprocess.run(
-        cmd, capture_output=True, text=True, encoding="utf-8", env=env, timeout=30,
-    )
+    workspace_root = os.path.abspath(os.getcwd())
+    if cmd[0] == "gh":
+        root = subprocess.run(["jj", "git", "root"], cwd=workspace_root,
+                              capture_output=True, text=True, env=env, check=True)
+        env["GIT_DIR"] = root.stdout.strip()
+    return subprocess.run(cmd, cwd=workspace_root, capture_output=True, text=True, encoding="utf-8", env=env)
 
 
 def _run_checked(cmd, label):
@@ -518,17 +512,12 @@ def fetch_base_ref(owner, name, ref, merge_identity, host=None):
     current_oid = (r.stdout or "").strip()
     if r.returncode != 0 and re.search(r"\bHTTP\s+404\b", r.stderr or "", re.IGNORECASE):
         exact_ref = f"refs/heads/{ref}"
-        remote_url = (f"https://{host or 'github.com'}/"
-                      f"{quote(owner, safe='')}/{quote(name, safe='')}.git")
         try:
-            # Reuse the gh session (GH_TOKEN or keyring) as git's credential source so a
-            # headless host with no configured Git credential helper is not anonymous here.
-            git_result = _run_git([
-                "git", "-c", "core.askPass=",
-                "-c", "credential.helper=",
-                "-c", "credential.helper=!gh auth git-credential",
-                "ls-remote", "--exit-code", "--refs",
-                remote_url, exact_ref,
+            # Independent exact REST lookup, retaining host and scoped authentication.
+            git_result = _run([
+                "gh", "api", *_host_args(host),
+                f"repos/{owner}/{name}/git/matching-refs/heads/{encoded_ref}",
+                "--jq", '.[] | [.object.sha, .ref] | @tsv',
             ])
         except (subprocess.TimeoutExpired, OSError):
             git_result = None
@@ -1386,7 +1375,7 @@ def _empty_trajectory():
 
 def _load_trajectory(state):
     """Load the trajectory, tolerating a partial or non-dict value from an older on-disk
-    state.json (persisted in /tmp across script versions) — backfill missing keys so a new
+    state.json (persisted in workspace .tmp across script versions) — backfill missing keys so a new
     field never KeyErrors an old state, and a null/garbage value never crashes."""
     tj = state.get("trajectory")
     if not isinstance(tj, dict):
@@ -3627,6 +3616,11 @@ def main():
     w.set_defaults(func=cmd_watch)
 
     args = p.parse_args()
+    # Every journal/atomic temporary file stays in this workspace's local scratch.
+    local_tmp = os.path.realpath(os.path.join(os.path.abspath(os.getcwd()), ".tmp"))
+    state_path = os.path.realpath(args.state_dir)
+    if not os.path.isabs(args.state_dir) or os.path.commonpath([local_tmp, state_path]) != local_tmp:
+        p.error("--state-dir must be an absolute path inside the target workspace .tmp")
     if (args.cmd in ("snapshot", "watch")
             and args.invocation_budget_seconds is not None
             and args.invocation_budget_seconds <= 0):

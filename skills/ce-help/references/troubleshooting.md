@@ -1,16 +1,16 @@
-# Troubleshooting CE
+# Troubleshooting RocketClaw
 
 `docs/` and `README.md` paths are public pages. `SKILL.md` gives their URLs.
 
 | What the user sees | What to tell them |
 |---|---|
-| A skill is missing, or behaves the old way after an update | Refresh the marketplace before updating the plugin, because updating alone reads a stale snapshot. Then start a new session. `docs/install/upgrading.md` has the commands for Claude Code, Codex, and Grok Bot. Other hosts' update steps are in `README.md#more-install-options`. |
+| A skill is missing, or behaves the old way after an update | Follow the installed package's OpenCode upgrade instructions, then start a new session. Check plugin readiness and skill registration before assuming an update succeeded. |
 | An old copy of a skill keeps running after an update | An earlier Bun install may be shadowing the plugin. `docs/install/upgrading.md` has the cleanup command. |
 | The agent will not start a skill it recommended | The skill is manual-only, so the user has to type it. `references/skill-map.md` marks these. |
-| The slash command is not recognized | The form depends on the host. Codex uses `$skill-name`. On oh-my-pi, a manual-only skill needs `/skill:<name>`. Devin uses `/compound-engineering:<skill>`. |
+| The slash command is not recognized | OpenCode uses `/skill-name`. Check the installed plugin's readiness and registered skill/command names. |
 | A skill says a tool is missing | `ce-setup` reports which tools are missing and how to install them. Install only what the workflow needs. |
-| A cross-model pass or oracle peer did not run | The run's report says why. `ce-setup` reports missing tools, and the `ce-pov` guide page lists what peers need. Config can also turn the automatic review pass off, so check `docs/guides/configuration.md`. |
-| Plans or learnings are not where the user expected | `docs_root` in `.compound-engineering/config.yaml` moves every CE artifact folder. Format options can also change ideation, brainstorm, and plan files from `.md` to `.html`. |
+| A cross-model pass or oracle peer did not run | Distinguish tool availability, delegation permission, model permission, and actual depth exhaustion. Explicit reviewer skill instructions satisfy a user-or-loaded-skill delegation exception, not unconditional bans. Preserve configured tiers and model intent; same-model work is not cross-model independence. Do not bypass a denial with shell or another harness. Check the setup depth prerequisite in `starting-and-running.md` and configuration opt-outs; report incomplete required independent coverage truthfully. |
+| Plans or learnings are not where the user expected | `docs_root` in `.rocketclaw/config.yaml` moves every RocketClaw artifact folder. Format options can also change ideation, brainstorm, and plan files from `.md` to `.html`. |
 | `ce-compound` wrote nothing | It captures only what the final code, tests, standards, and docs do not already show, so skipping a routine fix is correct. If a lesson was missed, run it again and say what the lesson was. |
 | Learnings are captured only when the user asks | A standing instruction fixes this. `ce-setup` offers one when the repo tracks its learnings. |
 | New plans ignore past learnings | Check that `<root>/solutions/` holds learnings and that `ce-plan` ran in this repo. A `ce-compound` refresh handles learnings that have gone stale. |

@@ -4,7 +4,7 @@ Analyze a product feedback source.
 
 Supported sources: Riffrec zip or unpacked capture directory, standalone
 video, standalone audio, and meeting notes text/markdown. The script extracts
-transcript, high-signal video frames when available, and CE-friendly markdown
+transcript, high-signal video frames when available, and planning-ready markdown
 artifacts.
 """
 
@@ -69,7 +69,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        help="Directory for extracted evidence/kickoff artifacts. Defaults to docs/brainstorms/riffrec-feedback/<source-stem> when available; durable ce-brainstorm outputs live in the plans artifact directory.",
+        help="Directory for extracted evidence/kickoff artifacts. Defaults to the workspace-local .tmp/ce-sweep/riffrec-feedback/<source-stem>; durable ce-brainstorm outputs live in the plans artifact directory.",
     )
     parser.add_argument("--topic", help="Kebab-case topic for requirements-kickoff frontmatter")
     parser.add_argument(
@@ -207,9 +207,18 @@ def promote_frames_snapshot(staging_dir: Path, frames_dir: Path) -> None:
 def default_output_dir(source_path: Path) -> Path:
     cwd = Path.cwd()
     stem = slugify(source_path.stem)
-    if (cwd / "docs" / "brainstorms").is_dir():
-        return cwd / "docs" / "brainstorms" / "riffrec-feedback" / stem
-    return cwd / "riffrec-feedback" / stem
+    return cwd / ".tmp" / "ce-sweep" / "riffrec-feedback" / stem
+
+
+def local_scratch_root() -> Path:
+    """Use the caller's absolute workspace cwd, never global temp storage."""
+    root = Path.cwd() / ".tmp"
+    if root.is_symlink():
+        raise SourceInputError(f"Unsafe scratch root symlink: {root}")
+    root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if root.stat().st_uid != os.getuid():
+        raise SourceInputError(f"Scratch root is not owned by the current user: {root}")
+    return root
 
 
 def classify_source(source_path: Path) -> str:
@@ -366,7 +375,7 @@ def prepare_source(source_path: Path, raw_dir: Path, source_kind: str | None = N
     source_kind = source_kind or classify_source(source_path)
     raw_dir.parent.mkdir(parents=True, exist_ok=True)
     staging_dir = Path(
-        tempfile.mkdtemp(prefix=f".{raw_dir.name}.staging-", dir=raw_dir.parent)
+        tempfile.mkdtemp(prefix=f".{raw_dir.name}.staging-", dir=local_scratch_root())
     )
     try:
         source = populate_source_snapshot(source_path, staging_dir, source_kind)
@@ -656,7 +665,7 @@ def extract_frames(recording_path: Path | None, frames_dir: Path, moments: list[
     frames_dir.parent.mkdir(parents=True, exist_ok=True)
     validate_frames_destination(frames_dir)
     staging_dir = Path(
-        tempfile.mkdtemp(prefix=f".{frames_dir.name}.staging-", dir=frames_dir.parent)
+        tempfile.mkdtemp(prefix=f".{frames_dir.name}.staging-", dir=local_scratch_root())
     )
     try:
         if not recording_path or not recording_path.exists():
@@ -833,7 +842,7 @@ def write_analysis_md(
     lines.append("- Open each selected screenshot and name the exact visible control or state.")
     lines.append("- Tie transcript language to the closest click or visible UI state.")
     lines.append("- Promote only confirmed product problems into requirements.")
-    lines.append("- Use repo-relative screenshot paths when moving evidence into a CE requirements document.")
+    lines.append("- Use repo-relative screenshot paths when moving evidence into a requirements document.")
     output_path.write_text("\n".join(lines) + "\n")
 
 
@@ -1297,7 +1306,7 @@ def main() -> int:
     print("Analysis complete. Ready to brainstorm the findings.")
     print(f"Source materials: {display_path(source_materials_md, repo_root)}")
     print(f"Problem statements: {display_path(problem_analysis_md, repo_root)}")
-    print(f"Brainstorm handoff: $compound-engineering:ce-brainstorm {display_path(kickoff_md, repo_root)}")
+    print(f"Brainstorm handoff: /ce-brainstorm {display_path(kickoff_md, repo_root)}")
     print("Brainstorm should first confirm whether the captured requirements are complete and correctly grouped, then write the durable unified plan under the plans artifact directory.")
     return 0
 

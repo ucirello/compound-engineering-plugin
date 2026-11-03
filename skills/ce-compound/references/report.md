@@ -1,5 +1,9 @@
 # Completion reports
 
+## Context-pressure delegated Full
+
+The fresh delegate returns its Full terminal report and exact document path, source session ID, evidence retrieval method, and any coverage failures. The interactive parent relays that result without running Full again or re-editing the lesson. It may offer only consented interactive discoverability and pack-destination steps. A Lightweight fallback reports the actual missing native tool, permission denial, or exhausted nesting capacity and advises retry from the SAME source session once available; model rejection is not depth exhaustion.
+
 ## Success Output
 
 **User-runnable refresh rendering.** The reports below print a refresh invocation for the user to copy. Default to `/ce-compound refresh <scope>`; use `$ce-compound refresh <scope>` only when the active host is Codex or explicitly documents dollar-prefixed skill invocation. Render only the invocation as inline code and output one form only.

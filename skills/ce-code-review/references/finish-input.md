@@ -8,7 +8,7 @@ A review round finishes outside the context that dispatched it. The **dispatch c
 
 The split exists because a six-lens round routinely uses up the dispatch context before Stage 5b, which is when subagent launches start failing (#1679, #1690). It is always on for the multi-agent path; the quick-review short-circuit never reaches it. No leaf launches a subagent: nested dispatch is unavailable on Gemini CLI, blocked one level down on Cursor, and configurable off on Claude Code and Codex, so the validator stays a parent launch on every host.
 
-**Outcome:** the report leaf produces the same report the dispatch context would have, from the run directory alone, and the dispatch context emits that report verbatim and, in default mode, writes it to `report.md`. **Done:** `report.md` (default mode) or `review.json` (`mode:agent`) and `metadata.json` are on disk, every persisted peer job directory is deleted, and the dispatch context has returned the report leaf's output unchanged.
+**Outcome:** the report leaf renders from the run directory; parent persists `report.md` in default mode and emits the return verbatim. **Done:** report/review JSON and metadata exist, all owned agents are terminal and stopped/released where supported, peer evidence is preserved, and output is returned unchanged. Never claim cleanup that the host did not perform.
 
 ## The contract: `<run-dir>/finish-input.json`
 
@@ -27,8 +27,8 @@ The dispatch context writes this file after every local reviewer is collected, a
     "base": "<BASE: marker>",
     "diff_a": "<DIFF_A>", "diff_b": "<DIFF_B or null>",
     "pr": { "number": null, "url": null, "title": null, "body": null, "base_ref_name": null, "head_ref_oid": null, "head_ref": null, "base_ref": null, "has_prior_comments": false },
-    "branch": "<git branch --show-current at dispatch>",
-    "head_sha": "<git rev-parse HEAD at dispatch>",
+    "branch": "<verified source bookmark at dispatch>",
+    "head_sha": "<captured DIFF_B commit ID>",
     "files": "<run-dir>/files.txt",
     "diff": "<run-dir>/full.diff",
     "tree_is_reviewed_head": true,
@@ -70,7 +70,7 @@ Each leaf reads, from `skill_dir`, `references/finish-review.md` and every refer
 
 ## How the dispatch context launches a leaf
 
-Put the full contents of `finish-input.json` inline in the leaf's prompt, together with the absolute paths of the run directory, this reference, and `references/finish-review.md`, and tell it which stages it owns, to read those two references first, and to record its own stage in the stage log with `scripts/run-log.py` under `skill_dir` (the recipe is in `references/scope.md`, Stage log). Inline the file rather than only naming it: the facts it carries are small, and a subagent that has them in its prompt cannot skip the read. Everything larger (the diff, the per-reviewer artifacts, the compact returns) stays on disk and is read by path. By default both leaves inherit the session model, with no override. If the user's or project's active instructions or the live prompt name a model for this subagent, use that model instead of the default tier above. They can name it by the subagent's tier, by its prompt-asset name, or for the subagents being dispatched. Without such an instruction, a model configured for this subagent's role takes precedence over the default tier. Tell each leaf plainly that it launches no subagents.
+Inline `finish-input.json` in each native leaf prompt, with absolute run/reference/finish-review paths, owned stages, required reference reads, and stage-log recipe. Large diff/reviewer artifacts stay on disk by path. Both leaves inherit by default. Preserve user > configured role > default model intent, resolving IDs through `opencode.models` only when host policy permits an explicit user model override; otherwise inherit and record any mismatch. Tell each leaf it launches no subagents. This skill supplies delegation permission under a user-or-loaded-skill exception, not an unconditional tool ban. Classify actual depth/capacity failures separately from permission/model rejection; do not evade them with shell/another harness.
 
 Apply the agent lifecycle rule in `references/dispatch-reviewers.md` (Agent lifecycle) to each leaf and to the validator.
 
@@ -80,7 +80,7 @@ Where `finish-review.md` routes prose through another skill (`ce-noslop`) and a 
 
 Read `finish-input.json`, then `references/finish-review.md` from `skill_dir`, record `--start merge` in the stage log, and run Stage 5 and Stage 5b steps 1 through 3; record `--end merge --candidates <primary findings>` before returning. Wherever the reference refers to an earlier stage's result, the intent summary, the roster, the plan, the scope, or conversation context, that value is the matching field of the file, and `<root>` is `docs_root`.
 
-Every decision about the cross-model peer is already made. The dispatch context performed the single-reap finish and the fold-in classification `references/cross-model-review.md` defines, with its recovery branches in `references/cross-model-recovery.md` (including any replacement recipient, same-route recovery, or in-process `adversarial-reviewer` dispatch, all of which need a launch or a disclosure only it can make), deleted the job directory, and recorded the result in `peer.outcome`, `peer.artifact`, and `peer.coverage`. When `peer.artifact` is set, fold that file into Stage 5 as reviewer `adversarial-<provider>` under the reference's promotion rule; an in-process fallback's return is already in `raw-returns.json`. Copy `peer.coverage` into Coverage verbatim. This leaf never reads job state, waits on a peer, or starts a route.
+The parent already collected the native peer terminal outcome, classified/recovered under the owning references, reconciled identities, and recorded `peer.outcome`, `peer.artifact`, and `peer.coverage`. Fold a validated artifact once as `adversarial-<provider>`; fallback returns are already in `raw-returns.json`. Promote agreement only with attested independence. Copy truthful peer Coverage verbatim, including required unmet cross-model independence as incomplete. This leaf never dispatches, waits or changes recipients.
 
 Write, in the run directory: `synthesized-findings.json` (the final primary, pre-existing, and soft-bucket sets after Stage 5 steps 1 through 7, the triage groups, the hydrated detail, the fold-in outcome and every Coverage sentence Stage 5 produced) and `validator-input.json` (the Stage 5b step 3 batch: the selected findings in order, the skip count and its evidence basis, and the scope context the validator template needs). Return only a receipt: the two paths and the counts of primary and selected findings. Return nothing else; the dispatch context does not read findings.
 
@@ -98,7 +98,7 @@ Read `finish-input.json`, `synthesized-findings.json`, `validator-outcome.json` 
 
 ## What the dispatch context does with the returns
 
-In default mode, write the report leaf's return to `<run-dir>/report.md` first: the leaf renders it but cannot write that basename on every host (#1777), and this write persists only, it does not render or merge. Then emit the report leaf's return verbatim as this skill's final response. Do not summarize, reformat, or add to it; in `mode:agent` the response must begin with the JSON object. A leaf that fails to launch, returns a tool error, or returns something other than its contract (the merge receipt, or the report) is a failed finish: in `mode:agent` emit `{"status":"failed","reason":"<one sentence>"}`; otherwise say the round could not finish, name the run directory so a re-run can finish from it, and no peer job is outstanding, because the dispatch context reaped it before launching the leaves.
+In default mode persist the report leaf's exact return to `<run-dir>/report.md`, then emit it verbatim, never re-merge or re-render. Agent mode begins with the JSON object. A failed launch, tool error or invalid leaf contract is failed finish: agent mode emits `{"status":"failed","reason":"<one sentence>"}`; otherwise name the failure and run directory for recovery. Report actual owned-agent cleanup status rather than asserting an unobserved cleanup. No peer may be abandoned live.
 
 That emission is the dispatch context's last write. It ends this skill, not the turn. When a caller invoked this skill, the caller runs in this same session, and its next step follows the return; otherwise end the turn.
 

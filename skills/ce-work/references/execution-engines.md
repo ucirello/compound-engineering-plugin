@@ -1,5 +1,7 @@
 # Execution Engines
 
+All execution is OpenCode native. Historical “external”, “controller”, “adapter” and “intermediary” labels in the input/result contracts retain their requested provenance, not permission to launch another harness or a removed script. The host performs durable manifest/receipt operations described in `cross-model-execution.md`. Preserve configured tiers and target mappings as intent even when the host cannot serve them; report requested versus actual route and unmet independence truthfully.
+
 `ce-work` has two implementation engines: native execution (inline or subagents, scheduled by `references/execution-strategy.md`) and cross-model execution. The engine decides who authors the code. It never changes who runs the finishing steps (final simplify, review, PR, and CI; see "Resume the correct tail" below). Native execution is the default: it stays selected unless applicable live intent, a caller binding, or an enabled standing preference selects cross-model execution.
 
 Engine selection applies only to code execution. Knowledge-work keeps its carve-out. Legacy plans and bare code prompts may select cross-model execution; otherwise they use the inline/subagent flow in `references/execution-strategy.md`.
@@ -30,9 +32,9 @@ A validated recovery run id selects durable state. It never authorizes a fresh d
 ### Standing configuration
 
 <!-- ce-config-layers:start -->
-**Resolve ordinary CE yaml keys from the two repo files.**
+**Resolve ordinary project yaml keys from the two repo files.**
 
-- **Read** `<repo-root>/.compound-engineering/config.local.yaml`, then `config.yaml` (`<repo-root>` = `git rev-parse --show-toplevel`). Missing files are skipped. Gitignore does not change resolution.
+- **Read** `<repo-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<repo-root>` = `jj root`, resolved to an absolute workspace cwd). Missing files are skipped. Ignore rules do not change resolution.
 - **Win** with the first active (non-commented) value. For scalars, empty is unset; an invalid value continues to the next layer, then the skill default. For lists and maps, a present key — including an empty list or map — replaces the whole key.
 - **Do not** use this rule for `docs_root` — that key is `config.yaml` only.
 <!-- ce-config-layers:end -->
@@ -48,7 +50,7 @@ For a bare prompt, cross-model execution is eligible only after Phase 0 has esta
 ## Run the chosen engine
 
 - **Native:** follow `references/execution-strategy.md` for scheduling and dispatch, and the Phase 2 loop in `references/implementation-loop.md`. `ce-work` creates the tasks, orders the units, dispatches, verifies, and commits.
-- **Cross-model:** follow the serial external-unit transaction in `references/cross-model-execution.md` through the bundled controller, detached runner, and fixed adapter. Never let the detached worker select a fallback recipient.
+- **Cross-model:** follow the durable bounded-unit native protocol in `references/cross-model-execution.md`. Resolve models with `opencode.models`, dispatch only through permitted native subagents, and never let a worker select a fallback recipient. Host restrictions remain binding; preserve and disclose configured model intent rather than silently replacing it.
 
 ## Resume the correct tail
 

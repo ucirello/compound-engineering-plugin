@@ -32,16 +32,13 @@ Use the harness's tools to run the detector and wait for its output. A skill dri
 
 | Harness | Run and wait tools | Durable beyond the session? |
 |---------|--------------------|-----------------------------|
-| Claude Code (CLI) | background `Bash` + a `Monitor`/wait; or `ScheduleWakeup` under `/loop` | No (session-bound) — cron for durable |
-| Grok (CLI/TUI) | background `run_terminal_command` + `get_command_or_subagent_output`; `scheduler_create --durable` for a cross-session schedule | Yes via `scheduler_create --durable` (60s min, 7d) |
-| Cursor (CLI) | `Shell` background + `notify_on_output` sentinel (its `/loop` is user-typed, **not** skill-invocable) | No (session-bound) |
-| Codex (CLI) | `exec_command` to start the detector, then `write_stdin` to wait on the returned process session | No (session-bound) |
+| OpenCode | native background shell and completion notifications, respecting host wait policy | Session-bound unless an explicitly available native scheduler provides durability |
 
 **User-runnable resume syntax.** Whenever this reference tells the skill to print or copy a resume invocation, default to `/ce-babysit-pr <url>` and, when the run posture is not `target`, append the same `posture:stack-ready` or `posture:stack-land` token so checkpoint / durable / session re-entry keeps stack scope. Use `$ce-babysit-pr <url> [posture:…]` only when the active host is Codex or explicitly documents dollar-prefixed skill invocation. Render only the invocation as inline code and output one form only.
 
 **Checkpoint:** Use checkpoint mode only when the user requests it or nothing can wake this agent. Run one tick, persist state, report, and print the exact host-rendered resume invocation. Say monitoring is paused. Never fake a loop with a foreground `sleep` or an unmanaged detached process.
 
-**Durability:** the in-session watch dies with the session. Re-invoking the skill resumes from disk, because `/tmp` persists across ticks. For an unattended multi-day watch, escalate to a durable scheduler: Grok's `scheduler_create --durable`, or cron running `<cli> exec '<host-rendered resume invocation>'`. A fresh headless run has no memory of this conversation, so persist consequential decisions to disk.
+**Durability:** the in-session watch dies with the session. Re-invocation resumes from the workspace's absolute `.tmp` journal. Use only an explicitly authorized available native durable scheduler; otherwise report paused/checkpoint coverage. Persist consequential decisions locally for a fresh session.
 
 ## Choosing the wake source
 
@@ -79,7 +76,7 @@ When the host's mechanism is the wake source:
 
 ## Pipeline mode bound (`mode:pipeline`)
 
-An orchestrator (`lfg`) drives ticks in-line and needs the loop to terminate. Run ticks back-to-back until one of the stops below. **To wait for CI to progress between ticks, use the harness's native non-blocking wait — never a bare foreground `sleep`** (blocked on Claude Code, discouraged elsewhere). Examples: Claude Code's `Monitor` until-loop; Grok's `get_command_or_subagent_output(timeout_ms=…)` or a `monitor`; Cursor's `Await` on a backgrounded `gh pr checks --watch`. When the host's instructions dictate PR waits and its wake returns to this session, arm that wake and end the turn; the wake resumes these ticks. If nothing can wake the run, do one tick and return control to the orchestrator rather than busy-spinning. Loop until:
+An orchestrator (`lfg`) drives ticks in-line and needs the loop to terminate. Use native OpenCode non-blocking shell completion, never foreground `sleep`, other-harness tools or shell dispatch of another agent harness. Respect host wait rules. If nothing can wake the run, do one tick and return rather than busy-spinning. Loop until:
 
 - **Report success only when** `all_checks_ok` is true, the actionable backlog and canonical `needs_human_residuals` set are empty, `mergeability_certain` is true, `merge_state_status == "CLEAN"`, `base_ref_blocker` and `stack_blocker` are null, `branch_currency_blocker` is null, and `unrequested_base_merge` is null. A red check, a human decision, an empty check rollup, uncertain merge/base/stack state, or an open/claimed/parked currency item is not success: keep ticking until it clears or the time budget expires; or
 - when the canonical set (the persisted `needs_human_residuals`) is non-empty and no autonomous work remains, return `{ status: "needs-human", checks_terminal, fixes_applied, residuals: needs_human_residuals }` immediately without waiting for human input or the budget; or

@@ -13,17 +13,17 @@ Think in terms of the deploy window: old code on new schema, new code on old dat
 Run this **first** when `db/schema.rb` or `db/structure.sql` appears in the diff. Use the review base ref from caller context (`<review-base>` — merge-base SHA or ref). **Never assume `main`.**
 
 ```bash
-git diff <review-base> --name-only -- db/migrate/
+(cd "$workspace_root" && jj diff --from "$DIFF_A" --to "$DIFF_B" --name-only 'root:db/migrate/')
 ```
 
 Then diff each dump file that is actually in the PR diff (one or both may apply):
 
 ```bash
 # When db/schema.rb is in the diff:
-git diff <review-base> -- db/schema.rb
+(cd "$workspace_root" && jj diff --git --from "$DIFF_A" --to "$DIFF_B" 'root:db/schema.rb')
 
 # When db/structure.sql is in the diff:
-git diff <review-base> -- db/structure.sql
+(cd "$workspace_root" && jj diff --git --from "$DIFF_A" --to "$DIFF_B" 'root:db/structure.sql')
 ```
 
 Cross-reference every change in each in-scope dump against migrations **in this PR's diff**:
@@ -36,11 +36,12 @@ When drift is present, emit a **P1** finding on the affected dump path (`db/sche
 
 ```bash
 # schema.rb:
-git checkout <review-base> -- db/schema.rb
+# Suggested manual fix only, in an authorized isolated copy:
+(cd "$workspace_root" && jj restore --from "$DIFF_A" 'root:db/schema.rb')
 bin/rails db:migrate
 
 # structure.sql (regenerate after restoring and migrating):
-git checkout <review-base> -- db/structure.sql
+(cd "$workspace_root" && jj restore --from "$DIFF_A" 'root:db/structure.sql')
 bin/rails db:migrate
 ```
 

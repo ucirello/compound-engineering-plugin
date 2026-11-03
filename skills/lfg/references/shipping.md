@@ -1,10 +1,12 @@
 # Shipping (LFG steps 9–11)
 
-The shipping steps are the last stretch of the run: commit, push, PR, CI, and close-out. LFG's SKILL.md defines the shipping precondition (the `git remote` check) and the two invocation strings. This file defines everything else: which handoff runs, what LFG passes into it, what it does with the result, and how the run closes out.
+The shipping steps are the last stretch of the run: commit, push, PR, CI, and close-out. LFG's SKILL.md defines the shipping precondition (the workspace-scoped `jj git remote list` check) and the two invocation strings. This file defines everything else: which handoff runs, what LFG passes into it, what it does with the result, and how the run closes out.
 
 ## Step 9 — a project-defined process may replace the default handoff
 
-The goal is the remaining work committed, pushed, and in an open PR whose URL you hold.
+The goal is the remaining work committed, pushed, and in an open PR whose URL you hold. Every repository-scoped `gh` invocation, including the existing-PR lookup below, must execute as `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh <arguments>)`, with the absolute verified target workspace. For local commit composition, read the FULL https://go.dev/wiki/CommitMessage at runtime and apply: **Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards.** Resolve the actual history head and compare several full subjects and bodies with `(cd "$workspace_root" && jj log --no-graph -r '::<verified-history-head>' -n 10 -T 'description ++ "\n"')`; repository instructions/history syntax win, and absent history is not permission to invent precedent.
+
+During already-authorized PR maintenance, refresh factual descriptions using verified run results without another approval, preserving user prose and issue links. Optional standalone rewrites still require approval and are description-only/draft-only; declining one must not block authorized monitoring. Align a clean workspace only to the exact verified pushed repository/bookmark/remote/commit; empty `@` directly above that head is aligned. Dirty, conflicted, uncertain, or denied alignment must preserve work and stop for a safe decision, never reset. Inspect an empty `@`'s `@-` bookmarks and PR before concluding there is no PR; continue eligible parent-PR monitoring. Preserve watch boundaries, opt-outs, and human/final merge decisions.
 
 The project's active instructions may name a process for that handoff: a named skill or command, a stacking tool, or documented steps. Commit or PR-title conventions do not count, because the default already honors them, and a skill directory alone is not a directive. When such a process is named, run it non-interactively with the same plan path and context below instead of the default. It is done only when the work is pushed and you hold the URL of an open PR containing it, either one the process opened or a PR that already exists for the branch. If it cannot run headlessly, is unavailable, or ends short of that state, stop as **blocked** naming the process. Do not fall through to the default or to step 10.
 
@@ -14,7 +16,31 @@ Pass the recorded plan path from step 1 into the `ce-commit-push-pr` invocation,
 
 This commits any remaining changes, pushes the branch, and opens a pull request, non-interactively because of the `mode:pipeline` token. If it prints a `New concepts:` trailer after the PR URL, record the concept name(s) for step 11. If a PR already exists for the branch (check with `gh pr view --json number,url,state 2>/dev/null`), skip PR creation but still commit and push any uncommitted changes. Pipeline mode leaves an existing PR body alone by default, so the description context above would be lost there; after the push, invoke `ce-commit-push-pr mode:pipeline` again in its description-update mode on that PR with the same context, so the record reaches the reviewer without a confirmation prompt.
 
-**Per the shipping precondition, when no remote is configured, do NOT invoke `ce-commit-push-pr` or a project-defined shipping process.** The default's commit step pushes unconditionally (`git push -u origin HEAD`), so a literal invocation would still hit the impossible push. Instead commit the files this run changed, by name (the work source's files, the review fixes, and any captured learning), and skip the push and PR creation entirely. Never `git add -A`: a file that was already dirty before the run, or one the defect route's `pre_fix_scope` lists, stays uncommitted and is named in the report.
+**Per the shipping precondition, when no remote is configured, do NOT invoke `ce-commit-push-pr` or a project-defined shipping process.** Instead commit the files this run changed, by name (the work source's files, the review fixes, and any captured learning), from the absolute target workspace with path-scoped `jj commit <owned-paths> -m "<message composed from the standards above>"`, following the full runtime Go-guide and history-reading composition requirements in `references/review-followup.md`, and skip push and PR creation entirely. Never include the whole working copy indiscriminately: a file already dirty before the run, or listed by the defect route's `pre_fix_scope`, stays uncommitted and is named in the report.
+
+### Illustrative Go source for message composition — not a mandatory template
+
+These verbatim source excerpts supplement, but never replace, the mandatory FULL runtime Go-guide read before composing. Repository instructions and observed history determine the emitted syntax; do not copy this example as a prescribed message.
+
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+```text
+net/http: handle foo when bar
+
+[longer description here in the body]
+
+Fixes #12345
+```
+> Notably, for the subject (the first line of description):
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+> For the body (the rest of the description):
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
 
 ## Step 10 — stack handoff from step 9
 

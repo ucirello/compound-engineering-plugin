@@ -1,47 +1,7 @@
-# Branch creation from default branch
+# Feature bookmark creation
 
-Local `<base>` may have stale commits (another session/worktree advanced it) or commits the user authored intending to branch from later. Local git can't distinguish these — ask when unpushed commits are present.
+Run all JJ commands with the absolute target workspace root as cwd. Fetch the verified base with `jj git fetch --remote <remote> --branch <base>`. Inspect `jj log -r '<base>@<remote>..<verified-local-head>'`. Missing metadata or failed fetch blocks freshness-dependent decisions; never guess another ref.
 
-## Decision flow
+If local default commits are absent remotely, ask whether to carry them or leave them on the default; pipeline returns that decision without guessing. Preserve a recovery bookmark before moving any tip. Carry uses the verified local head; leave uses the verified remote base. Preserve tracked, ignored, untracked, conflicted, and excluded work. If changing parents endangers any of it, stop without resetting or deleting it.
 
-### 1. Fetch fresh remote base
-
-```bash
-git fetch --no-tags origin <base>
-```
-
-If fetch fails (network, auth, no remote), use the fallback at the bottom.
-
-### 2. Check for unpushed local commits on `<base>`
-
-```bash
-git log origin/<base>..HEAD --oneline
-```
-
-- **Empty output:** set `BASE_REF=origin/<base>` and proceed to step 3.
-- **Non-empty output:** show the commit list and ask (per the "Asking the user" convention in `SKILL.md`):
-
-  > "Local `<base>` has N unpushed commits not on `origin/<base>`. Carry them onto the new feature branch, or leave them on local `<base>`?"
-
-  - **Carry forward** → `BASE_REF=HEAD`. The new branch starts from local HEAD, preserving the commits.
-  - **Leave on `<base>`** → `BASE_REF=origin/<base>`. The new branch starts clean; commits remain on local `<base>`.
-
-  Never default silently — carrying foreign commits into a PR is worse than asking again.
-
-### 3. Create the feature branch
-
-```bash
-git checkout --no-overwrite-ignore -b <branch-name> "$BASE_REF"
-```
-
-If checkout fails because uncommitted or ignored files would be overwritten, stop and ask the user to handle the colliding paths. In `mode:pipeline`, report the blocker without asking. Do not stash or remove the colliding paths.
-
-## Fetch failure fallback
-
-If `git fetch` fails, branch from current local HEAD:
-
-```bash
-git checkout -b <branch-name>
-```
-
-Note in the user-facing summary that base freshness was not verified. Skip the unpushed-commits check — without a fresh `origin/<base>`, the answer is unreliable.
+Create `jj bookmark create <feature-name> -r <verified-feature-head>` after collision checks. Explicit workflow intent authorizes this feature bookmark, not publishing directly to the default. Re-verify targets before publication. Reuse existing verified harness isolation without changing its name or lifecycle; no new workspace is needed.

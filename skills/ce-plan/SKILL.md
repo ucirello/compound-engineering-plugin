@@ -22,6 +22,14 @@ Writing the file, checking confidence, and running or explicitly skipping `ce-do
 
 Ask one question at a time through the host's blocking question tool already in the current tool list. Match by capability; never probe a user-facing tool to discover it. If none is listed or a real question call errors, render numbered choices in chat; never silently skip a required question. If no feature description was supplied, ask what to plan and wait.
 
+### Native delegation and storage
+
+This loaded skill explicitly authorizes its focused research and review subagents when host rules allow user OR loaded-skill authorization; do not request redundant user permission. Unconditional bans and tool denials still win. Use OpenCode native subagents and `opencode.models` discovery, not another harness. Preserve configured model/provider/tier intent. Override only where host rules permit the explicit user model request; otherwise inherit a suitable model and disclose unmet intent and required cross-model coverage. Same-model work is not cross-model independence. Distinguish permission, model rejection, unavailable tools and actual depth/capacity errors; never evade denial through shell. Queue capacity-limited work and correct pre-launch argument errors once only. Inline fallback is valid only where the phase contract permits it; missing required independence remains incomplete.
+
+Resolve `workspace_root` via `jj root` from the absolute target cwd (outside JJ use the absolute current directory for scratch only). All temporary files, including failure evidence, belong beneath its `.tmp/`; no global temporary directories. Execute JJ from the absolute target workspace cwd. For repository-scoped `gh`, use `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh ...)`. Never invoke the Git executable. Preserve harness-owned workspace lifecycle and reuse existing isolation; planning does not authorize workspace creation or retirement.
+
+Nested research requires effective `experimental.subagent_depth >= 3`. Bundled configuration does not configure consuming projects. If setup is needed, document a merge into the existing user configuration (locate with `opencode debug paths` / `opencode debug paths config`); preserve a higher integer, JSONC and all siblings, avoid a competing file, and ensure higher-precedence settings do not lower depth. Never edit host configuration here. Depth does not grant delegation or model permission.
+
 When a question is a yes/no or a batch confirm, word it so that agreeing accepts the recommendation. Numbered choices stay numbered choices.
 
 ## Output Contract

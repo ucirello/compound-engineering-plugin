@@ -1,17 +1,21 @@
-# Compound Engineering -- repo config
-# Copy to .compound-engineering/config.yaml in your project root (team defaults).
-# Optional override: .compound-engineering/config.local.yaml, same keys.
+# RocketClaw -- repo config
+# Harness/provider names below express model-selection intent only. Resolve them
+# with native OpenCode opencode.models and subagents/shell, preserving configured
+# models and effort tiers. Never launch another harness or silently substitute a
+# model. Missing permission, model availability and nesting depth are distinct.
+# Copy to .rocketclaw/config.yaml in your project root (team defaults).
+# Optional override: .rocketclaw/config.local.yaml, same keys.
 # Ordinary keys: local wins when set, then this file, then the skill default.
 # docs_root is repo layout -- set it only here; local docs_root is ignored.
 # All settings are optional. Invalid ordinary values continue to the next layer.
 # docs_root fails closed on an unusable value.
 
 # --- Artifact root ---
-# Relocate every CE-written artifact folder (solutions, plans, ideation,
+# Relocate every generated artifact folder (solutions, plans, ideation,
 # explainers, pulse-reports, dogfood-reports,
 # feedback-sweep, personas) under one repo-relative root. Unset -> `docs`,
-# byte-identical to today. A configured root becomes the sole location CE reads
-# and writes; CE never falls back to reading `docs/`.
+# byte-identical to today. A configured root becomes the sole artifact location
+# for reads and writes; never fall back to reading `docs/`.
 #
 # Set this only in this tracked file so every clone and worktree share one
 # artifact tree. A docs_root in config.local.yaml is ignored.
@@ -19,10 +23,10 @@
 # The value must be a repo-relative directory whose real (symlink-resolved) path
 # stays inside the repo, is not the repo root itself, and is not under `.git/`.
 # Unlike every other setting here, an unusable value does NOT fall through to the
-# default -- CE stops with an error so a typo can't silently write artifacts into
+# default -- stop with an error so a typo can't silently write artifacts into
 # the location you configured away from. `/ce-setup` reports the resolved root.
 
-# docs_root: .compound-engineering/artifacts   # repo-relative dir (default: docs)
+# docs_root: .rocketclaw/artifacts   # repo-relative dir (default: docs)
 
 # --- Product pulse ---
 # Settings written by /ce-product-pulse first-run interview. Re-run the skill with
@@ -184,12 +188,12 @@
 #   - { type: github-issues, id: gh-issues, target: owner/repo, ack_action: "feedback:ack", closeout_action: "feedback:resolved", sensitive: false, approved: true }
 
 # Sweep-owned settings.
-# sweep_state_path: docs/feedback-sweep/state.yml   # committed (multi-agent) or /tmp path (solo)
+# sweep_state_path: docs/feedback-sweep/state.yml   # committed (multi-agent) or absolute workspace .tmp path (solo)
 # sweep_ack_cap: 25                                 # max acks per source per run before the circuit breaker
 # sweep_lease_ttl_minutes: 60                       # single-writer lease staleness threshold
 # sweep_shared_branch: false                        # true: push-gated lease for shared-docs-branch topology
 
-# --- Compound Packs ---
+# --- Knowledge packs ---
 
 # Prescriptive domain knowledge folders that planning reads and cites.
 # Declared, never scanned: an entry names a source (repo-relative path,
@@ -203,8 +207,8 @@
 # Rules are top-level .md files with title + applies_when; subfolders are storage.
 
 # packs:
-#   - source: compound-packs/local-rules                       # repo-relative, read live
-#   - source: ~/compound-packs/kk-style                        # machine-local, read live
+#   - source: packs/local-rules                       # repo-relative, read live
+#   - source: ~/packs/kk-style                        # machine-local, read live
 #   - source: https://github.com/org/rails-ce-pack    # git, cached at ref
 #     ref: v1.2.0
 #     pack: [rails, inertia]

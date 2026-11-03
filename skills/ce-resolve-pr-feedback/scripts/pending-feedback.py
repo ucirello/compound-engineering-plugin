@@ -186,7 +186,10 @@ def write_record(path: Path, raw: bytes, *, checkpoint: bool) -> None:
     if checkpoint:
         temporary = None
         try:
-            with tempfile.NamedTemporaryFile(dir=path.parent, prefix=".pending-feedback-", delete=False) as temp:
+            scratch = local_scratch()
+            require(scratch.stat().st_dev == path.parent.stat().st_dev,
+                    "atomic checkpoint requires destination and workspace .tmp on the same filesystem")
+            with tempfile.NamedTemporaryFile(dir=scratch, prefix=".pending-feedback-", delete=False) as temp:
                 temporary = Path(temp.name)
                 temp.write(raw)
                 temp.flush()
@@ -204,10 +207,26 @@ def write_record(path: Path, raw: bytes, *, checkpoint: bool) -> None:
     read_record(path)
 
 
+def workspace_root() -> Path:
+    cwd = Path.cwd().resolve()
+    result = subprocess.run(["jj", "root"], cwd=cwd, capture_output=True, text=True, check=False)
+    return Path(result.stdout.strip()).resolve() if result.returncode == 0 else cwd
+
+
+def local_scratch() -> Path:
+    scratch = workspace_root() / ".tmp"
+    scratch.mkdir(parents=True, exist_ok=True)
+    return scratch
+
+
 def github_json(host: str, endpoint: str) -> dict:
+    root = workspace_root()
+    git_root = subprocess.run(["jj", "git", "root"], cwd=root, capture_output=True, text=True, check=False)
+    require(git_root.returncode == 0, git_root.stderr.strip() or "cannot scope GitHub to JJ workspace")
+    env = dict(os.environ, GIT_DIR=git_root.stdout.strip())
     result = subprocess.run(
         ["gh", "api", "--hostname", host, "--method", "GET", endpoint],
-        capture_output=True, text=True, check=False,
+        cwd=root, env=env, capture_output=True, text=True, check=False,
     )
     require(result.returncode == 0, result.stderr.strip() or f"GitHub GET failed: {endpoint}")
     return object_value(json.loads(result.stdout), "GitHub response")
@@ -257,10 +276,14 @@ def main() -> None:
             command_parser.add_argument("--input", required=True)
     args = parser.parse_args()
     if args.command == "preflight":
-        path = Path(args.path).absolute() if args.path else Path(tempfile.mkdtemp(prefix="ce-pending-feedback-")) / "pending.json"
+        scratch = local_scratch()
+        path = Path(args.path).absolute() if args.path else Path(tempfile.mkdtemp(dir=scratch, prefix="pending-feedback-")) / "pending.json"
         require(not os.path.lexists(path), "handoff destination already exists")
         require(path.parent.is_dir(), "handoff parent directory does not exist")
-        with tempfile.TemporaryFile(dir=path.parent):
+        require(scratch.stat().st_dev == path.parent.stat().st_dev,
+                "atomic checkpoint requires destination and workspace .tmp on the same filesystem")
+        require(os.access(path.parent, os.W_OK | os.X_OK), "handoff parent directory is not writable/searchable")
+        with tempfile.TemporaryFile(dir=scratch):
             pass
         print(json.dumps({"handoff": str(path)}))
         return

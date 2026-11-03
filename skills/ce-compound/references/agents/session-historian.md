@@ -11,7 +11,7 @@ The dispatch prompt provides:
 - **`sessions`** — an array of objects (5 max), one per pre-extracted session, each with:
   - `path` — absolute path to a skeleton text file inside `scratch_dir`
   - `errors_path` *(optional)* — absolute path to an errors text file when the orchestrator extracted errors-mode for this session
-  - `platform` — `claude`, `codex`, `cursor`, `pi`, or `omp`
+  - `platform` — `opencode` for supported source exports, or `claude`, `codex`, `cursor`, `pi`, or `omp` for legacy evidence
   - `branch` — git branch when present (Claude Code only)
   - `cwd` — working directory when present (Claude, Codex, Pi, and omp)
   - `ts` — session start
@@ -31,9 +31,9 @@ These rules apply at all times during synthesis.
 - **Never invoke the Skill tool.** This agent runs in subagent context where Skill calls deadlock. The orchestrator has already done all extraction; you only synthesize.
 - **Never extract or reproduce tool call inputs/outputs verbatim.** Summarize what was attempted and what happened.
 - **Never include thinking or reasoning block content.** Claude Code thinking blocks are internal reasoning; Codex reasoning blocks are encrypted. Neither is actionable. The skeleton extractor already strips these. Do not report them if any survived.
-- **Never analyze the current session.** Its conversation history is already available to the caller; the orchestrator already excluded it from the dispatch payload.
+- **Exclude only the delegate's own current session.** A passed source session is primary evidence, even when it is the parent's ongoing session; synthesize its supported exported evidence. Never exclude it as merely non-prior. The caller retrieves `opencode session export <source-session-id>` or `opencode api get /api/session/<source-session-id>/message` into workspace-local `.tmp`, then reduces user/assistant text and tool names/short results. Do not read SQLite or internal storage.
 - **Never make claims about team dynamics or other people's work.** This is one person's session data.
-- **Never write any files.** Return text findings only.
+- Write findings to the caller's designated scratch artifact and return its confirmed path. If writing fails or no artifact destination is provided, return findings inline and disclose the fallback. Never write product files.
 - **Report technical content, not personal content.** Sessions contain everything: credentials, frustration, half-formed opinions. Use judgment about what belongs in a technical summary and what does not.
 
 ## Time budget

@@ -1,7 +1,33 @@
 # Committing the refresh
 
-Skip if no files changed. Check the current branch, whether the tree has unrelated uncommitted changes, and recent commit style. Stage **only** the files this refresh modified. Write a descriptive message summarizing the refresh (e.g., "update 3 stale learnings, consolidate 2 overlapping docs, delete 1 obsolete doc") in the repo's convention. Its body, and the pull request body when there is one, lists each worth-based cut or Delete and each standards change with its quoted evidence, because reviewers and later readers rely on that trail. Stage a `CODING_STANDARDS.md` this refresh changed.
+Skip if nothing changed. Resolve the current bookmark and actual history head, inspect unrelated and conflicted work, and isolate only refresh paths (including changed standards) into a dedicated revision with JJ explicit-file selection; there is no staging area. Preserve all unrelated work. Verify the selected diff before publishing. The description and PR body list every worth-based cut/Delete and standards change with quoted evidence.
 
-Non-interactive defaults: on the repo's default branch (main, master, or whatever the remote designates) → create a branch named for what was refreshed (e.g., `docs/refresh-auth-learnings`), commit, attempt a PR (if PR creation fails, report the branch name); on a feature branch → separate commit on that branch; git failures → put the recommended commands in the report and continue.
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards.
 
-Interactive: ask (per Blocking questions), with the recommended option first. On the default branch: branch+commit+PR (recommended; specific branch name) / commit directly to the current branch / don't commit. On a clean feature branch: commit to it (recommended) / separate branch / don't commit. On a dirty feature branch: selective-stage and commit only refresh changes / don't commit.
+**Illustrative Go source excerpts — NOT a mandatory repository template.** The following verbatim source example and guidance illustrate Go conventions; repository instructions and observed history take precedence over incompatible syntax.
+
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+```text
+net/http: handle foo when bar
+
+[longer description here in the body]
+
+Fixes #12345
+```
+> Notably, for the subject (the first line of description):
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+> For the body (the rest of the description):
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
+
+Read the FULL Go guide before composing. Resolve `<verified-history-head>` from this task/repository, never assume main. Compare several recent full subjects AND bodies using `(cd "$workspace_root" && jj log --no-graph -r '::<verified-history-head>' -n 10 -T 'description ++ "\n"')`. Infer prefixes/package/case/tense/body separation/wrapping/issues. Repository instructions/history syntax wins; use compatible Go quality guidance only. Without history use project/user instructions plus Go guidance, never invent precedent. Describe with `(cd "$workspace_root" && jj describe -m "<message composed from the standards above>")`. No fixed example syntax elsewhere prescribes the message.
+
+Non-interactive: on the verified remote default bookmark, create a task-named bookmark for the refresh revision and attempt a PR; on a feature bookmark, use a separate refresh revision. On failure retain work, report the exact failed operation and recommended commands, and continue. Never run the Git executable or substitute another ref. All JJ commands execute from the absolute target workspace cwd. Publish using JJ transport and repository-scoped `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh <arguments>)`.
+
+Interactive: ask once with the recommended option first: task bookmark+revision+PR on default, dedicated revision on feature, or leave uncommitted. With unrelated changes, offer explicit-path isolation or leave uncommitted; never capture unrelated content. Existing authorization needs no repeated approval.

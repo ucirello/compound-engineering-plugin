@@ -47,10 +47,11 @@ decides per flag: fix, annotate as historical, or confirm intentional.
 Only the summary exit code distinguishes "clean" from "needs a look".
 
 The script never touches the network (no fetch); classification uses
-whatever refs exist locally. Run a best-effort `git fetch --quiet` first
+whatever refs exist locally. Run a best-effort `jj git fetch` from the absolute workspace cwd first
 when freshness matters. Pure stdlib (no third-party deps).
 """
 import os
+import json
 import re
 import subprocess
 import sys
@@ -101,16 +102,110 @@ def usage_fail(msg: str) -> "NoReturn":
     sys.exit(2)
 
 
+def default_remote_ref(cwd: str) -> tuple[int, str]:
+    """Discover origin's actual default, then verify its local JJ revision.
+
+    Reading the symbolic-ref metadata is narrow local processing, not an
+    invocation of the Git executable. Never infer a default from branch names.
+    """
+    cwd = os.path.abspath(cwd)
+    try:
+        root = subprocess.run(
+            ["jj", "git", "root"], cwd=cwd, capture_output=True,
+            text=True, timeout=30,
+        )
+        if root.returncode != 0 or not root.stdout.strip():
+            return 1, ""
+        git_dir = os.path.abspath(os.path.join(cwd, root.stdout.strip()))
+        metadata_roots = [git_dir]
+        try:
+            with open(os.path.join(git_dir, "commondir")) as source:
+                common = source.read().strip()
+            if common:
+                metadata_roots.append(os.path.abspath(os.path.join(git_dir, common)))
+        except OSError:
+            pass
+        branch = None
+        for metadata_root in metadata_roots:
+            try:
+                with open(os.path.join(metadata_root, "refs", "remotes", "origin", "HEAD")) as source:
+                    symbolic = source.read().strip()
+            except OSError:
+                continue
+            prefix = "ref: refs/remotes/origin/"
+            if symbolic.startswith(prefix):
+                branch = symbolic[len(prefix):]
+                break
+        if not branch:
+            env = dict(os.environ)
+            env["GIT_DIR"] = git_dir
+            for key in ("GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE", "GH_REPO"):
+                env.pop(key, None)
+            remote = subprocess.run(
+                ["gh", "repo", "view", "--json", "defaultBranchRef", "--jq",
+                 ".defaultBranchRef.name"], cwd=cwd, env=env,
+                capture_output=True, text=True, timeout=30,
+            )
+            if remote.returncode != 0:
+                return 1, ""
+            branch = remote.stdout.strip()
+        if not branch or branch in ("HEAD", "null") or any(c.isspace() for c in branch):
+            return 1, ""
+        selector = f'remote_bookmarks(exact:{json.dumps(branch)}, exact:"origin")'
+        verified = subprocess.run(
+            ["jj", "log", "--no-graph", "-r", selector, "-T", 'commit_id ++ "\\n"'],
+            cwd=cwd, capture_output=True, text=True, timeout=30,
+        )
+        if verified.returncode != 0 or len(verified.stdout.split()) != 1:
+            return 1, ""
+        return 0, "origin/" + branch
+    except (OSError, subprocess.TimeoutExpired):
+        return 1, ""
+
+
 def git(args: list[str], cwd: str) -> tuple[int, str]:
+    """Translate legacy classification operations to read-only JJ queries."""
+    def rev(value):
+        if value == "HEAD":
+            return "@"
+        if value.startswith("origin/"):
+            return f'remote_bookmarks(exact:{json.dumps(value[7:])}, exact:"origin")'
+        return value
+    op = args[0]
+    if op == "rev-parse" and "--show-toplevel" in args:
+        command = ["root"]
+    elif op == "rev-parse" and "origin/HEAD" in args:
+        return default_remote_ref(cwd)
+    elif op == "rev-parse":
+        command = ["log", "--no-graph", "-r", rev(args[-1]), "-T", "commit_id"]
+    elif op == "rev-list":
+        left, right = args[-1].split("..", 1)
+        command = ["log", "--no-graph", "-r", f"::{rev(right)} ~ ::{rev(left)}", "-T", '"x\\n"']
+    elif op == "cat-file":
+        value = args[-1]
+        if ":" in value:
+            revision, path = value.split(":", 1)
+            command = ["file", "show", "-r", rev(revision), "--", path]
+        else:
+            command = ["log", "--no-graph", "-r", value.removesuffix("^{commit}"), "-T", "commit_id"]
+    elif op == "merge-base":
+        command = ["log", "--no-graph", "-r", f"{rev(args[-2])} & ::{rev(args[-1])}", "-T", "commit_id"]
+    else:
+        return 1, ""
     try:
         result = subprocess.run(
-            ["git", *args],
-            cwd=cwd,
+            ["jj", *command],
+            cwd=os.path.abspath(cwd),
             capture_output=True,
             text=True,
             timeout=30,
         )
-        return result.returncode, result.stdout.strip()
+        output = result.stdout.strip()
+        if op == "merge-base" and not output:
+            return 1, ""
+        if op == "rev-list" and result.returncode == 0:
+            output = str(len(output.splitlines())) if output else "0"
+        return result.returncode, output
     except (OSError, subprocess.TimeoutExpired):
         return 1, ""
 
@@ -192,7 +287,8 @@ def cites_a_commit(prefix: str) -> bool:
     ("the git history shows session 7e6861b4") describes the surroundings,
     not the token. Digits are word characters so a hash named after its
     algorithm ("SHA256") stays one non-cue word, and command flags drop out
-    first so `git show --format=%H <sha>` reads like `git show <sha>`.
+    first when recognizing historical quoted commands; this parser does not
+    prescribe or execute those commands.
     """
     if REPO_PIN_RE.search(prefix):
         return True  # owner/repo@<sha> pins a commit
@@ -271,13 +367,9 @@ def main(argv: list[str]) -> int:
         if code == 0 and ref:
             upstream = ref
         else:
-            for candidate in ("origin/main", "origin/master"):
-                code, _ = git(
-                    ["rev-parse", "--verify", "--quiet", candidate], repo_root
-                )
-                if code == 0:
-                    upstream = candidate
-                    break
+            # No verified remote default: do not substitute main/master.
+            # Caller verifies merge-state against repository-scoped remote truth.
+            upstream = None
         if upstream:
             code, behind = git(
                 ["rev-list", "--count", f"HEAD..{upstream}"], repo_root

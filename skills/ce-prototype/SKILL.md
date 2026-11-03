@@ -33,9 +33,9 @@ A question is settled by seeing when the judgment lands on the rendered result: 
 
 Default substrate: the web, whatever the product is written in — a native app's navigation feel gets a web approximation, not SwiftUI. `references/build.md` defines yields and artifacts.
 
-Build under `.context/compound-engineering/ce-prototype/<date>-<slug>/`, so the prototype survives for the implementation that follows. Fall back to `/tmp/compound-engineering-<uid>/ce-prototype/<date>-<slug>/`, where survival is best-effort. `references/build.md` names every case that forces the fallback root.
+Build under `.context/ce-prototype/<date>-<slug>/`, so the prototype survives for the implementation that follows. Fall back to the absolute workspace-local `.tmp/ce-prototype/<date>-<slug>/` (local `.tmp/` outside JJ), where survival is best-effort. `references/build.md` names every case that forces the fallback root.
 
-The `.context` path has to be gitignored first. Probe it from the repo root with `git -C <repo root> check-ignore -q .context/compound-engineering/`; the trailing slash is required. When it is not covered, the offer to add that line comes before the root is resolved, or accepting it cannot help this run.
+The `.context` path has to be ignored first. Inspect the workspace-root `.gitignore` for an explicit final `.context/` rule (do not infer coverage from absence in status). When that conservative check fails, offer to append that line before resolving the root, preserving all existing content. Use workspace-local `.tmp/` when declined; verify its ignore rule too before writing artifacts in a JJ workspace.
 
 `references/preview.md` defines that offer and the resolution that follows it. Do not create the run directory yourself; a second claim splits the screens from the capsule.
 

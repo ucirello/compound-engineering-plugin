@@ -2,7 +2,7 @@
 
 #### 1.1 Existing Context Scan
 
-**Pack discovery (every tier).** Compound Packs declared in CE config constrain the Product Contract on every repo-backed software path that reaches synthesis — Lightweight, Standard, Deep, and the Phase 0.2 route that skips the scan below for already-clear requirements — so resolve them before the tier split, by running this skill's resolver:
+**Pack discovery (every tier).** RocketClaw Packs declared in RocketClaw config constrain the Product Contract on every repo-backed software path that reaches synthesis — Lightweight, Standard, Deep, and the Phase 0.2 route that skips the scan below for already-clear requirements — so resolve them before the tier split, by running this skill's resolver:
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
@@ -23,8 +23,9 @@ Scan the repo before substantive brainstorming. Match depth to scope:
 *Topic Scan (grounding scout)* — Create and retain the absolute scratch directory with this shell block, substituting the absolute path of this skill's directory and a short unique run slug:
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+workspace_root="$(jj root 2>/dev/null || pwd -P)";
+SCRATCH_ROOT="$workspace_root/.tmp/rocketclaw";
+[ ! -L "$workspace_root/.tmp" ] && [ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || exit 1;
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
@@ -34,7 +35,7 @@ SCRATCH_DIR="$SCRATCH_ROOT/ce-brainstorm/<run-id>";
 echo "$SCRATCH_DIR";
 ```
 
-Then dispatch one extraction-tier sub-agent via the platform's subagent primitive where available (a Task/Agent-style dispatch on harnesses that expose one); otherwise run the work inline or serially. In harnesses that support background dispatch, proceed to Phase 1.2/1.3 **without waiting**: the scout runs during the user's think-time on the opening questions. Hand the prompt the `roots` from Pack discovery; when there are none (no `packs:` key, or packs unresolved this run), omit its pack sentence entirely. Scout prompt:
+Then dispatch one extraction-tier OpenCode-native subagent, following the permission/model/capacity distinctions in `references/model-tiers.md`; otherwise run the work inline or serially with the same dossier contract. Never use another harness. Where native background dispatch is supported, proceed to Phase 1.2/1.3 **without waiting**: the scout runs during the user's think-time on the opening questions. Hand the prompt the `roots` from Pack discovery; when there are none (no `packs:` key, or packs unresolved this run), omit its pack sentence entirely. Scout prompt:
 
 A generic subagent is one whose whole brief is the prompt you send it. When the host's subagent tool makes you name an agent, use only a name you have seen the host list, and list its agents before the first dispatch if you have not. Pick the plain one that adds no role of its own, which still counts as a generic subagent. Never pick a specialist, such as a reviewer or worker agent, whose own role prompt, output format, or tool limits would replace or narrow your prompt.
 

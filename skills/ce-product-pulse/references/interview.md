@@ -1,6 +1,6 @@
 # Product Pulse First-Run Interview
 
-Loaded from `references/setup.md` at the start of Phase 1. Captures the configuration that will be merged into `.compound-engineering/config.local.yaml` (the optional local override; interviews write here) as `pulse_*` keys. Subsequent runs re-read those keys from the local file first, then from `config.yaml`.
+Loaded from `references/setup.md` at the start of Phase 1. Captures the configuration that will be merged into `.rocketclaw/config.local.yaml` (the optional local override; interviews write here) as `pulse_*` keys. Subsequent runs re-read those keys from the local file first, then from `config.yaml`.
 
 For each section: ask the opening question, evaluate the answer against the quality bar, push back when it falls into a named anti-pattern, and capture the final answer in the user's own language.
 
@@ -224,9 +224,9 @@ Skipping this entirely is fine - the skill does not require a schedule to functi
 
 ## Config File Shape
 
-After the interview completes, merge a `pulse_*` block into `<repo-root>/.compound-engineering/config.local.yaml`. Resolve the repo root with `git rev-parse --show-toplevel`. Preserve any non-pulse keys that already exist in the file (e.g., `plan_*`); only add or update `pulse_*` keys.
+After the interview completes, merge a `pulse_*` block into `<repo-root>/.rocketclaw/config.local.yaml`. Resolve the absolute workspace root with `(cd "<absolute-target-directory>" && jj root)` as in `SKILL.md`; run later JJ commands from that absolute root and never invoke the Git executable. If no workspace is available, ask for the intended local project directory before writing rather than inventing a root. Preserve any non-pulse keys that already exist in the file (e.g., `plan_*`); only add or update `pulse_*` keys.
 
-If the file does not yet exist, create the directory and file. If `.compound-engineering/config.local.yaml` is not already covered by `.gitignore`, offer to add the entry before writing.
+If the file does not yet exist, create the directory and file. Inspect applicable `.gitignore` files with native file reads, respecting nested rules and negations. If ignore coverage is uncertain, disclose that uncertainty rather than claiming the path is ignored. If `.rocketclaw/config.local.yaml` is not already demonstrably ignored, offer to add an explicit entry before writing.
 
 The pulse block uses skill-prefixed flat keys so it can share the config file without owning unrelated settings:
 

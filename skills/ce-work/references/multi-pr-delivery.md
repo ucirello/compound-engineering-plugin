@@ -39,7 +39,7 @@ When the host can wake this session on a change to a PR, keep a watch on each PR
 
 ## Separate sessions
 
-Some hosts can start a separate long-lived session in its own checkout that outlives this turn, such as T3 delegated worktree tasks, Orca worktree children, or Codex cloud tasks. This is not a subagent: a subagent ends with the turn that started it, while a group's PR needs hours of CI, review, and merge.
+Use only an actual native OpenCode capability for a separate long-lived session in its own verified JJ checkout that outlives this turn. Never launch another harness or a helper dispatcher. Session creation and adoption must follow `workspace-setup.md`: detect existing isolation first, verify exact base and colocation, preserve bookmarks, and use the persisted dated identity and absolute local `.tmp` destination. A synchronous subagent is not a substitute for a durable group's session when CI/review/merge outlive the call.
 
 Where the host offers such sessions and its own rules let the agent start them, hand each group to its own session automatically and coordinate from this one.
 

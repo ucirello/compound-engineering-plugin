@@ -19,7 +19,7 @@ Resolve one implementation binding from applicable authority and scope; do not r
 
 Lower sources may fill an unspecified detail but cannot contradict or broaden a higher source. Incidental mentions in feature prose, quoted material, examples, comparisons, filenames, or discussion do not activate routing. If two applicable instructions of equal authority genuinely conflict on which external worker receives the work, or on whether work leaves the host at all, tell the user about the conflict instead of guessing.
 
-For example, current-task strict Composer resolves to Composer with `require` even when a caller Codex binding and config Cursor preference are both present. Without that task instruction, a caller Codex binding sourced from the current LFG task keeps that provenance. Without applicable live or caller intent, the ordered config candidates apply only when standing mode is enabled.
+For example, a current-task strict model request keeps `require` even when a conflicting caller binding or config preference exists. Compatibility names such as Composer, Codex and Cursor remain intent data, resolved only through available native OpenCode models; they never launch another harness. Without live or caller intent, ordered config candidates apply only when standing mode is enabled.
 
 ### Typed caller binding
 
@@ -30,9 +30,9 @@ A validated recovery run id selects durable state. It never authorizes a fresh d
 ### Standing configuration
 
 <!-- ce-config-layers:start -->
-**Resolve ordinary CE yaml keys from the two repo files.**
+**Resolve ordinary RocketClaw yaml keys from the two repo files.**
 
-- **Read** `<repo-root>/.compound-engineering/config.local.yaml`, then `config.yaml` (`<repo-root>` = `git rev-parse --show-toplevel`). Missing files are skipped. Gitignore does not change resolution.
+- **Read** `<repo-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<repo-root>` = the verified absolute JJ workspace root). Missing files are skipped. Ignore rules do not change resolution.
 - **Win** with the first active (non-commented) value. For scalars, empty is unset; an invalid value continues to the next layer, then the skill default. For lists and maps, a present key — including an empty list or map — replaces the whole key.
 - **Do not** use this rule for `docs_root` — that key is `config.yaml` only.
 <!-- ce-config-layers:end -->
@@ -48,7 +48,7 @@ For a bare prompt, cross-model execution is eligible only after Phase 0 has esta
 ## Run the chosen engine
 
 - **Native:** follow `references/execution-strategy.md` for scheduling and dispatch, and the Phase 2 loop in `references/implementation-loop.md`. `ce-work` creates the tasks, orders the units, dispatches, verifies, and commits.
-- **Cross-model:** follow the serial external-unit transaction in `references/cross-model-execution.md` through the bundled controller, detached runner, and fixed adapter. Never let the detached worker select a fallback recipient.
+- **Model-selected:** follow the native OpenCode/JJ unit transaction in `references/cross-model-execution.md`. Never let a worker select a fallback recipient or launch another harness.
 
 ## Resume the correct tail
 

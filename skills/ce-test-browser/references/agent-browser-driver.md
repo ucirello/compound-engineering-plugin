@@ -36,8 +36,8 @@ agent-browser type @e1 "text"
 agent-browser press Enter
 
 # Capture evidence
-agent-browser screenshot out.png
-agent-browser screenshot --full out-full.png
+agent-browser screenshot "$workspace_root/.tmp/browser-tests/out.png"
+agent-browser screenshot --full "$workspace_root/.tmp/browser-tests/out-full.png"
 
 # Navigation and waits
 agent-browser back
@@ -45,3 +45,5 @@ agent-browser wait @e1
 ```
 
 Use the installed core documentation for console-error inspection and any command not shown here. Do not switch to another browser driver after the first route is tested.
+
+Before capturing evidence, create `"$workspace_root/.tmp/browser-tests"` under the verified absolute target workspace root. Keep temporary browser artifacts there, including troubleshooting output; never fall back to operating-system temporary directories.

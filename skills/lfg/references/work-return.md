@@ -8,7 +8,7 @@ When `ce-work` cannot re-read the reference file that defines its return after i
 
 ## What each route outcome means
 
-`ce-work` discloses an unavailable route once and continues natively under both `prefer` and `require` (its `cross-model-execution.md` defines that behavior), so LFG decides the route outcome from the return fields rather than expecting `ce-work` to refuse. A return whose `implementation_engine_binding.mode` is `require` and whose `actual_route` differs from `requested_route` stops the pipeline as blocked, reporting `requested_route`, `actual_route`, and `fallback_reason`; `require` is the caller's instruction, and work done natively against it does not ship. A completed `prefer` fallback may continue to step 3 exactly once after prominently disclosing its requested-versus-actual route/model and `fallback_reason` to the user; fallback is not a reason to invoke implementation again.
+`ce-work` uses native OpenCode model discovery and subagents; compatibility route fields never authorize another harness dispatcher. An unavailable required route stops as blocked, reporting `requested_route`, `actual_route`, and `fallback_reason`; work done against that requirement does not ship. A completed permitted `prefer` fallback may continue to step 3 exactly once after prominently disclosing its requested-versus-actual route/model and `fallback_reason`; fallback is not a reason to invoke implementation again. Preserve receipts and coverage, and never retry a denial through a different mechanism.
 
 ## What `status: complete` must carry
 
@@ -18,7 +18,7 @@ Also require the fields that record which route actually ran: `implementation_en
 
 ## The work must be committed
 
-`ce-code-review` leaves out untracked files, so files this run added go unreviewed until they are committed. Before step 3, confirm the return's `changed_files` are committed. If any are not, commit those files and continue. Do not stop for this.
+Before step 3, inspect the return's `changed_files` with JJ from the target absolute workspace root. Ensure new run-owned files are tracked (use `jj file track -- <paths>` there when necessary) and included in the review scope, without absorbing unrelated or ignored work. Confirm run-owned work is committed; if needed commit only those paths and continue. Before composing that message, read the full https://go.dev/wiki/CommitMessage guide and compare several recent full subjects and bodies with `(cd "$workspace_root" && jj log --no-graph -r '::<verified-history-head>' -n 10 -T 'description ++ "\n"')`, using the captured actual relevant runtime history head. Analyze prefix/package, case/tense, subject/body separation, wrapping and issue placement. Project instructions and history syntax win over compatible Go quality guidance; absent history, use project/user instructions and Go guidance without inventing precedent. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards. Use `(cd "$workspace_root" && jj commit -m "<message composed from the standards above>" -- <run-owned-paths>)`.
 
 ## Verification evidence
 

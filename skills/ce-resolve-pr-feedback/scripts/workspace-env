@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Source from helpers so repository requests use the target JJ store.
+workspace_root=$(cd "$PWD" && jj workspace root) || return 1
+case "$workspace_root" in /*) ;; *) echo "Expected absolute JJ workspace root" >&2; return 1 ;; esac
+GIT_DIR=$(cd "$workspace_root" && jj git root) || return 1
+export GIT_DIR
+mkdir -p "$workspace_root/.tmp" || return 1

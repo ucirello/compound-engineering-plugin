@@ -93,7 +93,7 @@ Wherever this phase dispatches a subagent, classify a rejected dispatch by wheth
 
 For each selected section, choose the smallest useful agent set. Do **not** run every agent. Use at most **1-3 agents per section** and usually no more than **8 agents total**.
 
-The names below are skill-local prompt asset file stems under `references/agents/`, not standalone agent types. For each selected name, read `references/agents/<name>.md` and seed a generic subagent with that prompt content plus the section context described below. Do not name a persona or CE agent through `subagent_type`, typed `Agent` names, or platform-level CE agent registration; when the host requires an agent-name field, it carries the plain generic agent.
+The names below are skill-local prompt asset file stems under `references/agents/`, not standalone agent types. For each selected name, read `references/agents/<name>.md` and seed a native generic subagent with that prompt content plus section context. Follow `reasoning-elevation.md` for delegation permission, model discovery and override authorization, consuming configuration depth, receipts and incomplete coverage; never equate same-model agents with cross-model independence.
 
 A generic subagent is one whose whole brief is the prompt you send it. When the host's subagent tool makes you name an agent, use only a name you have seen the host list, and list its agents before the first dispatch if you have not. Pick the plain one that adds no role of its own, which still counts as a generic subagent. Never pick a specialist, such as a reviewer or worker agent, whose own role prompt, output format, or tool limits would replace or narrow your prompt.
 
@@ -171,10 +171,11 @@ Signals that justify artifact-backed mode:
 
 If artifact-backed mode is not clearly warranted, stay in direct mode.
 
-Artifact-backed mode uses a per-run OS-temp scratch directory. Create it once before dispatching sub-agents and capture its **absolute path** — pass that absolute path to each sub-agent so they write to it directly. Do not use `.context/`; the artifacts are per-run throwaway that are cleaned up when deepening ends (see 5.3.6b), matching the repo Scratch Space convention for one-shot artifacts. Do not pass unresolved shell-variable strings to sub-agents; they need the resolved absolute path.
+Artifact-backed mode uses a private per-run directory under the absolute workspace's `.tmp/`. Create it once before dispatch and pass the resolved absolute path to each subagent, never unresolved shell variables. Do not use `.context/`. Cleanup only run-owned disposable artifacts after results are safely retained.
 
 ```bash
-SCRATCH_DIR="$(mktemp -d "${TMPDIR:-/tmp}/ce-plan-deepen-XXXXXX")"
+mkdir -p "$workspace_root/.tmp"
+SCRATCH_DIR="$(mktemp -d "$workspace_root/.tmp/ce-plan-deepen-XXXXXX")"
 echo "$SCRATCH_DIR"
 ```
 

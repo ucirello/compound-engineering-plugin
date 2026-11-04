@@ -55,7 +55,7 @@ The ideation artifact is produced **automatically** — persistence is not opt-i
    - Extension follows `OUTPUT_FORMAT` (`.html` default, `.md` on override).
    - **Repo mode:** ensure `<root>/ideation/` exists (create if absent).
    - **Elsewhere mode with `<root>/ideation/` already present:** use it.
-   - **Otherwise (no repo, or elsewhere with no `<root>/ideation/`):** write into the run's CE temp area — the `<scratch-dir>` resolved in Phase 1 (`<scratch-root>/ce-ideate/<run-id>/`). Do **not** write into the user's current working directory, and do **not** create a `<root>/ideation/` tree for a subject unrelated to the repo. Announce the absolute path and note it is temporary (`/tmp` is cleared on reboot — move it to keep it).
+   - **Otherwise (no repo, or elsewhere with no `<root>/ideation/`):** write into the run's local scratch area — the `<scratch-dir>` resolved in Phase 1 (`<scratch-root>/ce-ideate/<run-id>/`). Do **not** write directly into the user's current working directory, and do **not** create a `<root>/ideation/` tree for a subject unrelated to the repo. Announce the absolute path and note it is scratch storage (move it before local cleanup to keep it).
 2. **Choose the file path:** `<dir>/YYYY-MM-DD-<topic>-ideation.<ext>` (or `<dir>/YYYY-MM-DD-open-ideation.<ext>` when no focus exists).
 3. **Load the section contract and rendering reference** (deferred from Phase 0.0): read `references/ideation-sections.md` and the format-rendering reference matching `OUTPUT_FORMAT` — `references/markdown-rendering.md` for `md`, `references/html-rendering.md` for `html`.
 4. **Write the document** per those references. `ideation-sections.md` defines the section contract (metadata, Grounding Context, Topic Axes, Ranked Ideas with per-idea fields, Rejection Summary); the rendering reference defines how the resolved format presents it. Content is identical across formats; only presentation differs.
@@ -109,8 +109,8 @@ Read `references/publishing.md` and follow it. The Phase 4 file already exists a
 
    > `<title> — <description>. Basis: <basis/evidence>. Why it matters: <rationale>. Known tradeoffs: <downsides>.`
 
-   The basis/evidence directly feeds `ce-brainstorm`'s product-pressure-test, so it won't re-derive what we already know. Append a one-line provenance pointer: `(Seeded from ce-ideate: <path>, idea "<title>")` — it records origin and lets brainstorm pull adjacent detail if it wants, without being forced to read anything.
-3. **Load the `ce-brainstorm` skill** with that seed. The saved file is already the record — no extra write step. `OUTPUT_FORMAT` does **not** propagate: ce-brainstorm re-resolves its own `brainstorm_output` config independently. Asymmetric output (`ideation.html` plus a markdown unified plan) is expected; a user who wants HTML for both sets both keys in CE config (`config.local.yaml` then `config.yaml`).
+   The basis/evidence directly feeds `ce-brainstorm`'s product-pressure-test, so it won't re-derive what we already know. Append a one-line provenance pointer: `(Source: <path>, idea "<title>")` — it records origin and lets brainstorm pull adjacent detail if it wants, without being forced to read anything.
+3. **Load the `ce-brainstorm` skill** with that seed. The saved file is already the record — no extra write step. `OUTPUT_FORMAT` does **not** propagate: ce-brainstorm re-resolves its own `brainstorm_output` config independently. Asymmetric output (`ideation.html` plus a markdown unified plan) is expected; a user who wants HTML for both sets both keys in config (`config.local.yaml` then `config.yaml`).
 
 **Repo mode only:** do **not** skip brainstorming and go straight to `ce-plan` — `ce-plan` wants a brainstorm-grounded Product Contract. In elsewhere modes, ideation is a legitimate terminal state; brainstorming is optional deeper development of one idea, not a required next rung on an implementation ladder that does not exist in these modes.
 
@@ -129,8 +129,10 @@ Then return to the Phase 5 menu. Typically the user next brainstorms a sharpened
 
 The file is already written, so there is no save step.
 
-- **Inside a git repo:** offer to commit only the ideation doc (do not create a branch, do not push; if the user declines, leave it uncommitted).
+- **Inside a JJ workspace:** offer to record only the ideation doc through `ce-commit`, which must read the full Go commit-message guide and compare several recent full subjects and bodies from the actual relevant runtime history head before composing; project instructions and observed syntax win. Do not create a bookmark or push; if the user declines, leave the doc uncommitted.
 - **Temp-area or non-repo file:** skip the commit offer.
+
+For an accepted commit handoff, pass this requirement to `ce-commit`: "Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards." Read the full guide, then inspect several recent complete subjects AND bodies with `(cd "$workspace_root" && jj log --no-graph -r '::<verified-history-head>' -n 10 -T 'description ++ "\n"')`, resolving the actual relevant history head without changing any reviewed range. Compare prefixes/package names, case, tense, subject/body separation, wrapping, and issue placement. Project/user instructions and observed history syntax always win; apply compatible Go quality guidance. With no history, do not invent precedent. Message composition and its source-guidance excerpts belong to the loaded `ce-commit` skill; this handoff prescribes no fixed syntax.
 
 Then narrate the path and end the session — do not return to the menu.
 
@@ -150,6 +152,6 @@ Before finishing, check:
 - **no surviving idea replaces the subject** rather than operating on it
 - when Phase 1.5 produced an axis list, the survivor set spreads across axes rather than clustering on one — and any axis with zero survivors is noted as a deliberate gap in the rejection summary, not silently absent
 - every rejected idea has a reason
-- the deliverable was written automatically in both modes (Phase 4) — to `<root>/ideation/` when present, else the CE temp area, never the user's CWD
+- the deliverable was written automatically in both modes (Phase 4) — to `<root>/ideation/` when present, else the local scratch area, never directly in the user's CWD
 - the session showed a concise summary, not a reproduction of the full deliverable
 - acting on an idea routes to `ce-brainstorm` (with a substance seed, not the whole file), not directly to implementation

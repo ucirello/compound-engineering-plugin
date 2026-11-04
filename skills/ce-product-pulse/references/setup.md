@@ -2,6 +2,10 @@
 
 Required read on a first run or a `setup`/`reconfigure`/`edit config` run. Key definitions and defaults are in `references/config.md`.
 
+## OpenCode prerequisite
+
+For workflows that use deep delegation, the consuming user's global OpenCode configuration must set `experimental.subagent_depth` to an integer of at least `3`. Locate the actual global configuration directory with `opencode debug paths` / `opencode debug paths config`; normally the document is `~/.config/opencode/opencode.json`. In the existing `opencode.json` or `opencode.jsonc`, merge this key while preserving sibling settings and any higher depth; do not create a competing configuration document. Package/plugin installation alone does not enable this consumer setting, and higher-precedence configuration must not lower it. These are setup instructions only: do not edit global files as part of the pulse. Pulse data queries themselves do not require subagents.
+
 ## Seed from strategy (if available)
 
 Before asking any questions, read the strategy doc with the native file-read tool - `STRATEGY.md`, or when it is absent the first of `VISION.md`, `PRODUCT.md` (in that order) that exists; readers accept the legacy names while other tools converge on `STRATEGY.md`. Every setup and every report resolves the doc this way from current files, so the source never depends on a prior run. If a doc exists, extract:
@@ -34,7 +38,7 @@ If the user offers read-write database access, refuse and offer the alternatives
 
 ## Writing the config
 
-Write the captured config to `<repo-root>/.compound-engineering/config.local.yaml` as flat `pulse_*` keys, using the schema in `references/interview.md` under "Config file shape". Resolve the repo root with `git rev-parse --show-toplevel`. To write: (1) if the file or directory does not exist, create `.compound-engineering/` and write the YAML file; (2) if the file exists, merge new keys into the existing YAML, preserving any non-pulse keys (e.g., `plan_*`) untouched. If `.compound-engineering/config.local.yaml` is not already covered by the repo's `.gitignore`, offer to add the entry before writing. Show the resulting pulse block to the user in chat and offer one round of edits.
+Write the captured config to `<repo-root>/.rocketclaw/config.local.yaml` as flat `pulse_*` keys, using the schema in `references/interview.md` under "Config file shape". Resolve the absolute workspace root with `jj root` from the current workspace, or use the confirmed absolute local project root when no JJ workspace exists. To write: (1) if the file or directory does not exist, create `.rocketclaw/` and write the YAML file; (2) if the file exists, merge new keys into the existing YAML, preserving any non-pulse keys (e.g., `plan_*`) untouched. Inspect ignore files directly without invoking Git; if `.rocketclaw/config.local.yaml` is not already covered by the repo's `.gitignore`, offer to add the entry before writing. Show the resulting pulse block to the user in chat and offer one round of edits.
 
 ## Scheduling
 

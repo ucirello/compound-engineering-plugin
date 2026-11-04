@@ -2,6 +2,8 @@
 
 set -e
 
+source "$(dirname "$0")/workspace-env"
+
 if [ $# -eq 0 ]; then
     echo "Usage: resolve-pr-thread THREAD_ID"
     echo "Example: resolve-pr-thread PRRT_kwDOABC123"

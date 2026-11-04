@@ -117,7 +117,9 @@ CENSOR_STATUS_FILE=""
 if [[ -n "$CENSOR_AFTER" ]] && awk -v a="$CENSOR_AFTER" -v t="$TIMEOUT" 'BEGIN { exit !(a ~ /^[0-9]+(\.[0-9]+)?$/ && t+0 == t && a+0 > 0 && a+0 < t+0) }'; then
   TIMEOUT="$CENSOR_AFTER"
   CENSORING=1
-  CENSOR_STATUS_FILE=$(mktemp "${TMPDIR:-/tmp}/ce-optimize-censor-XXXXXX")
+  workspace_root=$(jj root 2>/dev/null || pwd -P)
+  mkdir -p "$workspace_root/.tmp"
+  CENSOR_STATUS_FILE=$(mktemp "$workspace_root/.tmp/optimize-censor-XXXXXX")
 fi
 
 # Run the measurement command with timeout

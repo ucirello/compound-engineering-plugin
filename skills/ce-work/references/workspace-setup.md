@@ -1,27 +1,36 @@
 # Workspace Setup
 
-Read this after input triage identifies code work and before any branch move, implementation edit, worker dispatch, or commit. It covers choosing a writable checkout, clarifying the plan, placing the branch, recording what was already in progress before work began, handling a unit that must edit an already-dirty file, and setting up the task list. Return to the main `SKILL.md` flow: the canonical checkout, the branch, the pre-work paths and commits, the exclusions, and the task state.
+Read after input triage and before editing, dispatching, moving bookmarks or committing. Establish the writable canonical absolute JJ root, exact base/head, pre-work inventory, exclusions and task state. Run every JJ command with cwd the target absolute workspace root, e.g. `(cd "$workspace_root" && jj status)`; `-R` alone is insufficient. Keep file arguments repository-relative. Repository-scoped `gh` runs from that root with `GIT_DIR` obtained there via `jj git root`.
 
-## Writable Checkout
+## Detect isolation before creating anything
 
-Repo-local implementation writes require a writable checkout. Before treating the current working directory as the project, confirm it is a git checkout you can edit. If this session has no writable checkout, but the user named a repository and the harness exposes a remote repo-work surface with a writable checkout, run the implementation work on that surface and treat that checkout as the canonical workspace for verification, commits, and handoff. Otherwise skip repo-local writes and report that no writable checkout is available; do not synthesize file changes from a non-repo scratch directory.
+Confirm a writable JJ checkout with `jj root`; inspect `jj workspace list`, current root and harness ownership/session metadata. If the current checkout already is the intended verified isolated workspace, reuse it without renaming, recreating or modifying its identity. A remote writable surface must supply its absolute canonical root and native session ownership. Without a writable checkout, report blocked; do not manufacture repo changes in scratch.
 
-## Prepare the Work
+Read `work-intake.md` for a plan (skip for a bounded bare prompt). Preserve the plan body; progress belongs in receipts, task tracking and revisions.
 
-1. **Read Plan and Clarify** _(skip for a bare prompt)_ — read `references/work-intake.md` for how to size the read, what to pull from the plan, and when to stop and ask. Treat the plan as a decision artifact, not an execution script: ask anything unclear before implementing rather than after. **Do not edit the plan body during execution** — progress lives in git commits and the task tracker, and legacy `- [ ]` / `- [x]` marks or a `status:` field are not state.
+Resolve default and source bookmarks from actual remote metadata and `jj bookmark list --all-remotes`, using `jj git fetch --remote <verified-remote>` only when authorized. Do not hardcode a default revision or discard local commits. Capture exact `@` commit ID and relevant runtime history head; empty `@` above a remote commit does not erase that parent. Preserve PR/source bookmarks. Default-bookmark mutation needs explicit user authority; use a task bookmark otherwise. Unknown default/base or ambiguous push authority is a safe stop, not a reset.
 
-2. **Setup Environment**
+Before any edit record `jj status`, `jj diff --summary`, `jj file list`, conflicts and pre-existing local commits relative to the verified remote base. Inspect filesystem untracked AND ignored content separately: JJ snapshots do not protect ignored files. Nothing pre-existing is implicitly offered for commit or publication. Do not stash, reset or discard it. Unit commits select owned paths only; pass all unoffered paths as shipping exclusions. If a unit must edit an already-dirty path, standalone asks once whether to include or exclude it; return-to-caller instead blocks before editing that path.
 
-   Two things must hold before the first edit: the work lands on a feature branch, and nothing the user did not offer up gets committed or published by this run. Neither is a question for the user. A branch move is a one-command undo, so do it and say so in one line.
+## New isolation when needed
 
-   **Branch.** Determine the default branch from `origin/HEAD`. If that is unavailable, use the host's repository-metadata capability; when the available interface is GitHub CLI, run `gh repo view --json defaultBranchRef`. Otherwise use `main` or `master` when one exists. Read the current branch with `git branch --show-current`.
+Use `ce-worktree` when requested, or native isolated workers / multi-PR sessions when their contracts require separation. Prefer harness-native creation and session adoption. It must support and verify colocation, the requested identity and exact base; incompatibility stops for an authorized safe choice rather than bypassing the harness.
 
-   If you are on the default branch, detached, or cannot tell, create a feature branch named from the plan or work description. When a remote default exists, run `git fetch origin <default>` first. Base the new branch on the fetched `origin/<default>` when `HEAD` has no commits beyond it; base it on `HEAD` when local commits must stay visible to the idempotency check and the shipping check, or when there is no remote. After the branch move, run `git branch --show-current` again and treat that result as authoritative. When branch safety remains uncertain, use a spare branch and never make incremental commits on the real default.
+For a new ce-worktree identity, capture local date once as `YYYYMMDD` and persist it in run state before creation. Normalize the supplied name or task/PR/revision into a meaningful kebab-case slug, stripping an existing date prefix so there is no double date. Use `YYYYMMDD-meaningful-slug` for both the registered JJ name and destination basename under the existing absolute local `.tmp` layout. Check BOTH registered names and filesystem destinations; choose `-2`, `-3`, etc. on collisions. Reuse the persisted date/name on retries, resumes and across midnight; never use a timestamp, PID or random identity. Other new isolated workspace destinations also remain absolute and under local `.tmp`, with unique names and verified exact bases.
 
-   Otherwise continue on the invoked branch without renaming it or asking. Use a worktree only when the user asked for one this session (`ce-worktree`) or when `references/multi-pr-delivery.md` builds a PR group in its own checkout or session, and commit on the default branch only when the user explicitly authorized that in this session.
+Where direct JJ creation is permitted by the harness lifecycle, the shell pattern is:
 
-   **Pre-work scope.** Before editing, record `git status --short --untracked-files=all` (the user's in-progress files) and whether `HEAD` carries commits not on the remote default (`git log origin/<default>..HEAD`; "unknown" without a remote). Nothing in that set is yours to commit or publish. It rides along on the branch move untouched: no stash, no question, no effect on naming. Enforce this without asking the user to choose:
-   - Incremental commits stage only work-owned files and are path-limited, so untouched WIP never enters a commit; the standalone handoff passes every pre-work file this run did not commit as `exclude:<paths>`, and ships locally via `ce-commit` when pre-existing unpushed commits are on the branch (`references/shipping-workflow.md`).
-   - A unit that must edit a file that was already dirty is the one case a commit cannot separate. Ask once, at the first commit that would include such a file, and cover every such file in that one question: commit those files with the user's edits included, or leave them uncommitted (an exclusion for the rest of the run, named in the final summary as unshipped). In Return-to-Caller Mode do not ask and do not edit the file — return `status: blocked` naming it, so the user's WIP stays intact and commit-or-stash-and-rerun is a clean recovery.
+```sh
+(cd "$surviving_root" && jj workspace add --colocate --name "$workspace_name" --revision "$verified_base" "$absolute_destination")
+(cd "$absolute_destination" && jj git colocation status)
+```
 
-3. **Create Task List** _(skip if triage already built one or routed as Trivial)_ — use the platform's task-tracking capability when available (`TaskCreate`/`TaskUpdate`/`TaskList` in Claude Code, `update_plan` in Codex, or the equivalent elsewhere), and follow `references/work-intake.md` for how tasks are derived, named, and ordered. If no such capability exists, continue without simulating a task list in chat.
+Verify the resulting name/path/base and positive colocation status before adopting the destination through native session tooling. Record owner/run and exact source bookmarks. Never recreate or rename an existing verified isolation to satisfy a naming preference.
+
+## Authorized run-owned cleanup
+
+Completion is not deletion authority. Before destructive cleanup stop workers, leave the target, and adopt a surviving harness session/root first. Verify the exact registered name/path and run ownership, no remaining references or active users, required integration and recovery/archive/best refs, plus tracked/conflicted and ignored/untracked contents. Retain anything unrelated, ambiguous or non-disposable. Copy receipts and necessary recovery evidence outside the target and read them back before proceeding. Respect harness permissions and lifecycle.
+
+Only then, from the surviving absolute root, use `(cd "$surviving_root" && jj workspace remove "$verified_name")`. Verify BOTH deregistration and directory disappearance. Warnings or remaining paths mean incomplete cleanup: retain/report state, never force-delete or use a Git fallback. `jj workspace forget` only unregisters and preserves files; it is not destructive cleanup. Bookmark cleanup is separate and must retain recovery/archive/best refs.
+
+Create tasks with the actual host-native task facility when available. Derive units, order and evidence from `work-intake.md`; no fabricated platform tool names are required.

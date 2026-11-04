@@ -28,7 +28,7 @@ At the fixed deadline, the final refresh preserves `terminal` and already-settle
 
 Watcher ownership is **latest-valid-watcher-wins**: the newest invocation that completes a valid first snapshot takes over. A newer invocation cancels an older invocation whose first fetch is still in flight, so network completion order cannot hand ownership back to the older one. That reservation does not displace the watcher that is already active. Only a successful first snapshot supersedes the active watcher and terminates it gracefully; a failed preflight leaves the active watcher healthy. Every wake and snapshot carries `watch_generation`. When a wake arrives, compare its generation with a fresh snapshot. A stale wake is discarded and coalesced into that current read. If the generation matches but the attention set (the items the snapshot says still need action) has already cleared, do no work. An `invocation-superseded` wake means a later explicit invocation now owns the state: end the old loop without a tick or a re-arm. A replacement watcher keeps `last_change_at`, `invocation_started_at`, and `invocation_budget_seconds`, so it polls immediately without adding a new settle delay or renewing the budget.
 
-Use the harness's tools to run the detector and wait for its output. A skill drives tool calls; it does not type slash commands the way a user would. The rows below are examples, not a required tool list:
+Use OpenCode's native background shell tool to run the detector and its completion/wake notification to resume judgment in this session; do not poll the background tool for completion or dispatch through another harness. A skill drives tool calls, not user slash commands. The following are compatibility examples only, not active dispatch routes:
 
 | Harness | Run and wait tools | Durable beyond the session? |
 |---------|--------------------|-----------------------------|
@@ -41,7 +41,7 @@ Use the harness's tools to run the detector and wait for its output. A skill dri
 
 **Checkpoint:** Use checkpoint mode only when the user requests it or nothing can wake this agent. Run one tick, persist state, report, and print the exact host-rendered resume invocation. Say monitoring is paused. Never fake a loop with a foreground `sleep` or an unmanaged detached process.
 
-**Durability:** the in-session watch dies with the session. Re-invoking the skill resumes from disk, because `/tmp` persists across ticks. For an unattended multi-day watch, escalate to a durable scheduler: Grok's `scheduler_create --durable`, or cron running `<cli> exec '<host-rendered resume invocation>'`. A fresh headless run has no memory of this conversation, so persist consequential decisions to disk.
+**Durability:** the in-session watch dies with the session. Re-invoking resumes from the target workspace's persistent `.tmp/rocketclaw` journal. For a watch that must outlive the session, use an actually available authorized native scheduler, preserving the absolute workspace root and state path; without one, report session-bound coverage rather than promise durability. A fresh run reconstructs consequential decisions from disk.
 
 ## Choosing the wake source
 
@@ -79,7 +79,7 @@ When the host's mechanism is the wake source:
 
 ## Pipeline mode bound (`mode:pipeline`)
 
-An orchestrator (`lfg`) drives ticks in-line and needs the loop to terminate. Run ticks back-to-back until one of the stops below. **To wait for CI to progress between ticks, use the harness's native non-blocking wait — never a bare foreground `sleep`** (blocked on Claude Code, discouraged elsewhere). Examples: Claude Code's `Monitor` until-loop; Grok's `get_command_or_subagent_output(timeout_ms=…)` or a `monitor`; Cursor's `Await` on a backgrounded `gh pr checks --watch`. When the host's instructions dictate PR waits and its wake returns to this session, arm that wake and end the turn; the wake resumes these ticks. If nothing can wake the run, do one tick and return control to the orchestrator rather than busy-spinning. Loop until:
+An orchestrator (`lfg`) drives ticks in-line and needs termination. Run bounded ticks back-to-back. **Wait through OpenCode's native background shell/completion notification, never a foreground `sleep` or another harness dispatcher.** When host instructions dictate a PR wake returning to this session, arm it and end the turn. If no wake is available, do one tick and return to the orchestrator rather than busy-spin. Loop until:
 
 - the pipeline stop in `references/pipeline.md` returns success or `needs-human`; it owns both gates. Anything short of them keeps ticking until it clears or the time budget expires; or
 - a **budget** is hit. The default is **3 CI fix rounds** per head-lineage and an overall time cap of about 30-45 minutes. When the budget runs out, the still-red checks and any `needs-human` items become residuals.

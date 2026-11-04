@@ -87,20 +87,23 @@ AGENT_SURFACE_PATTERN = re.compile(
 )
 
 
-def git(*args: str) -> subprocess.CompletedProcess[str]:
+def jj(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["git", *args], capture_output=True, text=True, check=False
+        ["jj", "--color=never", "--no-pager", *args], cwd=repo_root(),
+        capture_output=True, text=True, check=False
     )
 
 
-def valid_commit(ref: str | None) -> bool:
+def resolve_commit(ref: str | None) -> str | None:
     if not ref:
-        return False
-    return git("rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}").returncode == 0
+        return None
+    result = jj("log", "--no-graph", "-r", ref, "-T", 'commit_id ++ "\n"')
+    lines = result.stdout.splitlines()
+    return lines[0] if result.returncode == 0 and len(lines) == 1 else None
 
 
 def unique_merge_base(base: str, head: str) -> str | None:
-    result = git("merge-base", "--all", base, head)
+    result = jj("log", "--no-graph", "-r", f"heads(::({base}) & ::({head}))", "-T", 'commit_id ++ "\n"')
     candidates = [line for line in result.stdout.splitlines() if line]
     if result.returncode != 0 or len(candidates) != 1:
         return None
@@ -127,18 +130,12 @@ def normalize_docs_root(docs_root: str | None) -> str:
 
 @functools.lru_cache(maxsize=None)
 def repo_root() -> Path:
-    """The repository root, matching how docs_root is resolved everywhere else.
-
-    docs_root is repo-relative (``<repo-root>/<docs_root>``), so the corpus
-    check must resolve against the git toplevel, not the current working
-    directory. ce-code-review can run from a subdirectory (``git diff`` still
-    works there), where ``Path.cwd()`` would join docs_root under the subdir and
-    wrongly report the corpus absent. Fall back to cwd when git can't answer.
-    """
-    result = git("rev-parse", "--show-toplevel")
-    if result.returncode == 0 and result.stdout.strip():
-        return Path(result.stdout.strip()).resolve()
-    return Path.cwd().resolve()
+    """Find the absolute enclosing JJ workspace, including from subdirectories."""
+    current = Path.cwd().resolve()
+    for candidate in (current, *current.parents):
+        if (candidate / ".jj").is_dir():
+            return candidate
+    raise RuntimeError("not inside a JJ workspace")
 
 
 def has_learnings_corpus(docs_root: str | None) -> bool:
@@ -166,10 +163,10 @@ PACKS_RESOLVER_TIMEOUT = 30.0
 
 
 def declared_packs() -> tuple[bool | None, int]:
-    """Whether the local CE config declares Compound Packs, from the config alone.
+    """Whether the local config declares Compound Packs, from the config alone.
 
     Runs the sibling resolver in `--declared-only` mode, which parses the
-    `packs:` list from both CE config layers and shape-checks each entry with no
+    `packs:` list from both config layers and shape-checks each entry with no
     git or cache work. Its `declared` is true when any entry parsed or the block
     is malformed -- a broken declaration is still one the learnings pass must
     surface in Coverage. ``None`` means the helper could not tell (resolver
@@ -293,52 +290,76 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base", required=True)
     parser.add_argument("--head")
+    parser.add_argument("--scope-mode", choices=("standalone", "local-aligned", "base", "pr-remote", "branch-remote"))
     parser.add_argument("--docs-root", default="docs")
     args = parser.parse_args()
 
     # Remote scope (pr-remote / branch-remote) always passes --head, even when a
     # best-effort fetch left it empty; the local config is not that tree's config.
-    repo = repo_signals(args.docs_root, local_scope=args.head is None)
+    local_scope = args.scope_mode not in ("pr-remote", "branch-remote") if args.scope_mode else args.head is None
+    repo = repo_signals(args.docs_root, local_scope=local_scope)
+    repo.update({"base_requested": args.base, "head_requested": args.head if args.head is not None else "@"})
 
-    if not valid_commit(args.base):
+    base_id = resolve_commit(args.base)
+    if not base_id:
         print(json.dumps(fail_closed("invalid base endpoint", repo), sort_keys=True))
         return 0
-    if args.head is not None and not valid_commit(args.head):
+    head_id = resolve_commit(args.head if args.head is not None else "@")
+    if not head_id:
         print(json.dumps(fail_closed("invalid head endpoint", repo), sort_keys=True))
         return 0
 
-    diff_args = [args.base]
-    if args.head:
-        merge_base = unique_merge_base(args.base, args.head)
-        if merge_base is None:
-            print(json.dumps(fail_closed("merge base unavailable or ambiguous", repo), sort_keys=True))
-            return 0
-        diff_args = [merge_base, args.head]
-
-    # Unquoted non-ASCII paths keep extension checks and manifest paths usable.
-    numstat = git("-c", "core.quotePath=false", "diff", "--numstat", *diff_args)
-    raw = git("-c", "core.quotePath=false", "diff", "--raw", *diff_args)
-    if numstat.returncode != 0 or raw.returncode != 0:
-        print(json.dumps(fail_closed("git diff failed", repo), sort_keys=True))
+    diff_args = ["--from", base_id, "--to", head_id]
+    patch = jj("diff", "--git", "--context", "0", *diff_args)
+    types = jj("diff", "--types", *diff_args)
+    if patch.returncode != 0 or types.returncode != 0:
+        print(json.dumps(fail_closed("jj diff failed for exact endpoints", repo), sort_keys=True))
+        return 0
+    if any(line[:2].strip("-F") for line in types.stdout.splitlines()):
+        print(json.dumps(fail_closed("conflict, symlink or submodule in exact range", repo), sort_keys=True))
         return 0
 
+    import shlex
+    entries = []
+    entry = None
+    in_hunk = False
+    try:
+        for line in patch.stdout.splitlines():
+            if line.startswith("diff --git "):
+                names = shlex.split(line[len("diff --git "):])
+                if len(names) != 2:
+                    raise ValueError("ambiguous patch path")
+                entry = {"name": names[1][2:], "added": 0, "deleted": 0,
+                         "mode": "", "removed": False, "binary": False}
+                entries.append(entry)
+                in_hunk = False
+            elif entry is not None:
+                if line.startswith("@@ "):
+                    in_hunk = True
+                elif in_hunk and line.startswith("+"):
+                    entry["added"] += 1
+                elif in_hunk and line.startswith("-"):
+                    entry["deleted"] += 1
+                elif not in_hunk:
+                    if line.startswith("deleted file mode "):
+                        entry["removed"] = True
+                        entry["mode"] = line.rsplit(" ", 1)[1]
+                    elif line.startswith(("new file mode ", "new mode ", "old mode ")):
+                        entry["mode"] = line.rsplit(" ", 1)[1]
+                    elif line.startswith("index ") and len(line.split()) == 4:
+                        entry["mode"] = line.split()[-1]
+                    elif "Binary files " in line or line == "GIT binary patch":
+                        entry["binary"] = True
+    except ValueError as exc:
+        print(json.dumps(fail_closed(str(exc), repo), sort_keys=True))
+        return 0
     executable_mode_paths: set[str] = set()
     deleted_paths: set[str] = set()
-    for line in raw.stdout.splitlines():
-        if "\t" not in line:
-            continue
-        meta, path_field = line.split("\t", 1)
-        fields = meta.lstrip(":").split(" ")
-        if len(fields) < 2:
-            continue
-        if fields[-1] == "D":
-            deleted_paths.add(path_field)
-        old_mode, new_mode = fields[0], fields[1]
-        mode = old_mode if new_mode == "000000" else new_mode
-        if not mode.endswith("755"):
-            continue
-        for path in path_field.split("\t"):
-            executable_mode_paths.add(path)
+    for item in entries:
+        if item["removed"]:
+            deleted_paths.add(item["name"])
+        if item["mode"].endswith("755"):
+            executable_mode_paths.add(item["name"])
 
     files: list[str] = []
     executable_lines = 0
@@ -348,16 +369,18 @@ def main() -> int:
     uncounted = 0
     deleted_files: list[str] = []
     deleted_exec_nontest_lines = 0
-    for line in numstat.stdout.splitlines():
-        parts = line.split("\t")
-        if len(parts) < 3:
-            continue
-        added, deleted, name = parts[0], parts[1], parts[2]
-        resolved_name = numstat_path(name)
+    for item in entries:
+        added, deleted = str(item["added"]), str(item["deleted"])
+        resolved_name = item["name"]
         files.append(resolved_name)
         ext = Path(resolved_name).suffix.lower()
         is_exec = ext in CODE_EXTENSIONS or resolved_name in executable_mode_paths
         is_test = bool(TEST_PATTERN.search(resolved_name))
+        if item["binary"] or item["mode"] in ("120000", "160000"):
+            uncounted += 1
+            if resolved_name in deleted_paths:
+                deleted_files.append(resolved_name)
+            continue
         if resolved_name in deleted_paths:
             deleted_files.append(resolved_name)
             if deleted.isdigit():
@@ -381,6 +404,9 @@ def main() -> int:
         elif not is_test:
             unclassified_lines[ext] = unclassified_lines.get(ext, 0) + total
 
+    if len(entries) != len(types.stdout.splitlines()):
+        print(json.dumps(fail_closed("patch inventory incomplete for exact endpoints", repo), sort_keys=True))
+        return 0
     files.sort()
     deleted_files.sort()
     signals = matching_classes(files, SIGNAL_PATTERNS)
@@ -393,6 +419,10 @@ def main() -> int:
     result = {
         "status": "complete",
         "reason": None,
+        "base_requested": args.base,
+        "head_requested": args.head or "@",
+        "base_resolved": base_id,
+        "head_resolved": head_id,
         "exec_lines": executable_lines,
         "exec_nontest_lines": executable_nontest_lines,
         "unclassified_lines": unclassified_lines,
@@ -416,4 +446,9 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except (OSError, RuntimeError) as exc:
+        print(json.dumps(fail_closed(str(exc), {
+            "has_learnings_corpus": None, "declared_packs": None, "pack_roots": 0,
+        }), sort_keys=True))

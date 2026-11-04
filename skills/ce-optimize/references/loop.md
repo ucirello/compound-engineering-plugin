@@ -107,26 +107,24 @@ The Phase 3 blocks below each set `SKILL_DIR` inline as well (the loaded `ce-opt
 
 **One dispatch recipe, per experiment.** The backend changes where the experiment runs and how its result comes back, not what the worker is told.
 
-1. **Isolate.** For `worktree` and `codex`, create the experiment worktree on the optimization branch:
+1. **Isolate.** Before creation resolve the absolute target root, exact base, unique name, ownership and existing-isolation checks described below. Harness-native isolation must support and verify colocation and the requested identity; otherwise stop or use the safe decision path, never bypass lifecycle ownership. For `worktree` and legacy `codex` configuration, create the experiment workspace on the captured optimization base:
    ```bash
    SKILL_DIR="<absolute path of the directory containing this SKILL.md>";
-   WORKTREE_PATH=$(bash "$SKILL_DIR/scripts/experiment-worktree.sh" create "<spec_name>" <exp_index> "optimize/<spec_name>" <shared_files...>)  # creates optimize-exp/<spec_name>/exp-<NNN>
+   WORKTREE_PATH="$workspace_root/.tmp/$experiment_name"
+   (cd "$workspace_root" && jj workspace add --colocate --name "$experiment_name" --revision "$base_sha" "$WORKTREE_PATH")
+   (cd "$WORKTREE_PATH" && jj git colocation status)
    ```
-   Apply port parameterization if configured (set env vars for the measurement script). For `remote`, isolation is the worker's own checkout: record `base_sha` (`git rev-parse optimize/<spec_name>`) and make sure that commit is pushed to the remote the worker will fetch from.
+   First resolve the absolute target `workspace_root`, capture the exact optimization bookmark's commit ID as `base_sha` using `jj log` there, and detect existing isolation. Reuse verified owned isolation unchanged; otherwise choose a meaningful unique experiment name, checking both registered names and absolute destinations and suffixing collisions. Persist name/path/base/run ownership outside the target. Copy configured shared files preserving relative paths, checking symlink-resolved containment and refusing unrelated overwrites. Apply port parameterization. For `remote`, ensure the exact captured base is available to the worker, never substitute another ref.
 2. **Brief.** Fill the experiment prompt template (`references/experiment-prompt-template.md`): iteration number and spec name; hypothesis description and category; current best and baseline metrics; mutable and immutable scope; constraints and approved dependencies; the rolling window of the last 10 experiments as concise summaries; the source digest; and the current best's relevant `worst_cases`, from its kept entry or the baseline before any keep. For `remote`, append the template's measure-and-report delta with `base_sha`, the result ref `optimize-exp/<spec_name>/exp-<NNN>`, the measurement command, and the paired sample count the current ladder step needs.
 3. **Dispatch** by `execution.backend`, then record the return shape.
 
 | Backend | Dispatch | What returns |
 |---|---|---|
 | `worktree` | A subagent with the filled prompt, working in the experiment worktree | The subagent's completion, with its edits in the worktree |
-| `codex` | Write the filled prompt to a temp file and run `cat /tmp/optimize-exp-XXXXX.txt \| codex exec --skip-git-repo-check - 2>&1`, with the security posture from `execution.codex_security` (ask once per session when unset) | The process exit, with its edits in the worktree |
+| `codex` (compatibility setting) | Discover routes with OpenCode `opencode.models`, then use a permitted native subagent with the filled prompt in the verified experiment workspace | Native completion or persisted receipt with edits in that workspace |
 | `remote` | The detached-worker dispatch the body's Execution Surface names, with the filled prompt; when no such capability is in the tool list, use the `worktree` row for the whole run and log the fallback | A receipt naming the launch. The result is the pushed result ref (`result.yaml` at its root) or, when the host delivers results as a store file or terminal message, that file or message |
 
-**Codex delegation condition.** Delegate to `codex exec` only when this session is not itself running inside a Codex sandbox and `.git` is writable; otherwise use the `worktree` row for that experiment and log the fallback. A set sandbox marker in your environment is proof you are inside one; an unset marker proves nothing on its own, which is why the writable-`.git` check stays in the test:
-```bash
-# any true branch means: do not delegate this experiment to codex
-test -n "${CODEX_SANDBOX:-}" || test -n "${CODEX_SESSION_ID:-}" || test ! -w .git
-```
+**Native delegation contract.** This loaded skill explicitly requests delegation where host policy permits it; no second approval is needed. Respect actual denial, missing tools and higher policy with no bypass. Discover package and consuming configuration; deep delegation requires integer `experimental.subagent_depth >= 3`. Setup must document merging that value into the existing global `opencode.json(c)` (locate via `opencode debug paths`), preserving sibling settings and higher values, without competing config files or automatic global edits. Distinguish depth/capacity errors from denial/model rejection/missing tools. Capacity may wait for a slot; denial is not retried. Preserve configured model/tier preferences, but configuration does not authorize model overrides requiring a user request: inherit a suitable model and disclose unmet routing. Same-model contexts are not cross-model independence; unavailable required passes remain incomplete. Preserve receipts and bounded recovery; never judge one's own experiment as fallback.
 
 **Return shape.** A dispatch returns either a **result** (the work is done and its edits are where the table says) or a **receipt** (a handle for work that will finish after this call returns). A result goes straight to 3.3. A receipt is a pending wait: record it in `run_state.pending_waits` as `references/persistence.md` specifies, including the observable that will carry the result and the action to take (collect it through 3.3), and verify the write before dispatching the next experiment. Collect a receipt's result when that observable arrives, never by polling in a foreground loop.
 
@@ -208,21 +206,21 @@ After all experiments in the batch have been measured:
    - Commit the experiment branch first so the winning diff exists as a real commit before any merge or cherry-pick (a `remote` winner is already a commit at `head_sha`; merge `head_sha`, not the result ref's tip, which only adds `result.yaml`)
    - Include only mutable-scope changes in that commit; if no eligible diff remains, treat the experiment as non-improving and revert it
    - Merge the committed experiment branch into the optimization branch
-   - Use the message `optimize(<spec-name>): <hypothesis description>` for the experiment commit
-   - After the merge succeeds, clean up the winner's experiment worktree and branch; the integrated commit on the optimization branch is the durable artifact
+    - Compose the experiment description from the message standards below, preserving hypothesis content and owned-path scope without fixed syntax.
+    - After integration, retain the workspace and recovery bookmark unless cleanup is explicitly authorized and passes the native lifecycle gates below; the integrated revision is the durable artifact
    - This is now the new baseline for subsequent batches
 
 5. **Check file-disjoint runners-up** (up to `max_runner_up_merges_per_batch`):
    - For each runner-up that also improved, check file-level disjointness with the kept experiment
    - **File-level disjointness**: two experiments are disjoint if they modified completely different files. Same file = overlapping, even if different lines.
    - If disjoint, cherry-pick the runner-up onto the new baseline and run the same decide loop as step 3.3 against a fresh sample set for that combined snapshot. Do not reuse the standalone experiment's accumulated samples; they were measured against the previous baseline. Collect further measurement whenever `next_measurement` is not `none`. Persist the combined pairing as `kind: integrated` on that same log entry without replacing the standalone comparison. Keep the original standalone log entry for audit.
-   - Keep the cherry-pick only when that result is eligible and `next_measurement` is `none` (outcome: `runner_up_kept`); then clean up that runner-up's experiment worktree and branch
-   - Otherwise revert the cherry-pick, log it as "promising alone but neutral/harmful in combination" (outcome: `runner_up_reverted`), then clean up the runner-up's experiment worktree and branch
+    - Keep the rebased/integrated change only when that result is eligible and `next_measurement` is `none` (outcome: `runner_up_kept`); cleanup remains a separate authorized operation under the lifecycle gates below
+    - Otherwise undo only this run-owned integration, preserving unrelated work, log it as "promising alone but neutral/harmful in combination" (outcome: `runner_up_reverted`), and retain the experiment unless authorized cleanup passes all lifecycle gates
    - Stop after first failed combination
 
 6. **Handle deferred dependencies.** Experiments that need unapproved dependencies get outcome `deferred_needs_approval`
 
-7. **Close the rest.** Cleanup worktrees; a `remote` result ref may be deleted once its entry is verified in the log and its `result.yaml` copy is in `<state-root>`. `kept` and `runner_up_kept` are only for diffs on the optimization branch. Eligible candidates that were not integrated become `not_selected`. Leave `inconclusive`, `censored`, and `degenerate` as `decide.mjs` returned them.
+7. **Close the rest.** Record final states; workspace and result-ref cleanup require separate explicit authority, verified external evidence and the lifecycle gates below. Preserve archive/best/recovery refs. `kept` and `runner_up_kept` are only for diffs on the optimization bookmark. Eligible candidates that were not integrated become `not_selected`. Leave `inconclusive`, `censored`, and `degenerate` as `decide.mjs` returned them.
 
 ### 3.5 Update State (CP-4)
 
@@ -277,7 +275,42 @@ If none is met, cross the tick boundary.
 
 ### 3.7 Cross-Cutting Concerns
 
-**Codex failure cascade**: Track consecutive Codex delegation failures. After 3 consecutive failures, auto-disable Codex for remaining experiments and fall back to subagent dispatch. Log the switch.
+**Configured-route failure cascade**: After 3 consecutive recoverable native route failures, disable that route and use an allowed inherited native route. Log unmet preferences; never retry denial or claim missing independence/coverage.
+
+## Native revision messages and workspace lifecycle
+
+All JJ commands run from the absolute target workspace root, including history, fetch, diff and description operations. Never invoke the Git executable. Repository-scoped `gh` receives `GIT_DIR` captured with `jj git root` from that root.
+
+Before composing, editing, validating or recommending any revision description (including candidate, result-marker and report revisions), read the full https://go.dev/wiki/CommitMessage guide. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards.
+
+Compare several recent full subjects AND bodies from the actual verified runtime history head: `(cd "$workspace_root" && jj log --no-graph -r '::<verified-history-head>' -n 10 -T 'description ++ "\n"')`. Analyze prefix/package, case/tense, subject/body separation, wrapping and issue placement. Project instructions and observed history syntax win; apply compatible Go quality guidance. With no history use project/user instructions plus Go guidance, never invent precedent. Use `(cd "$workspace_root" && jj describe -m "<message composed from the standards above>")` only on the intended revision, preserving exact captured refs and owned-path scope.
+
+Cleanup is separate explicit authorization, never implied by completion. Stop workers, leave the target and adopt a surviving harness session first. Verify exact registered name/path/run ownership, integration and retained archive/best/recovery refs. Copy and read back evidence outside the target. Inspect tracked changes/conflicts AND ignored/untracked files; snapshots do not protect the latter. Refuse ambiguous, unrelated, still referenced or non-disposable removal. From the surviving absolute root run `jj workspace remove <verified-name>` only after these gates; verify both deregistration and directory disappearance. A warning is incomplete cleanup: retain/report state, never force-delete or fall back to Git. Forget unregisters while preserving files, not cleanup. Bookmark cleanup is separate; retain recovery refs.
+
+### SOURCE GUIDANCE — not a mandatory repository template
+
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+
+```text
+net/http: handle foo when bar
+
+[longer description here in the body]
+
+Fixes #12345
+```
+
+> Notably, for the subject (the first line of description):
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+
+> For the body (the rest of the description):
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
 
 **Error handling**: Classify a failed measurement from what `measure.sh` actually signaled. The censored stderr marker (with exit 125) is `censored`. Exit 124 is `timeout`. Any other non-zero exit (including 125 without that marker) is `error`. Log that outcome with the error message, revert the experiment, and continue the batch.
 

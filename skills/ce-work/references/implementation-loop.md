@@ -12,7 +12,7 @@ Work the tasks in dependency order. Mark a task completed only after each of the
 
 Then mark the task completed in the task tracker and decide whether to commit it (Incremental Commits, below).
 
-When the selected engine is cross-model execution, this loop still decides unit order, the evidence strategy, inspection of what actually changed, authoritative verification, and incremental canonical commits; the worker's authoring follows the serial external-unit protocol in `references/cross-model-execution.md`. A detached worker process finishing proves only that authoring finished; do not mark the task complete until the controller records the host-owned canonical commit. A unit whose workspace was preserved, or whose restoration is blocked, stops this loop before any fallback, retry, or next unit.
+For model-selected execution this loop still owns unit order, evidence strategy, actual diff inspection, authoritative verification and canonical commits. Follow the native transaction in `references/cross-model-execution.md`. Worker completion proves only authoring finished; completion requires a host-owned canonical receipt. Unreconciled preserved state or blocked restoration stops fallback, retry and the next unit.
 
 **Build what was asked.** The plan's units and scope, or the request itself when there is no plan, define what gets built. Add a mechanism neither asked for, such as a guard, retry, fallback, validation layer, option, mode, abstraction, or support on another interface, only when an existing contract requires it or one of these holds:
 
@@ -60,25 +60,49 @@ After completing each task, decide whether to commit. Never commit while its tes
 
 If the plan has Implementation Units, use them as a starting guide for commit boundaries — but adapt based on what you find during implementation. A unit might need multiple commits if it's larger than expected, or small related units might land together. Use each unit's Goal to inform the commit message.
 
-**Message convention:** match project commit conventions already in context; else match the recent log pattern; else conventional commits (`type(scope): description`). User override wins.
+**Message convention:** Read the full https://go.dev/wiki/CommitMessage guide first. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards. From the verified absolute target workspace root, compare several recent full subjects AND bodies from the actual relevant runtime history head, for example `(cd "$workspace_root" && jj log --no-graph -r "::$verified_history_head" -n 10 -T 'description ++ "\n"')`. Analyze prefix/package, capitalization and tense, subject/body separation, wrapping and issue placement. Project instructions and history syntax always win; apply compatible Go quality guidance. Without history, follow project/user instructions and Go guidance without inventing precedent.
 
-Preserve the full resolved message as data through the selected engine's canonical commit owner. If that owner cannot accept the full message, stop and report the blocker rather than truncate it or bypass the owner's protocol. Cross-model commits follow the controller integration contract in `references/cross-model-execution.md`.
+### SOURCE GUIDANCE — not a mandatory repository template
 
-For native host-owned Git commits, write the full resolved message to a file outside the repo with your file-write tool. Pass that file to Git so the shell never interprets message text.
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
 
-**Native Git commit workflow:**
+```text
+net/http: handle foo when bar
+
+[longer description here in the body]
+
+Fixes #12345
+```
+
+> Notably, for the subject (the first line of description):
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+
+> For the body (the rest of the description):
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
+
+Preserve the full resolved message as data through the selected engine's canonical commit owner. If that owner cannot accept the full message, stop and report the blocker rather than truncate it or bypass the owner's protocol. Model-selected commits follow the native integration contract in `references/cross-model-execution.md`.
+
+For host-owned JJ commits, write the full resolved message as data beneath the target root's `.tmp` with the file-write tool. Preserve the full subject and body; never interpolate untrusted message text into shell code.
+
+**Native JJ commit workflow:**
 ```bash
 # 1. Verify tests pass (use project's test command)
 # Examples: bin/rails test, npm test, pytest, go test, etc.
 
-# 2. Stage only files related to this logical unit (not `git add .`)
-git add <files related to this logical unit>
+# 2. Inspect the exact working revision and owned paths from the absolute root
+(cd "$workspace_root" && jj diff --summary)
 
-# 3. Commit with the resolved message, limited to those same paths
-git commit -F <message-file> -- <files related to this logical unit>
+# 3. Commit only those paths, preserving every other working change
+(cd "$workspace_root" && jj commit --message "$(cat "$message_file")" -- <owned-repo-relative-paths>)
 ```
 
-**Note:** Incremental commits add no plugin-generated attribution. The final Phase 4 handoff passes `branding:on` so `ce-commit-push-pr` can add generic Compound Engineering branding to the PR.
 
 **Workers:** worker commits follow the **No canonical commits** rule in `references/execution-strategy.md`; only the orchestrator makes canonical commits.
 

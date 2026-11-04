@@ -18,10 +18,10 @@ Strip a `mode:pipeline` token and every `proof-test:<path>` token from the input
 Resolve the scope in this order:
 
 1. **User-named scope** is authoritative; do not widen it. In standalone mode it may be the whole repo, an area, or a path.
-2. **Otherwise, in git**, use the current branch versus its base. Without a usable base, use staged and unstaged changes (`git diff HEAD`).
-3. **Outside git or without a diff**, use files the user named or that were edited earlier in the conversation.
+2. **Otherwise, in JJ**, resolve and capture the exact current head and its verified base from the caller or repository's bookmark/upstream relationship. Run every JJ command from the target workspace's absolute root, for example `(cd "$workspace_root" && jj diff --from "$base" --to "$head" --git)`. Preserve that exact range throughout the review; never substitute a default bookmark. Without a usable base, inspect the working-copy change with `(cd "$workspace_root" && jj diff --git)` and disclose the narrower coverage.
+3. **Outside JJ or without a diff**, use files the user named or that were edited earlier in the conversation.
 
-In pipeline mode the scope is what the caller passed, else the branch diff. Within it, prune only tests and comments the current work added or changed.
+In pipeline mode the scope is what the caller passed, else the verified JJ diff. Within it, prune only tests and comments the current work added or changed.
 
 If none of the above produces a non-empty scope, pipeline mode reports "nothing to simplify" and returns. Standalone mode asks the user what to simplify, as `references/standalone-report.md` describes.
 
@@ -31,7 +31,7 @@ When the platform's task-tracking capability is available, show the review, appl
 
 ## Step 2: Launch review agents in parallel
 
-Dispatch generic subagents via the platform's subagent primitive (`Agent`/`Task` in Claude Code, `spawn_agent` in Codex) where available; otherwise run the reviews inline or serially. For each reviewer, read its prompt asset from this skill's directory and pass the **full file content** as the subagent's prompt, together with the resolved scope (the full diff or file set), the mode, any proof test, the user's constraints, and the project standards governing the scope (or their file paths):
+These explicit reviewer instructions request delegation when the host permits user- or loaded-skill-requested subagents. Dispatch generic reviewers through the available native OpenCode subagent capability; respect unconditional higher-policy restrictions, actual denial, and missing tools. Where delegation is unavailable, this skill permits inline or serial rubric passes with disclosed coverage, not a claim of independent review. For each reviewer, read its prompt asset from this skill's directory and pass the **full file content** as the subagent's prompt, together with the resolved scope (the full diff or file set), the mode, any proof test, the user's constraints, and the project standards governing the scope (or their file paths):
 
 - `references/personas/code-reuse-reviewer.md`
 - `references/personas/code-quality-reviewer.md`
@@ -45,9 +45,9 @@ Do not paraphrase these rubrics from memory. Read each file and pass it verbatim
 
 Read `references/reviewer-dispatch.md` before dispatching; it covers a full harness, releasing review agents, and the permission mode.
 
-**Model selection.** Use the platform's balanced mid-tier model for these reviewers when the current harness exposes a known override. In Claude Code this is the Sonnet class. In Codex, apply this tier only when the active dispatch primitive exposes an explicit model or custom-agent selector; task wording alone does not select a different model. Otherwise omit the override and inherit the parent model -- a working pass on the parent model beats a broken dispatch.
+**Model selection.** Discover available models with native `opencode.models`. Prefer the configured role model, then the balanced mid-tier model, only when the dispatch capability supports selection and host policy permits the override. Delegation permission does not itself authorize a model override: if an explicit user model request is required and absent, omit the override, use suitable inherited reviewers, and disclose any unmet configured route. Task wording alone does not select a model.
 
-If the user's or project's active instructions or the live prompt name a model for this subagent, use that model instead of the default tier above. They can name it by the subagent's tier, by its prompt-asset name, or for the subagents being dispatched. Without such an instruction, a model configured for this subagent's role takes precedence over the default tier.
+An authorized user or project model selection takes precedence over the configured role and default tier. Resolve requested names through model discovery rather than guessing IDs. Same-model distinct reviewers are not cross-model independence; if the caller requires a model or independent pass that cannot run, report that requirement as incomplete rather than claiming equivalent coverage.
 
 ## Step 3: Fix issues
 

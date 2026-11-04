@@ -121,3 +121,6 @@ File updated:
 | Creating a new doc when an existing doc covers the same problem | Check overlap assessment; update the existing doc when overlap is high |
 | Asserting code behavior or merge-state from conversation memory | Read the defining source line before asserting; cite PR numbers over SHAs; soften unverifiable claims (Phase 1 extractor rules, re-checked in Phase 2.45) |
 | Batching several learnings through one run and stitching cross-references between drafts | One learning per run; run the skill sequentially for each additional learning |
+# Delegated Full completion
+
+For context-pressure handoff, identify the exact source ID, export evidence coverage, document path, and failures. Parent relays this report/path without repeating Full or re-editing the learning. Non-interactive Full did not apply interactive-only discoverability or Compound Pack destination edits; parent may offer these with normal consent. If Lightweight followed failed delegation, classify unavailable/denied/depth-capacity and recommend retry from the SAME session once available.

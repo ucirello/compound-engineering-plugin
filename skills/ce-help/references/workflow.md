@@ -1,4 +1,4 @@
-# Moving work through CE
+# Moving work through RocketClaw
 
 Two questions get separate answers. The state of the work decides where it starts. The user's preference decides how hands-on they stay from there.
 
@@ -40,7 +40,36 @@ What the choice comes down to:
 - `ce-work` also reaches a PR, so a PR is not a reason to choose `lfg`. Someone who wants to read the code before anything is pushed can ask `ce-work` to commit only.
 - `lfg` does not wait for approval of the plan, diff, or findings, and it pushes without asking. Merging normally stays with the user.
 
+These are workflow-authorized routine actions, not permission to bypass host denial, unknown push authority, conflicts, or ambiguous/dirty state. `ce-commit-push-pr` and `ce-babysit-pr` do not repeat approvals for authorized commit/push/PR work or monitoring. Authorized factual stale-description maintenance preserves user content and issue links without a preview/yes-no gate. An optional existing-description rewrite outside that maintenance or explicit apply still needs separate approval; declining it does not block monitoring, and description-only requests stay draft-only. Verified clean-head alignment and authorized watch/rearm need no extra ask; an empty `@` above the exact remote PR head is already aligned. Before declaring no PR/work from empty `@`, inspect `@-` bookmarks, remote branch, and associated PR. Preserve unrelated/ignored work, watch opt-out, and final merge/needs-human boundaries.
+
+When recommending or composing a commit message, read the full https://go.dev/wiki/CommitMessage guide first. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards. Compare several recent full subjects and bodies from the actual relevant verified history head, for example `(cd "$workspace_root" && jj log --no-graph -r '::<verified-history-head>' -n 10 -T 'description ++ "\n"')`. Analyze prefix/package, case/tense, separation, wrapping, and issue placement; project instructions and observed history syntax win over incompatible Go guidance. Preserve the exact reviewed range and never substitute a fixed remote head. With no history, use project/user instructions and compatible Go quality guidance without inventing precedent. Do not prescribe a fixed message syntax.
+
 The `lfg` guide page owns how it handles each starting point and what each stage does, so fetch it before describing them.
+
+### SOURCE GUIDANCE — not a mandatory repository template
+
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+
+```text
+net/http: handle foo when bar
+
+[longer description here in the body]
+
+Fixes #12345
+```
+
+> Notably, for the subject (the first line of description):
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+
+> For the body (the rest of the description):
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
 
 ## What already runs on its own
 

@@ -1,3 +1,5 @@
+> JJ execution contract: every JJ command runs with cwd the absolute target workspace root; every repository-scoped gh invocation receives `GIT_DIR` from `jj git root` obtained there. Never invoke the Git executable. `gh stack` is an optional capability, not a Git fallback: verify its installed help and ability to operate with the JJ Git directory without a Git executable or destructive checkout. If that capability cannot be verified, report a required-stack residual (or use the explicitly permitted soft single-PR fallback). Do not execute checkout/init/add/submit through an incompatible extension. Preserve exact parent/head IDs, recovery bookmarks, topology, draft states, and owned paths. Use native JJ bookmarks, `jj new <verified-parent-id>`, explicit-path `jj commit`, and `jj git push --remote <remote> --bookmark <layer>` for local layer construction/publication when supported by the manager contract; do not fabricate manager tracking. Inspect conflicts and ignored/untracked collisions before any working-copy movement and stop rather than overwrite.
+
 # `gh stack` semantics this skill relies on
 
 Verified against `gh stack version 0.1.0`. `gh stack <command> --help` is authoritative — if it
@@ -42,8 +44,9 @@ the stack and no documented branch ordering, so do not derive position from this
 
 `gh pr view "<n>" --json headRefName,headRefOid,author` identifies the head; `headRefName` alone
 does not, because a same-repo name can be absent or stale locally and can collide with an unrelated
-branch. Create a local branch at `headRefOid`, fetching `refs/pull/<n>/head` when that commit is not
-reachable — reachability leaves the commit with no branch to name.
+branch. Create a JJ bookmark at the exact verified `headRefOid` after fetching the confirmed head
+remote branch. If the exact object remains unreachable, report a stack residual: JJ 0.46 has no
+arbitrary pull-ref fetch flag, and an API diff cannot provide a local stack parent object.
 
 ## Building
 

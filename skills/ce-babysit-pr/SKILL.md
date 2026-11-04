@@ -32,14 +32,45 @@ One PR named → `target` (ask once if a confirmed multi-layer stack exists); as
 
 ## Step 1: Resolve and arm
 
-1. `gh repo view` must succeed, else say GitHub-only, stop.
-2. Resolve the PR from the argument or current branch (`references/setup.md`); none → report, stop.
+1. From the verified absolute target JJ workspace root, export `GIT_DIR="$(jj git root)"` for repository-scoped `gh`; `gh repo view` must succeed, else say GitHub-only, stop. Never directly invoke Git.
+2. Resolve the PR from the argument or verified bookmarks (`references/setup.md`). An empty `@` requires inspecting `@-` bookmarks, remote branch, and associated PR before any no-PR/no-work stop; continue that eligible PR.
 3. **Old-PR intake** (fresh invocation, before the checkout gate): read `references/intake.md`; it decides whether this PR still belongs. A user request to take the PR over: `references/takeover.md`.
 4. Chain classification comes from the snapshot, never the user; resolve posture before semantic work.
-5. **Checkout must be the PR's head branch with matching upstream** before any delegated mutation; default `gh pr checkout <ref>`; no push access or dirty checkout → stop, say so.
+5. **Verify exact repository/bookmark/remote/head alignment** before delegated mutation (`references/setup.md`). An empty `@` directly above the exact remote head is aligned. Routine verified clean-head alignment needs no repeat approval; dirty/conflicted/ambiguous state or denied/unknown push authority stops safely without reset or loss of unrelated/ignored work.
 6. **Sustain mode** (`references/setup.md`, `references/watch-loop.md`): keep monitoring until a stop condition is met, one tick per wake from one wake source: the `pr-snapshot watch` detector, or the host's own mechanism when its instructions dictate PR waits. Never collapse the loop into a script. Checkpoint mode only when the user asks or nothing can wake this agent. **Pipeline** (`mode:pipeline`): bounded synchronous ticks, structured return (`references/pipeline.md`).
 
 ## Step 2: One tick (ordering invariant)
+
+**Native delegation.** Load named skills using OpenCode's skill primitive and native subagents, not another harness's dispatch scripts. These explicit delegate instructions authorize delegation when host policy accepts user-or-loaded-skill permission; do not ask again. Respect unconditional higher policy, actual denial, missing tools, and configured depth. Discover available routes with `opencode.models`, preserve configured model choices/tiers, and distinguish delegation permission from model-override permission: when a model request must come from the user, use inherited suitable workers and disclose the unmet configured route. Distinct same-model workers do not provide cross-model independence. Missing required coverage is incomplete. Classify depth/capacity separately from denial/model rejection/tool absence; no retries to evade denial. Preserve bounded recovery, receipts, exact target SHA, and scope in every result.
+
+**Message standards for every delegated or local fix.** Read the full https://go.dev/wiki/CommitMessage first. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards. From the absolute target root compare several recent full subjects and bodies with `jj log --no-graph -r '::<verified-history-head>' -n 10 -T 'description ++ "\n"'`. Analyze package/prefix, case/tense, body separation/wrapping and issue placement; project instructions and actual history syntax win, applying compatible Go quality guidance. No history means project/user plus Go guidance, never invented precedent. Use `jj describe -m "<message composed from the standards above>"` only for the owned fix revision, never the empty alignment commit or unrelated work.
+
+**Authorized description maintenance.** A factual stale-description refresh through `ce-commit-push-pr mode:pipeline` is routine babysit maintenance: preserve user-authored content and issue links, apply without a preview/yes-no loop or standalone rewrite flow, then continue/rearm without asking. An optional broader rewrite outside this authorization requires separate approval; description-only requests remain draft-only unless explicitly applied. Declining that optional rewrite never blocks monitoring. Honor explicit watch opt-out, final-merge and genuine needs-human boundaries.
+
+### SOURCE GUIDANCE — not a mandatory repository template
+
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+
+```text
+net/http: handle foo when bar
+
+[longer description here in the body]
+
+Fixes #12345
+```
+
+> Notably, for the subject (the first line of description):
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+
+> For the body (the rest of the description):
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
 
 Snapshot first, then in this order:
 

@@ -52,6 +52,8 @@ For each affected route, use the selected driver to navigate and capture fresh r
 
 **Take screenshots:** capture viewport and full-page evidence when the selected driver supports it. Materialize screenshots as local artifacts when a later workflow or report needs file paths; otherwise in-app evidence is sufficient.
 
+Store local evidence and all temporary output under the verified absolute target workspace root's `.tmp/browser-tests/` directory, creating it first. Do not use operating-system temporary directories.
+
 ## Human verification (when required)
 
 | Flow Type | What to Ask |

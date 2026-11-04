@@ -9,7 +9,7 @@ Default to the host's blocking question tool already in the current tool list (m
 ## Config keys
 
 - `feedback_sources` is the list of source entries. Each carries a `type` (`slack`, `github-issues`, `email`), its target, the standing-approved ack action, an optional close-out action, and an optional `sensitive: true`. Presence of this key means the skill is configured.
-- `sweep_state_path` is the path to the state file, established at setup; fallback `<root>/feedback-sweep/state.yml`. A repo-internal path means committed mode: the state file is committed each run and must not be gitignored. A path outside the repo (e.g. under `/tmp`) means machine-local mode: the state file is never committed, and only the plan is.
+- `sweep_state_path` is the path to the state file, established at setup; fallback `<root>/feedback-sweep/state.yml`. A tracked path means committed mode: the state file is committed each run and must not be ignored. A path under the workspace's ignored `.tmp` means machine-local mode: the state file is never committed, and only the plan is. Preserve explicitly configured legacy local paths without treating them as committed merely because they are repo-internal; new local paths must use workspace `.tmp`.
 - `sweep_lease_ttl_minutes` is the single-writer lease staleness threshold; default `60`. Passed to `lease-acquire` in 2a.
 - `sweep_shared_branch` is `true` when the state file lives on a shared branch that multiple checkouts push to (see 2a topology); default `false`.
 - `sweep_ack_cap` is the integer circuit-breaker threshold; default `25`.
@@ -38,7 +38,7 @@ PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c 
 - `STALE-RECLAIMED` means an expired lease was taken over. Proceed, and note the takeover in the final summary.
 - `OK` means proceed.
 
-**Shared-branch topology** (`sweep_shared_branch: true`): before any source-side write, `git add` the state file, commit, and push it. A rejected push means another writer won the branch. Fetch and rebase, re-run `lease-acquire`, and if the lease is still not yours, back off (record `aborted-locked` and stop). Only once your lease is pushed and confirmed do you touch a source.
+**Shared-branch topology** (`sweep_shared_branch: true`): before any source-side write, use the message standards below and path-scoped `jj commit` for the state file, advance only the configured shared bookmark to the exact resulting commit, and `jj git push --bookmark <verified-shared-bookmark>`. Run from the absolute workspace root. A rejected push means another writer may have won: `jj git fetch`, inspect the exact shared remote bookmark, and reconcile/rebase only run-owned work without discarding unrelated changes. Re-read shared state and re-run `lease-acquire`; if the lease is still not yours or reconciliation is conflicted/ambiguous, back off (record `aborted-locked` and stop). Fetch back and verify the remote commit and writer identity match your successful lease acquisition before touching a source. Never infer a successful distributed lease from a local commit alone.
 
 Then run `validate --state <state>`. This is a lease-agnostic repair. Note in the summary any ids it downgrades from `closed` to `fix_pending`.
 
@@ -49,6 +49,7 @@ A generic subagent is one whose whole brief is the prompt you send it. When the 
 For each entry in `feedback_sources`, dispatch a generic subagent at the **extraction tier** (`references/model-tiers.md`) seeded with:
 - the matching persona file contents (`references/sources/<type>.md`),
 - the source's config entry verbatim,
+- the verified absolute workspace root (all JJ commands use it as cwd, and gh receives `GIT_DIR` from `jj git root` there),
 - the current cursor from `cursor-get --state <state> --source <source-id>`.
 
 The persona returns mapped items (`id`, `origin`, `author_class`, `body`, `media`, identity-scoped `existing_ack`, `existing_closeout`) or one of its degrade/skip sentences. Personas report facts and never advance cursors.
@@ -78,8 +79,8 @@ A failed ack write -> upsert the item as `ack_deferred` and hold the cursor (do 
 Resolve and create media scratch with this shell block, substituting the current run id:
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+workspace_root="<verified absolute workspace root>";
+SCRATCH_ROOT="$workspace_root/.tmp/rocketclaw";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
@@ -92,12 +93,12 @@ Pass absolute artifact paths beneath `$MEDIA_DIR` to subagents. If that block ex
 
 For each new item carrying `media`:
 - Download attachments into `$MEDIA_DIR`; raw media is never committed. A download failure -> set the item `needs_download` and continue.
-- Dispatch one generic subagent per recording, in parallel, at the **generation tier**, using `references/subagent-template.md` filled from `references/agents/media-analyzer.md`. Fill the template's `{skill_dir}` slot with the same absolute ce-sweep skill directory you resolve for your own `SKILL_DIR` Bash calls. A fresh subagent does not inherit your shell state, so it cannot run the bundled analyzer without being told the path. Pass the absolute media PATHS, a scratch artifact path, and the item's `sensitive` flag; collect the compact 1-2 line summary each returns. A subagent failure -> set the item `needs_analysis`, retain the media, and continue.
+- Dispatch one generic subagent per recording, in parallel, at the **generation tier**, using `references/subagent-template.md` filled from `references/agents/media-analyzer.md`. Fill the template's `{skill_dir}` slot with the same absolute ce-sweep skill directory you resolve for your own `SKILL_DIR` Bash calls. A fresh subagent does not inherit your shell state, so it cannot run the bundled analyzer without being told the path. Pass the verified absolute workspace root, absolute media PATHS, a scratch artifact path, and the item's `sensitive` flag; collect the compact 1-2 line summary each returns. A subagent failure -> set the item `needs_analysis`, retain the media, and continue.
 - Track attempts on the item (a `media_attempts` count upserted on each try). After 3 failed attempts across runs (`needs_download`/`needs_analysis`), set the item `manual_stuck` and list it separately, out of the routine nag.
 
 #### 2f. Fix verification
 
-A fix can close an item only when its merge evidence belongs to the checkout repository. Repository identity is the full hostname, owner, and repository name, compared case-insensitively; matching `owner/repo` alone is insufficient. Resolve the checkout once with `gh repo view --json nameWithOwner,defaultBranchRef,url`, and each GitHub Issues source with `gh repo view "<source-target>" --json nameWithOwner,url`. Use each returned URL's hostname and `nameWithOwner` as its identity. Leave affected items unchanged when an identity cannot be resolved, and report the failure; never substitute the checkout for an unknown source.
+A fix can close an item only when its merge evidence belongs to the checkout repository. For every repository-scoped gh invocation, obtain `git_dir` with `(cd "$workspace_root" && jj git root)` and pass `GIT_DIR="$git_dir"` to gh; stop that operation if discovery fails. Repository identity is the full hostname, owner, and repository name, compared case-insensitively; matching `owner/repo` alone is insufficient. Resolve the checkout once with `gh repo view --json nameWithOwner,defaultBranchRef,url`, and each GitHub Issues source with `gh repo view "<source-target>" --json nameWithOwner,url`. Use each returned URL's hostname and `nameWithOwner` as its identity. Leave affected items unchanged when an identity cannot be resolved, and report the failure; never substitute the checkout for an unknown source.
 
 Check every nonterminal item from a readable `github-issues` source by id, since the fetch returns only open issues. Skip sources skipped this run and statuses `closed`, `source_closed`, and `source_gone`. Run `gh issue view "<number>" --repo "<source-host>/<source-repo>" --json state,stateReason,closedAt,closedByPullRequestsReferences`. The number must be all digits and the repository in the item's `id` must match the resolved source repository. Any stored issue URL must also identify that source; a mismatch leaves the item unchanged and is reported.
 - `OPEN` -> no change.
@@ -106,7 +107,7 @@ Check every nonterminal item from a readable `github-issues` source by id, since
 - `Could not resolve to an issue` -> set `source_gone`.
 - Any other failure (rate limit, auth, transport, a repository that does not resolve) -> leave the item unchanged, stop checking this source, and note it in the summary. The next run checks again.
 
-For each eligible `fix_pending` item and each item closed as completed, verify the claimed fix against the checkout's default branch. **Validate its shape before it reaches any git/gh command:** accept only a bare PR number (`#?\d+`) or a commit SHA (`[0-9a-f]{7,40}`); anything else is an unverified claim. Strip a number's leading `#` and quote the substituted value.
+For each eligible `fix_pending` item and each item closed as completed, verify the claimed fix against the checkout's default branch. **Validate its shape before it reaches any JJ/gh command:** accept only a bare PR number (`#?\d+`) or a commit SHA (`[0-9a-f]{7,40}`); anything else is an unverified claim. Strip a number's leading `#` and quote the substituted value.
 
 PR numbers are repository-scoped. For GitHub Issues items, a stored bare number belongs to the resolved source identity; a `closedByPullRequestsReferences` number belongs to the identity in that PR's URL. For other source types, retain the existing convention that bare fix numbers refer to the checkout. Try the eligible stored ref first, then eligible closing PRs, and retain the first verified candidate as `fix_ref`.
 
@@ -135,8 +136,38 @@ Interactive only. For items needing a product call, ask the user, grouped by cat
 
 Render the handoff invocation exactly as the skill body's 2i section states.
 
-- **Commit.** `git add` ONLY `<root>/plans/feedback-sweep-plan.md` plus `<state>` when it is repo-internal (never `-A`; machine-local state under `/tmp` is never committed), then commit `docs(sweep): feedback sweep <date>`. A commit failure is reported, not fatal. In local-commit mode, never push. In shared-branch mode (`sweep_shared_branch: true`), fetch, rebase, and push the final commit.
+- **Commit.** Follow the message standards below. From the absolute workspace root, inspect `jj status` and `jj diff` for conflicts and ownership, then use `jj commit -m "<message composed from the standards below>" -- <root>/plans/feedback-sweep-plan.md <committed-mode-state-if-any>` with only verified owned paths. Machine-local state under `.tmp`, raw media, and unrelated changes must not be included. A commit failure is reported, not fatal. In local-commit mode, never push. In shared-branch mode (`sweep_shared_branch: true`), fetch, reconcile only run-owned work, and push only the verified configured shared bookmark; stop on conflicts or ambiguous ownership, never reset unrelated work.
 - **Record the run.** `run-record --state <state> --writer <writer> --outcome <completed|partial|failed> --counts '<per-source JSON>' --timestamp <ISO now>`.
 - **Release.** `lease-release --state <state> --writer <writer>`.
 - **Summary** (always emit): new items by source; recordings analyzed, each with its one-line finding; closed items with their fix evidence; `source_closed` items with their close reason; the `ack_deferred` / `manual_stuck` / needs-attention list; any circuit-breaker or stale-reclaim note; and always the plan path with the handoff line:
 
+### Message standards (all lease and final commits)
+
+Read the full https://go.dev/wiki/CommitMessage guide before composing or validating any message. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards.
+
+Resolve and capture the actual relevant runtime history head as an exact commit ID (the verified shared remote head for shared-state commits, otherwise the relevant current history head). From the absolute workspace root run `(cd "$workspace_root" && jj log --no-graph -r '::<verified-history-head>' -n 10 -T 'description ++ "\n"')`. Read several full subjects AND bodies; compare prefix/package usage, case and tense, subject/body separation, wrapping, and issue placement. Project instructions and observed history syntax always win; apply compatible Go quality guidance, not a prescribed prefix or template. If history is unavailable, report it and use project/user instructions plus the guide without inventing precedent. Preserve the captured history anchor throughout the operation.
+
+SOURCE GUIDANCE — not a mandatory repository template:
+
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+
+```text
+net/http: handle foo when bar
+
+[longer description here in the body]
+
+Fixes #12345
+```
+
+> Notably, for the subject (the first line of description):
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+
+> For the body (the rest of the description):
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.

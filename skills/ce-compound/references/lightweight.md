@@ -1,5 +1,7 @@
 # Lightweight mode
 
+Context pressure alone does not select this path. First follow `modes.md` to delegate Full with the exact shell-read source ID. Fallback only for classified unavailable/denied/depth-capacity failure, recommending retry from the SAME session. Explicit non-interactive `depth:lightweight` is unchanged.
+
 ### Lightweight Mode
 
 <critical_requirement>

@@ -1,6 +1,6 @@
 # Managed-stack CLI recipes
 
-Load this file when the active run uses a confirmed managed stack (`manager_status == "confirmed"`) and needs `gh stack` command recipes. Soft-depend on the CLI: if `gh stack` is missing or exits unavailable (e.g. code 9), surface a clear residual — do not invent managed membership from topology.
+Load this file for confirmed managed-stack command recipes. Run from the verified absolute JJ workspace root, supplying `gh` with `GIT_DIR` obtained there via `jj git root`. Verify the installed manager supports the native JJ workspace/bookmark workflow before mutation; missing or incompatible capability is a precise residual, never a Git fallback or invented membership. Read-only manager probes remain permitted. All mutating recipes below retain their original scope and safety requirements and require this capability check.
 
 Always non-interactive. Prefer JSON/view probes and explicit branch names; never rely on interactive prompts. Substitute `<tracking-remote>` with the stack branches' actual tracking remote (often `origin`, but may be `upstream` or a fork remote) — never hard-code `origin` when SKILL.md already resolved a different tracking remote.
 

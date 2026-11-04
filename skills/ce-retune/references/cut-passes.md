@@ -9,7 +9,7 @@ A pass applies **one problem class** across the corpus and stops. The work fails
 1. Pick one class from the Phase 3 findings (`references/corpus-audit.md`), or one regression class from `references/halt-taxonomy.md`. One class per pass, no bundling.
 2. Write the **file-assignment manifest**: unit -> the agent that edits it -> exact paths. Every copy of a shared asset goes to a single named agent (below).
 3. If the rewrite has cross-referencing strings, author the **contract file** first, serially (below).
-4. Dispatch one agent per unit through whatever sub-agent primitive the platform provides. Each prompt carries the class, the contract path if any, its own paths, and the forbidden paths.
+4. Dispatch one native OpenCode subagent per unit under the permission and routing contract in `references/workflow-shapes.md`. Each prompt carries the class, the contract path if any, its own paths, and the forbidden paths.
 5. **Reconcile** every block touched (below). This is the step that gets skipped.
 6. Run the project's own test suite. A pinned string that disappeared is a finding to report with its test path, never a test to edit.
 7. Collect each agent's applied/skipped report. Then measure (Phase 5) and commit the pass alone.
@@ -39,11 +39,15 @@ Disjoint paths in one tree are enough when nothing an agent runs mutates state o
 Pay for a worktree (or equivalent per-agent checkout) when any of these is true:
 
 - Agents run builds, formatters, generators, or anything that writes outside its unit, such as lockfiles, caches, generated output, or a repo-root config.
-- An agent needs to run the suite or the harness to check its own edit. Concurrent runs in one tree race on scratch and on git index state.
-- Agents commit, stage, or use branch operations. One git index shared by parallel agents corrupts staging.
+- An agent needs to run the suite or the harness to check its own edit. Concurrent runs in one tree race on scratch and working-copy state.
+- Agents create revisions or move bookmarks. Shared working-copy operations race even when edited paths are disjoint.
 - A pass may need to be abandoned wholesale, and a clean discard is worth more than a shared diff.
 
 Otherwise the isolation cost is real: N checkouts to create, N results to merge, and merge conflicts reintroduced on exactly the files the manifest was designed to keep apart.
+
+Detect existing isolation first and reuse a verified appropriate workspace without renaming, recreating, or modifying its identity. Prefer harness-native ownership and session adoption. New workspaces must use unique registered names and absolute destinations under the target root's `.tmp/`; verify both the registry and destination before creating them at the captured exact base. When using ce-worktree, capture the local date once and normalize the task-derived identity as `YYYYMMDD-meaningful-kebab-case-slug` without a double date prefix; use the same workspace name and destination basename, suffixing collisions `-2`, `-3`, and retaining that identity across retries and midnight. Preserve source/PR bookmarks. Harness creation must support and verify both the requested identity and colocation; otherwise stop for a safe decision, not a bypass. Native creation example: `(cd "$workspace_root" && jj workspace add --colocate --name "$workspace_name" --revision "$verified_base" "$absolute_destination")`, followed by `(cd "$absolute_destination" && jj git colocation status)`. Run every JJ command from its absolute target workspace root; `-R` alone is insufficient. Store all scratch, including error-path artifacts, under that root's `.tmp/`. Repository-scoped `gh` calls require `GIT_DIR` obtained with `(cd "$workspace_root" && jj git root)`.
+
+Workspace cleanup is separately authorized, never implied by completion. Stop workers, leave the target, and adopt a surviving harness session first. Verify exact registered name/path and run ownership, required integration and recovery refs; copy evidence outside the target and read it back. Inspect tracked changes/conflicts and ignored/untracked content, which snapshots do not protect. Preserve unrelated, ambiguous, still-referenced, or non-disposable work. Subject to harness permissions, run `(cd "$surviving_absolute_root" && jj workspace remove "$verified_name")`; verify both deregistration and directory disappearance. A warning means incomplete cleanup: retain/report state, never force-delete or use a Git fallback. `jj workspace forget` only unregisters while preserving files and is not destructive cleanup. Bookmark cleanup is separate; retain archive, best, and recovery references.
 
 ## The shared-asset trap
 
@@ -125,5 +129,32 @@ A failure that moves to a later phase is progress and names the next target. A f
 ## Ship (Phase 6)
 
 Commit each pass separately with its own message so the history says which change was made and why, and so release tooling can classify intent. Keep the measurement artifacts.
+
+Before composing, editing, validating, or recommending each message, read the full https://go.dev/wiki/CommitMessage guide, then compare several recent full subjects AND bodies from the actual relevant runtime history head, captured and verified as an exact commit ID: `(cd "$workspace_root" && jj log --no-graph -r "::$verified_history_head" -n 10 -T 'description ++ "\n"')`. Analyze prefix/package conventions, case and tense, subject/body separation, wrapping, and issue placement. Project instructions and observed history syntax always win; apply compatible Go quality guidance. Without history, use project/user instructions plus the Go guide without inventing precedent. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards. Use `(cd "$workspace_root" && jj describe -m "<message composed from the standards above>")` only for the intended owned revision.
+
+### SOURCE GUIDANCE — not a mandatory repository template
+
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+
+```text
+net/http: handle foo when bar
+
+[longer description here in the body]
+
+Fixes #12345
+```
+
+> Notably, for the subject (the first line of description):
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+
+> For the body (the rest of the description):
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
 
 Then write the finding down where the next person will hit it: the mechanism, the before and after, the measured numbers, and the hypotheses that died. **Record the ones that died.** They are what stops the next attempt from re-running a dead end, and they are the part every write-up omits.

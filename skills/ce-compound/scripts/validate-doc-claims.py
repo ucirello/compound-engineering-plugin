@@ -47,7 +47,7 @@ decides per flag: fix, annotate as historical, or confirm intentional.
 Only the summary exit code distinguishes "clean" from "needs a look".
 
 The script never touches the network (no fetch); classification uses
-whatever refs exist locally. Run a best-effort `git fetch --quiet` first
+whatever refs exist locally. Run a best-effort `jj git fetch` from the absolute workspace root first
 when freshness matters. Pure stdlib (no third-party deps).
 """
 import os
@@ -102,15 +102,51 @@ def usage_fail(msg: str) -> "NoReturn":
 
 
 def git(args: list[str], cwd: str) -> tuple[int, str]:
+    # Translate mechanical object queries to JJ; never execute Git.
+    root = os.path.abspath(cwd)
+    while not os.path.isdir(os.path.join(root, ".jj")):
+        parent = os.path.dirname(root)
+        if parent == root:
+            return 1, ""
+        root = parent
+    if args == ["rev-parse", "--show-toplevel"]:
+        return 0, root
+    def rev(value):
+        return "@-" if value == "HEAD" else value.replace("origin/", "") + ("@origin" if value.startswith("origin/") else "")
+    if args[0] == "rev-parse":
+        if "origin/HEAD" in args:
+            return 1, ""  # No invented default remote bookmark.
+        args = ["log", "--no-graph", "-r", rev(args[-1]), "-T", "commit_id"]
+    elif args[0] == "rev-list":
+        left, right = args[-1].split("..")
+        args = ["log", "--no-graph", "-r", f"{rev(left)}..{rev(right)}", "-T", 'commit_id ++ "\\n"']
+    elif args[0] == "cat-file":
+        obj = args[-1]
+        if obj.endswith("^{commit}"):
+            args = ["log", "--no-graph", "-r", obj[:-9], "-T", "commit_id"]
+        else:
+            revision, path = obj.split(":", 1)
+            args = ["file", "show", "-r", rev(revision), path]
+    elif args[0] == "merge-base":
+        args = ["log", "--no-graph", "-r", f"{rev(args[-2])} & ::{rev(args[-1])}", "-T", "commit_id"]
+    else:
+        return 1, ""
     try:
         result = subprocess.run(
-            ["git", *args],
-            cwd=cwd,
+            ["jj", *args],
+            cwd=root,
+            env={key: value for key, value in os.environ.items()
+                 if not key.startswith(("GIT_", "JJ_"))},
             capture_output=True,
             text=True,
             timeout=30,
         )
-        return result.returncode, result.stdout.strip()
+        output = result.stdout.strip()
+        if args[0] == "log" and ".." in args[3]:
+            output = str(len(output.splitlines())) if output else "0"
+        if args[0] == "log" and ".." not in args[3] and not output:
+            return 1, ""
+        return result.returncode, output
     except (OSError, subprocess.TimeoutExpired):
         return 1, ""
 
@@ -222,7 +258,7 @@ def strip_repo_prefix(token: str, base: str) -> str:
 
     Relative tokens, URL routes, and out-of-repo absolute paths are
     unchanged so the existing candidacy guard still drops them. Realpath
-    both sides so a host where /tmp is a symlink still matches. A
+    both sides so a host where a local scratch root is a symlink still matches. A
     successful rewrite is slash-normalized so Windows relpath output
     stays a candidate.
     """
@@ -267,17 +303,14 @@ def main(argv: list[str]) -> int:
     in_git = code == 0 and bool(repo_root)
     upstream: str | None = None
     if in_git:
-        code, ref = git(["rev-parse", "--abbrev-ref", "origin/HEAD"], repo_root)
+        # Caller may supply its verified actual default/history bookmark.
+        # Never replace an exact anchor with guessed main/master.
+        ref = os.environ.get("ROCKETCLAW_VERIFIED_UPSTREAM", "")
+        code = git(["rev-parse", "--verify", "--quiet", ref], repo_root)[0] if ref else 1
         if code == 0 and ref:
             upstream = ref
-        else:
-            for candidate in ("origin/main", "origin/master"):
-                code, _ = git(
-                    ["rev-parse", "--verify", "--quiet", candidate], repo_root
-                )
-                if code == 0:
-                    upstream = candidate
-                    break
+        elif ref:
+            infos.append(f"INFO: supplied exact upstream {ref!r} could not be verified; upstream coverage incomplete")
         if upstream:
             code, behind = git(
                 ["rev-list", "--count", f"HEAD..{upstream}"], repo_root

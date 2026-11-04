@@ -1,6 +1,33 @@
 # Shipping (LFG steps 9–11)
 
-The shipping steps are the last stretch of the run: commit, push, PR, CI, and close-out. LFG's SKILL.md defines the shipping precondition (the `git remote` check) and the two invocation strings. This file defines everything else: which handoff runs, what LFG passes into it, what it does with the result, and how the run closes out.
+## Commit-message source guidance (not a mandatory repository template)
+
+The runtime repository instructions and observed history syntax win over this illustrative Go example; apply only compatible quality guidance.
+
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+
+```text
+net/http: handle foo when bar
+
+[longer description here in the body]
+
+Fixes #12345
+```
+
+> Notably, for the subject (the first line of description):
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+
+> For the body (the rest of the description):
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
+
+The shipping steps are the last stretch of the run: commit, push, PR, CI, and close-out. LFG's SKILL.md defines the shipping precondition (the workspace-root `jj git remote list` check) and the two invocation strings. This file defines everything else: which handoff runs, what LFG passes into it, what it does with the result, and how the run closes out. All JJ commands run from the target absolute workspace root; repository-scoped `gh` receives `GIT_DIR` captured by `jj git root` there.
 
 ## Step 9 — a project-defined process may replace the default handoff
 
@@ -12,9 +39,9 @@ The project's active instructions may name a process for that handoff: a named s
 
 Pass the recorded plan path from step 1 into the `ce-commit-push-pr` invocation, along with any proceeded-and-flagged `settled_decision_conflicts` entries from step 2, so the PR body can include its settled-decisions provenance line and its note that work proceeded under a flagged conflict. On a one-pass statement there is no plan and no brief: pass the statement as PR-description context instead. On the defect route there is no plan and no brief: pass the debug return's `root_cause` and `issue_of_record` as PR-description context instead, per `references/debug-return.md`, so the PR body carries the diagnosis and links or closes the ticket. Also pass step 6's `## Unapplied review findings` section, when one exists, as PR-description context to be rendered as a dedicated section verbatim. That section is the record of unapplied findings; a run that opened a PR without it has lost them. Check the plan's execution profile for whether it ships as one PR or several. When it ships as several, ask for a stack and name its layers: one per PR group, bottom to top in merge order, each with its units and, when its `Waits on:` line names a deployment that must be live first, that deploy dependency as PR-description context. `ce-commit-push-pr` picks the stack's babysit posture from land intent in this request, so the merge grant is decided here. When the user granted merging, include land intent so it hands off `posture:stack-land`. When any layer carries a deploy dependency, leave land intent out so it hands off `posture:stack-ready`, because no skill observes deployments; the close-out then lists each layer whose deployment the user must confirm before it merges. The stack handoff in step 10 then applies.
 
-This commits any remaining changes, pushes the branch, and opens a pull request, non-interactively because of the `mode:pipeline` token. If it prints a `New concepts:` trailer after the PR URL, record the concept name(s) for step 11. If a PR already exists for the branch (check with `gh pr view --json number,url,state 2>/dev/null`), skip PR creation but still commit and push any uncommitted changes. Pipeline mode leaves an existing PR body alone by default, so the description context above would be lost there; after the push, invoke `ce-commit-push-pr mode:pipeline` again in its description-update mode on that PR with the same context, so the record reaches the reviewer without a confirmation prompt.
+This commits any remaining changes, pushes the verified bookmark, and opens a pull request, non-interactively because of the `mode:pipeline` token. If it prints a `New concepts:` trailer after the PR URL, record the concept name(s) for step 11. If a PR already exists for the verified head, skip PR creation but still commit and push authorized run-owned changes. Pass the context above as authorized factual maintenance of that PR description, preserving user content and issue links without another approval. Do not make an optional standalone rewrite a prerequisite for shipping or monitoring; outside authorized maintenance or explicit apply, it requires separate approval and declining it does not block monitoring. Description-only work never makes a draft PR ready.
 
-**Per the shipping precondition, when no remote is configured, do NOT invoke `ce-commit-push-pr` or a project-defined shipping process.** The default's commit step pushes unconditionally (`git push -u origin HEAD`), so a literal invocation would still hit the impossible push. Instead commit the files this run changed, by name (the work source's files, the review fixes, and any captured learning), and skip the push and PR creation entirely. Never `git add -A`: a file that was already dirty before the run, or one the defect route's `pre_fix_scope` lists, stays uncommitted and is named in the report.
+**Per the shipping precondition, when no remote is configured, do NOT invoke `ce-commit-push-pr` or a project-defined shipping process.** Instead commit the files this run changed, by name (the work source's files, the review fixes, and any captured learning), with `(cd "$workspace_root" && jj commit -m "<message composed from the standards below>" -- <run-owned-paths>)`, and skip push and PR creation entirely. A file already dirty before the run, or listed in the defect route's `pre_fix_scope`, remains untouched and is named in the report. Before composing any message, read the full https://go.dev/wiki/CommitMessage guide and compare several recent full subjects and bodies from the actual relevant captured runtime history head with `(cd "$workspace_root" && jj log --no-graph -r '::<verified-history-head>' -n 10 -T 'description ++ "\n"')`. Analyze prefix/package, case/tense, separation, wrapping and issue placement. Project instructions and observed history syntax always win; apply compatible Go quality guidance. Without history, follow project/user instructions and Go guidance, without invented precedent. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards.
 
 ## Step 10 — stack handoff from step 9
 

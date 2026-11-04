@@ -4,7 +4,7 @@ Analyze a product feedback source.
 
 Supported sources: Riffrec zip or unpacked capture directory, standalone
 video, standalone audio, and meeting notes text/markdown. The script extracts
-transcript, high-signal video frames when available, and CE-friendly markdown
+transcript, high-signal video frames when available, and RocketClaw-friendly markdown
 artifacts.
 """
 
@@ -57,6 +57,22 @@ RIFFREC_DIRECTORY_MARKERS = {"session.json", "events.json"}
 
 class SourceInputError(ValueError):
     pass
+
+
+def temporary_root() -> Path:
+    """Keep scratch data in the target workspace, never the OS temp directory."""
+    workspace_root = Path.cwd().resolve()
+    if shutil.which("jj"):
+        result = subprocess.run(
+            ["jj", "root"], cwd=workspace_root, capture_output=True, text=True
+        )
+        if result.returncode == 0:
+            workspace_root = Path(result.stdout.strip()).resolve()
+        elif (workspace_root / ".jj").exists():
+            raise SourceInputError(f"Cannot resolve JJ workspace root: {result.stderr.strip()}")
+    root = workspace_root / ".tmp"
+    root.mkdir(parents=True, exist_ok=True)
+    return root
 
 
 def parse_args() -> argparse.Namespace:
@@ -366,7 +382,7 @@ def prepare_source(source_path: Path, raw_dir: Path, source_kind: str | None = N
     source_kind = source_kind or classify_source(source_path)
     raw_dir.parent.mkdir(parents=True, exist_ok=True)
     staging_dir = Path(
-        tempfile.mkdtemp(prefix=f".{raw_dir.name}.staging-", dir=raw_dir.parent)
+        tempfile.mkdtemp(prefix=f".{raw_dir.name}.staging-", dir=temporary_root())
     )
     try:
         source = populate_source_snapshot(source_path, staging_dir, source_kind)
@@ -656,7 +672,7 @@ def extract_frames(recording_path: Path | None, frames_dir: Path, moments: list[
     frames_dir.parent.mkdir(parents=True, exist_ok=True)
     validate_frames_destination(frames_dir)
     staging_dir = Path(
-        tempfile.mkdtemp(prefix=f".{frames_dir.name}.staging-", dir=frames_dir.parent)
+        tempfile.mkdtemp(prefix=f".{frames_dir.name}.staging-", dir=temporary_root())
     )
     try:
         if not recording_path or not recording_path.exists():
@@ -833,7 +849,7 @@ def write_analysis_md(
     lines.append("- Open each selected screenshot and name the exact visible control or state.")
     lines.append("- Tie transcript language to the closest click or visible UI state.")
     lines.append("- Promote only confirmed product problems into requirements.")
-    lines.append("- Use repo-relative screenshot paths when moving evidence into a CE requirements document.")
+    lines.append("- Use repo-relative screenshot paths when moving evidence into a RocketClaw requirements document.")
     output_path.write_text("\n".join(lines) + "\n")
 
 
@@ -1297,7 +1313,7 @@ def main() -> int:
     print("Analysis complete. Ready to brainstorm the findings.")
     print(f"Source materials: {display_path(source_materials_md, repo_root)}")
     print(f"Problem statements: {display_path(problem_analysis_md, repo_root)}")
-    print(f"Brainstorm handoff: $compound-engineering:ce-brainstorm {display_path(kickoff_md, repo_root)}")
+    print(f"Brainstorm handoff: ce-brainstorm {display_path(kickoff_md, repo_root)}")
     print("Brainstorm should first confirm whether the captured requirements are complete and correctly grouped, then write the durable unified plan under the plans artifact directory.")
     return 0
 

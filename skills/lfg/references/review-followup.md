@@ -10,7 +10,7 @@ When the repo has no remote, the run finishes locally. That is a final state, no
 
 Simplification runs before review so the code-review in step 4 covers the simplified code. Let `ce-simplify-code` resolve the branch-diff scope itself; it preserves behavior and runs the test suite. Pass the plan path from step 1 as context about structure the simplification must keep, not as the simplification scope (the branch diff remains the scope); on the defect route pass the debug return's `root_cause` and `changed_files` instead, so the fix is not simplified away. On either route, pass each test `verification_evidence` names as proving the work (the regression or red-before-fix test, characterization coverage, or an existing test used unchanged) as its own `proof-test:<path>`, so the simplification leaves those tests untouched. Add a one-line constraint: KTDs labeled `session-settled:` describe structure the simplification must preserve, so deliberate duplication stays duplicated.
 
-Do not commit in this step. `ce-simplify-code` leaves its changes in the working tree; step 4's review scopes the working tree (uncommitted changes included), and step 9's `ce-commit-push-pr` commits whatever remains. Committing here would sweep any still-uncommitted `ce-work` edits into a misleading `refactor` commit and could stall on a tree that never goes clean.
+Do not commit in this step. `ce-simplify-code` leaves its changes in the working tree; step 4's review scopes the working tree (uncommitted changes included), and step 9's `ce-commit-push-pr` commits whatever remains. Committing here could sweep unrelated implementation edits into a misleading simplification-only description.
 
 ## Step 4 — invoke `ce-code-review`
 
@@ -53,7 +53,33 @@ Do not treat `autofix_class` as permission to auto-apply.
 1. Filter `actionable_findings` (or markdown Actionable Findings) with the bar above.
 2. Apply eligible fixes in the working tree in severity order (`#` stable from the review).
 3. Run targeted tests when `requires_verification: true` on any applied finding.
-4. If `git status --short` shows changes, stage only review-driven files and commit `fix(review): apply review findings`. Then push before step 6 **when a remote is configured** (per LFG's shipping precondition) and, on the defect route, when everything the push would publish is work the user offered (`references/debug-return.md`). To push: if an upstream exists, run `git push`. If no upstream exists but a remote is configured (common on a fresh feature branch), pick a writable remote at run time: prefer `origin` when present, otherwise run `git remote` and choose the first configured remote. Then run `git push --set-upstream <remote> HEAD`. If there is no remote at all, do not push; the local commit suffices. If no eligible fixes were applied, say so explicitly and skip the commit.
+4. Inspect `(cd "$workspace_root" && jj status)` and persist only review-driven file changes with `(cd "$workspace_root" && jj commit -m "<message composed from the standards below>" -- <review-driven-paths>)`; preserve unrelated working-copy changes. Before composing, read the full https://go.dev/wiki/CommitMessage guide, capture the actual relevant runtime history head, and inspect several recent full subjects and bodies with `(cd "$workspace_root" && jj log --no-graph -r '::<verified-history-head>' -n 10 -T 'description ++ "\n"')`. Compare prefix/package, case/tense, subject/body separation, wrapping and issue placement. Project instructions and observed syntax win; apply compatible Go quality guidance. With no history, use project/user instructions and Go guidance without inventing precedent. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards.
+5. Push before step 6 only when a remote is configured, authority is established, and everything published is offered work (including the defect-route gate in `references/debug-return.md`). Preserve the verified source bookmark and exact head. Use `(cd "$workspace_root" && jj git push --remote <verified-remote> --bookmark <verified-bookmark>)`, establishing a new remote bookmark only when authorized. Do not silently choose a different source or range. With no remote, retain the local commit. If no eligible fixes were applied, say so and skip the commit.
+
+### SOURCE GUIDANCE — Go, not a mandatory repository template
+
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+
+```text
+net/http: handle foo when bar
+
+[longer description here in the body]
+
+Fixes #12345
+```
+
+> Notably, for the subject (the first line of description):
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+
+> For the body (the rest of the description):
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
 
 ## Step 6 — residual handoff
 

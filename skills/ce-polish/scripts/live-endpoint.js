@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Live endpoint for ce-polish live mode: page -> endpoint event intake over
 // HTTP POST, endpoint -> page SSE, endpoint -> agent blocking wake.
-// Adapted from the ce-prototype helper (light-webserver.js): the run-directory
+// The run-directory
 // lifecycle (pidfile, state/, idle timeout, --owner-pid, start/status/stop/wait)
 // is kept; file serving, the overlay, /version, SSE grace shutdown, and the
 // pending-document handshake are gone. Owner death and idle timeout stop the
@@ -504,7 +504,7 @@ function inspectServerProcess(options, pid) {
   const isHelper = tokens.some((token) => path.basename(token) === path.basename(scriptPath))
   // Flattened command line (`ps`): argv boundaries are gone, so the root must
   // be followed by the next flag or the end of the line. A root that is this
-  // one plus more words (`--root /tmp/root other`) is ambiguous and reads as
+  // one plus more words (`--root .tmp/root other`) is ambiguous and reads as
   // foreign rather than owned.
   const rootArgument = new RegExp(`(^|\\s)--root\\s+${escapeRegExp(options.root)}(\\s+--|\\s*$)`)
   const forThisRoot = rootArgument.test(args)

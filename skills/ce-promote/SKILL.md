@@ -17,10 +17,12 @@ It works **with or without Spiral**: with nothing installed it drafts directly f
 
 A free-form description in the arguments is the source of truth. Otherwise derive it from context, using what is available and never waiting on any single source:
 
-- **Merged/active PR** — `gh pr view --json title,body,url` (the title and body usually state the user-facing value)
-- **The diff** — `git diff main...HEAD --stat`, skimming notable changes so the claim is grounded in what actually changed
+- **Merged/active PR** — `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh pr view --json title,body,url)` (the title and body usually state the user-facing value)
+- **The diff** — resolve and capture the actual task's base and head revisions; use `(cd "$workspace_root" && jj diff --from "$verified_base" --to "$verified_head" --stat)`, skimming notable changes so the claim is grounded in what actually changed. For a PR's merge-base comparison, resolve its actual base/head common ancestor first; do not substitute a default branch or working-copy revision.
 - **Changelog** — the top or `[Unreleased]` entry in `docs/changelog.md`, `CHANGELOG.md`, or similar
-- **Recent commits** — `git log --oneline -15` for the arc of the change
+- **Recent commits** — `(cd "$workspace_root" && jj log --no-graph -r "::$verified_history_head" -n 15 -T 'description ++ "\n"')` for the arc of the change, using the actual relevant history head
+
+Resolve `workspace_root` as the absolute target JJ root before these commands (from the absolute current directory, run `jj workspace root`); all JJ commands run there. If repository context is unavailable, use the supplied description or changelog rather than guessing refs. Native JJ reference: https://docs.jj-vcs.dev/latest/cli-reference/ .
 
 Then write a 1-3 sentence summary of the **user-facing value**: what a user can now do that they couldn't before, and why they'd care. Outcome, not implementation — "You can now export any report to CSV in one click", not "Added a CsvSerializer and an export endpoint." If you can't confidently tell what shipped, ask one short question rather than guessing.
 

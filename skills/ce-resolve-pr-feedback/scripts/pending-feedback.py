@@ -205,8 +205,11 @@ def write_record(path: Path, raw: bytes, *, checkpoint: bool) -> None:
 
 
 def github_json(host: str, endpoint: str) -> dict:
+    root = workspace_root()
+    store = subprocess.run(["jj", "git", "root"], cwd=root, capture_output=True, text=True, check=True).stdout.strip()
     result = subprocess.run(
         ["gh", "api", "--hostname", host, "--method", "GET", endpoint],
+        cwd=root, env={**os.environ, "GIT_DIR": store},
         capture_output=True, text=True, check=False,
     )
     require(result.returncode == 0, result.stderr.strip() or f"GitHub GET failed: {endpoint}")
@@ -245,6 +248,12 @@ def inspect_publication(record: dict) -> dict:
     return proof
 
 
+def workspace_root() -> Path:
+    root = Path(subprocess.run(["jj", "workspace", "root"], cwd=Path.cwd().resolve(), capture_output=True, text=True, check=True).stdout.strip())
+    require(root.is_absolute(), "expected absolute JJ workspace root")
+    return root
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     subcommands = parser.add_subparsers(dest="command", required=True)
@@ -257,7 +266,9 @@ def main() -> None:
             command_parser.add_argument("--input", required=True)
     args = parser.parse_args()
     if args.command == "preflight":
-        path = Path(args.path).absolute() if args.path else Path(tempfile.mkdtemp(prefix="ce-pending-feedback-")) / "pending.json"
+        scratch = workspace_root() / ".tmp"
+        scratch.mkdir(exist_ok=True)
+        path = Path(args.path).absolute() if args.path else Path(tempfile.mkdtemp(dir=scratch, prefix="pending-feedback-")) / "pending.json"
         require(not os.path.lexists(path), "handoff destination already exists")
         require(path.parent.is_dir(), "handoff parent directory does not exist")
         with tempfile.TemporaryFile(dir=path.parent):

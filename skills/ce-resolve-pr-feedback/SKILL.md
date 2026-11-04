@@ -2,12 +2,22 @@
 name: ce-resolve-pr-feedback
 description: Judge PR feedback centrally, apply valid fixes, and complete review conversations with publication verified. Use when addressing feedback already left on a PR, preparing local fixes for a caller to publish, or completing a saved feedback batch. Use ce-code-review for reviewing code before feedback exists.
 argument-hint: "[mode:pipeline | mode:return-to-caller | mode:resume] [PR number, comment URL, or blank for current branch's PR] [handoff:<path>]"
-allowed-tools: Bash(gh *), Bash(git *), Bash(bash *), Bash(python3 *), Read, Write
+allowed-tools: Bash(gh *), Bash(jj *), Bash(bash *), Bash(python3 *), Read, Write
 ---
 
 # Resolve PR Review Feedback
 
 Judge fresh PR review feedback centrally, then dispatch generic subagents seeded with the bundled fixer prompt only for approved fixes. Publish the fixes before replying and resolving. Resume completes saved judgments without another fix pass.
+
+## Runtime contracts
+
+History and intent inspection uses `jj log` and `jj file annotate`, never the Git executable, at the absolute target root and anchored to the exact captured PR revisions. All message composition, editing, validation and recommendation sites inherit Full Mode step 6's full-guide and actual full-subject/body history comparison; do not prescribe a fixed message syntax or footer.
+
+Resolve the target absolute workspace root first. Run every JJ command with that root as its working directory; use repository-relative file paths. Before every repository-scoped `gh` call, set `GIT_DIR` from `(cd "$workspace_root" && jj git root)` in that same call. Store all scratch and reply files under `$workspace_root/.tmp`, never OS temporary storage.
+
+The explicit fixer and adjudication instructions in this loaded skill authorize native OpenCode delegation when host policy permits; do not request a second approval. Discover routes with `opencode.models` and use native generic subagents, not dispatch scripts. Delegation permission is not model-override permission: when a user model request is required, use inherited reviewers rather than a configured model override and disclose unmet routing. Verify package and consuming configuration allow `experimental.subagent_depth` >=3; installation alone is insufficient. Setup must merge that integer into the existing global `opencode.json` or `opencode.jsonc` (locate via `opencode debug paths`), preserve siblings and higher values, and avoid competing documents. Do not modify global settings during this skill.
+
+Respect actual denial, missing tools and higher policy. Distinguish depth/capacity errors from denial or model rejection; never retry to evade denial. Inline fixer fallback is valid because fixers implement central judgments, not independent review. A required independent adjudication pass that cannot run remains incomplete; same-model reviewers are not cross-model independence. Routine user/workflow-authorized publication and replies require no repeated approval, but unknown publication authority stops safely.
 
 **Done:** Every selected item has a verdict and verified conversation completion or a reported residual. Completed threads have a visible submitted reply with quoted context and authoritative resolution; `needs-human` threads stay open. Ordinary and pipeline runs publish valid fixes before completion. Return-to-caller preserves its local fix commit and exact pending actions in a readable validated handoff, or records actual no-change completion. Resume verifies fresh publication and returns checkpointed completion or pending saved actions with retry evidence. Pending actions are never reported as resolved.
 

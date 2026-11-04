@@ -76,7 +76,7 @@ This is where validity is decided. Judge every **new** item here, in your own co
 Working over the full set lets you do what a per-thread subagent can't:
 - **Dedup reads by file** — read a file once and judge all its threads together.
 - **Cross-item reasoning** — cluster findings by root assumption; a source (often a bot) that's wrong in one place is suspect across its siblings; converging requests from independent reviewers are a strong fix signal.
-- **Selective depth** — clear nits need only the comment plus the diff line; deep-read (callers, invariants, `git blame`/PR rationale for author intent) only where a finding is contestable or the code looks deliberate. That deep read on the contestable minority is what catches a confidently-wrong reviewer.
+- **Selective depth** — clear nits need only the comment plus the diff line; deep-read (callers, invariants, `jj file annotate`/PR rationale for author intent) only where a finding is contestable or the code looks deliberate. That deep read on the contestable minority is what catches a confidently-wrong reviewer.
 
 Produce a verdict per item and sort into three lists:
 
@@ -101,6 +101,8 @@ Step 3 already read the code behind every fix-list item. Dispatch fixers when th
 Every fix-list item ends with one **per-item result** in the return format below, whether a fixer produced it or you did. The **change set** for this run is the union of those results' `files_changed`. Steps 5-7 read only per-item results and the change set, never which path produced them.
 
 ### Dispatch
+
+Use native subagents, not harness bridge scripts. This skill explicitly requests fixer delegation, satisfying a user-OR-skill delegation exception, but not an unconditional prohibition or denial. Keep delegation permission, optional model-override permission, and nesting capacity separate. Discover available models with native `opencode.models` only when routing requires it; preserve configured tier/model intent, but omit optional model overrides without an explicit user model request where required. Classify actual dispatch failures (permission, missing tool, model rejection, depth); never retry a denial or bypass the harness. The sequential inline fallback below is permitted for implementation and retains all per-item coverage; it does not manufacture cross-model independence for any caller-required review.
 
 Read [references/agents/pr-comment-resolver.md](agents/pr-comment-resolver.md) and spawn a generic subagent seeded with that fixer prompt for each fix-list item you are delegating. Do not dispatch a standalone agent by type/name. The fixer only implements: the validity judgment is already done, so it implements and returns; it does not re-judge whether the fix is worthwhile.
 
@@ -149,29 +151,54 @@ Each fix runs only targeted tests on its own change. This step runs the project'
 
 3. **Red, failures touch files in the change set** -> one inline diagnose-and-fix pass. Re-run validation. If still red, escalate with a `needs-human` item containing the test output; do **not** commit.
 
-4. **Red, failures touch only files outside the change set** -> treat as pre-existing. Proceed to step 6, but add a footer to the commit message: `Note: pre-existing failure in <test> not addressed by this PR.`
+4. **Red, failures touch only files outside the change set** -> treat as pre-existing. Proceed to step 6, describing the pre-existing failure and its out-of-scope status in the message using the repository's observed body conventions, not a fixed footer.
 
 Record the validation outcome (command run, pass/fail counts, any pre-existing failures noted) for the step 9 summary.
 
 ## 6. Commit and Publication
 
-Commit only the change set, preserving unrelated work in the tree and index, with a message referencing the PR:
+Commit only the change set, preserving unrelated working-copy changes. Read the full https://go.dev/wiki/CommitMessage guide and multiple recent subjects AND bodies with `jj log` anchored to the task's verified history head, from the absolute target workspace root. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards. Repository-local syntax wins: compare package/prefix, casing, tense, subject/body, wrapping and issue references. Without history, use explicit project/user guidance plus compatible Go guidance, never invented precedent. Reference the PR and describe the actual fixes and any pre-existing validation failure without imposing a fixed message template.
+
+**Go source guidance — illustrative excerpts, not a repository template.** These verbatim SOURCE excerpts are subordinate to observed repository syntax and explicit project/user instructions. Read the full guide and compare history as required above; apply only compatible guidance.
+
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+
+```text
+net/http: handle foo when bar
+
+[longer description here in the body]
+
+Fixes #12345
+```
+
+> Notably, for the subject (the first line of description):
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+
+> For the body (the rest of the description):
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
 
 ```bash
-git add [files in the change set]
-git commit -m "Address PR review feedback (#PR_NUMBER)
-
-- [list changes from per-item results]" -- [files in the change set]
+(cd "$workspace_root" && jj commit -m "<message composed from the standards above>" -- <fix-owned-paths>)
 ```
 
 In `mode:return-to-caller`, capture the combined fix commit SHA and follow [references/return-to-caller.md](return-to-caller.md) to save every judged action and intended checklist tick. Return after saving; do not push or enter steps 7-8 for any part of this batch. A failed commit or save reports the actual local state and incomplete handoff, never completion.
 
 Ordinary and pipeline execution publish the commit before the remote tail:
 ```bash
-git push
+(cd "$workspace_root" && jj bookmark set "$verified_pr_bookmark" -r "$fix_commit")
+(cd "$workspace_root" && jj git push --remote "$verified_remote" --bookmark "$verified_pr_bookmark")
 ```
 
 Read the PR's state immediately before pushing. If it is no longer open, a merge or close happened while this batch ran: do not push, and report the fix as an unpublished local commit along with the items left unaddressed.
+
+Before committing, inspect `jj status` and `jj diff`, verify the task history head and fix-owned paths, and stop on conflicts or ambiguous ownership (including unrelated edits in the same paths). Capture the actual full immutable fix commit ID through JJ, not the empty working-copy child. Before publication verify repository, PR head repository/ref, remote and bookmark identity and push authority. Never force or rewrite published history; unknown authority stays unpublished. An empty `@` above the verified remote PR head is already aligned, not evidence of missing work. Verify publication freshly before completing conversations. Return-to-caller preserves all this evidence and never advances/pushes a bookmark on the caller's behalf.
 
 ## 7. Reply and Resolve
 
@@ -276,7 +303,7 @@ The `review_threads` array should be empty (except `needs-human` items).
 
 In resume, verify only the saved actions and report new feedback through its caller result; return to [references/resume.md](resume.md) without entering another fix cycle.
 
-**For fresh-feedback modes, if new threads remain**, check the iteration count -- counting rounds **for this PR**, not just this invocation. An orchestrator such as `ce-babysit-pr` re-invokes this skill fresh each round, so a per-invocation counter never trips; count instead the earlier review-fix commits already on the branch (`git log <base>..HEAD` subjects that address review feedback) plus this run's own cycles.
+**For fresh-feedback modes, if new threads remain**, check the iteration count -- counting rounds **for this PR**, not just this invocation. An orchestrator such as `ce-babysit-pr` re-invokes this skill fresh each round, so a per-invocation counter never trips; count instead the earlier review-fix commits in `jj log -r '<verified-base>..<verified-pr-head>'` (read subjects and bodies, not a fixed subject prefix) plus this run's own cycles.
 
 - **First or second fix-verify cycle**: Repeat from step 2 for the remaining threads.
 
@@ -302,7 +329,7 @@ Not addressing (count): [what was skipped and the evidence]
 Declined (count): [what was declined and the harm or scope reason cited; name out-of-scope items separately so the user can carry them forward]
 
 Validation: [one line -- e.g., "bun test passed (893/893)" or "bun test passed with pre-existing failure in X noted"; omit when no code changes were committed]
-Diff change: [`git diff --shortstat` from the head before this run's first fix commit to the head after its last, e.g., "+42 / -7 across 3 files"; omit when no code changes were committed]
+Diff change: [`jj diff --stat --from <verified-before-head> --to <verified-after-head>` from the head before this run's first fix commit to the head after its last; omit when no code changes were committed]
 ```
 
 If any item is `needs-human`, append a decisions section. These are rare but high-signal. Each carries the `needs-human` object composed in step 3: quoted feedback, investigation, the reason autonomous action is unsafe or ambiguous, concrete options with tradeoffs, a recommendation if any, and links to every still-open thread it covers.

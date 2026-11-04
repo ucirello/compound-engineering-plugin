@@ -2,6 +2,22 @@
 
 Read this before mapping changed files to routes (workflow step 3). It carries the route-mapping starting points, the port and server commands, what to check on each page, the two human-facing prompts, and the summary format.
 
+## Determine the changed-file scope
+
+Set `workspace_root` to the verified absolute JJ workspace root. Resolve the task's actual history head and integration base from task context and repository bookmarks; inspect them with `jj log` from that root. Do not assume `main`, substitute an unrelated base, or guess an ambiguous revision. Stop with a preflight blocker if the intended scope cannot be verified.
+
+For `current` (or no argument), use `@` as the target so working-copy changes are included. For a named branch/bookmark, resolve and verify that target. Set `verified_base` to the verified common integration ancestor and `verified_target` to the verified target revision. Then list affected files:
+
+```bash
+(cd "$workspace_root" && jj diff --from "$verified_base" --to "$verified_target" --name-only)
+```
+
+For a PR number, retrieve the PR's changed files from the target workspace, not an ambient repository:
+
+```bash
+(cd "$workspace_root" && GIT_DIR=$(jj git root) gh pr view "$pr_number" --json files -q '.files[].path')
+```
+
 ## Map changed files to routes
 
 Map each changed file to the route(s) that render it, then build the list of URLs to test. The table below is a starting point of common patterns, not an exhaustive rule set — apply judgment for the project's actual layout:
@@ -50,7 +66,7 @@ For each affected route, use the selected driver to navigate and capture fresh r
 
 **Test critical interactions:** derive locators or element references from the selected driver's latest inspected state, perform the click/fill/press action, then inspect the resulting state. Do not guess selectors or reuse stale references.
 
-**Take screenshots:** capture viewport and full-page evidence when the selected driver supports it. Materialize screenshots as local artifacts when a later workflow or report needs file paths; otherwise in-app evidence is sufficient.
+**Take screenshots:** capture viewport and full-page evidence when the selected driver supports it. Materialize screenshots under the absolute workspace's `.tmp/rocketclaw/ce-test-browser/` when a later workflow or report needs file paths; otherwise in-app evidence is sufficient. Keep temporary artifacts and failure evidence in that local directory, never an OS temporary directory.
 
 ## Human verification (when required)
 

@@ -10,16 +10,21 @@ Resolve the question directory once, at the start of the run, and reuse the abso
 
 `RUN_SLUG` is `<date>-<short-question-slug>` for the run; `QUESTION_SLUG` is `NN-<question-slug>` for the question being built. A run that covers a second related question resolves a second question directory under the same run directory.
 
-Settle durability before you run this block; it reads both decisions once and there is no second pass. Set `RUN_KEEP="no"` when the user asked that this run not be left in the repo, and run the block as it stands — it sends the run to OS temp and nothing else changes. Otherwise, when the run is inside a git repository, probe the repo root for `.context/compound-engineering/`; if it is not covered, offer to append that one line to the repo-root `.gitignore`, appending only if the user agrees and leaving the rest of the file alone. A run that is headed for OS temp either way gets no offer.
+Settle durability before running this block. Set `WORKSPACE_ROOT` to the verified absolute JJ workspace root; all JJ calls run from that root. If no root is available, or the user requires no workspace artifact, stop and ask for an approved local workspace; never use OS temporary storage. Conservatively accept only an explicit `.context/` or `/.context/` line in the root `.gitignore`, with no negation rules (complex ignore configurations fall back rather than being guessed). If absent, offer to append `/.context/` with consent, preserving existing content. `RUN_KEEP="no"` selects workspace-local scratch, not storage outside the workspace. Confirm `.tmp/` is ignored before using scratch, and stop if that cannot be established without changing files beyond the user's permission. Never force-track prototype files.
 
 ```bash
 RUN_SLUG="<YYYY-MM-DD>-<run-slug>";
 RUN_KEEP="yes";
-REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)";
-TEMP_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$TEMP_ROOT" ] && (umask 077; mkdir -p "$TEMP_ROOT") 2>/dev/null && [ ! -L "$TEMP_ROOT" ] && [ -O "$TEMP_ROOT" ] && [ -w "$TEMP_ROOT" ] || TEMP_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
-if [ "$RUN_KEEP" = yes ] && [ -n "$REPO_ROOT" ] && [ ! -L "$REPO_ROOT/.context" ] && [ ! -L "$REPO_ROOT/.context/compound-engineering" ] && git -C "$REPO_ROOT" check-ignore -q .context/compound-engineering/ 2>/dev/null; then
-ROOT="$REPO_ROOT/.context/compound-engineering";
+WORKSPACE_ROOT="<verified absolute JJ workspace root>";
+case "$WORKSPACE_ROOT" in /*) ;; *) echo "absolute workspace root required" >&2; exit 1;; esac;
+REPO_ROOT="$(cd "$WORKSPACE_ROOT" && jj --ignore-working-copy root)" || exit 1;
+[ "$REPO_ROOT" = "$WORKSPACE_ROOT" ] || exit 1;
+[ ! -L "$REPO_ROOT/.tmp" ] || exit 1;
+(umask 077; mkdir -p "$REPO_ROOT/.tmp") || exit 1;
+[ ! -L "$REPO_ROOT/.tmp" ] && [ -O "$REPO_ROOT/.tmp" ] && [ -w "$REPO_ROOT/.tmp" ] || exit 1;
+TEMP_ROOT="$REPO_ROOT/.tmp/rocketclaw";
+if [ "$RUN_KEEP" = yes ] && [ ! -L "$REPO_ROOT/.context" ] && grep -Eq '^/?\.context/$' "$REPO_ROOT/.gitignore" && ! grep -q '^!' "$REPO_ROOT/.gitignore"; then
+ROOT="$REPO_ROOT/.context";
 else
 ROOT="$TEMP_ROOT";
 fi;
@@ -47,7 +52,7 @@ chmod 700 "$RUN_DIR" || exit 1;
 echo "$RUN_DIR"
 ```
 
-Three things this block is careful about. The symlink and ownership checks run against both the **root** — the directory sitting in a shared or world-writable location — and the `ce-prototype` directory beneath it, because that one survives between runs: `mkdir -p` follows a symlink that is already there, and `chmod` would then change the link's target rather than anything inside the validated root. Every check is inside the retry loop, so an unsafe in-repo path at either level falls back to OS temp rather than aborting — a hostile or misconfigured `.context` costs the run its durability, not the run itself, and only a temp root that also fails is fatal.
+The symlink and ownership checks cover both the root and the persistent `ce-prototype` directory beneath it: `mkdir -p` follows an existing symlink, and `chmod` would affect its target. An unsafe durable path falls back only to workspace-local scratch; unsafe scratch is fatal. The `.tmp` parent is checked before use. No failure path uses OS temporary storage.
 
 Creating the directory is how it is claimed — never test whether the name is free and then write, which two runs starting together both pass. There is no rejoin: this block runs once per invocation, so a second question never re-derives the run directory and can neither split into a suffixed sibling nor adopt a finished run's directory.
 
@@ -93,7 +98,7 @@ A default start reloads only when the newest screen changes; it must not continu
 Write screens under:
 
 ```text
-<repo>/.context/compound-engineering/ce-prototype/<YYYY-MM-DD>-<run-slug>/
+<repo>/.context/ce-prototype/<YYYY-MM-DD>-<run-slug>/
   decisions.md               # run capsule for the next skill; not a plan
   01-<question-slug>/
     screens/
@@ -107,7 +112,7 @@ Write screens under:
     state/
 ```
 
-The fallback root takes the same shape under `/tmp/compound-engineering-<uid>/ce-prototype/`. The capsule sits at the run directory and names each question directory; `--root` is always a question directory, never the run directory.
+The fallback root takes the same shape under `<workspace>/.tmp/rocketclaw/ce-prototype/`. The capsule sits at the run directory and names each question directory; `--root` is always a question directory, never the run directory.
 
 ## Handoff
 

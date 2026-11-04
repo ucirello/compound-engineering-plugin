@@ -1,10 +1,10 @@
-# Starting out, cost, and adapting CE
+# Starting out, cost, and adapting RocketClaw
 
 `docs/` and `README.md` paths are public pages. `SKILL.md` gives their URLs.
 
 ## Starting out
 
-1. Install steps differ across CE's 14 hosts, so take them from `README.md#install` or `README.md#more-install-options` rather than guessing.
+1. Before installation or skill dispatch on OpenCode, merge `experimental.subagent_depth` of at least `3` into the existing global `opencode.json` (normally `~/.config/opencode/opencode.json`; locate the actual directory with `opencode debug paths` / `opencode debug paths config`). Preserve unrelated settings, sibling fields, and any higher integer. Do not create a competing JSON/JSONC configuration, and verify that higher-precedence settings do not lower the effective depth below `3`. Installing the package or its config alone does not merge this prerequisite into consumer configuration. Explain this requirement; this help skill does not write host settings. Take the remaining install steps from `README.md#install` or `README.md#more-install-options` rather than guessing.
 2. A host loads skills at session start, so begin a new session after any install or update.
 3. Run `ce-setup` in the project. It reports optional tools and offers to create the repo config. A missing optional tool is not a failure, and only the workflows that use it need it.
 4. Begin on real work: `ce-brainstorm` for an idea, or `ce-debug` for a bug.
@@ -18,9 +18,9 @@ Name the expensive runs this user is actually making, and what reduces each one.
 - After `ce-commit-push-pr` hands off to `ce-babysit-pr`, a standing watch runs until the PR is ready, blocked, out of budget, merged, or closed. Config can opt out of that handoff.
 - `ce-optimize` and `ce-retune` run measured loops, so their cost grows with the number of runs.
 
-## Adapting CE to a project
+## Adapting RocketClaw to a project
 
-- `.compound-engineering/config.yaml` holds per-skill defaults, such as artifact format, the artifact folder, and cross-model review.
+- `.rocketclaw/config.yaml` holds per-skill defaults, such as artifact format, the artifact folder, and cross-model review.
 - Compound Packs are an experimental way to declare prescriptive rules, in a local folder or a shared repo, that planning grounds in and review checks work against. `ce-setup pack:<id>` scaffolds one.
 - `ce-setup standards` drafts or refreshes the project's coding standards and review docs.
 - A standing instruction in the project's agent instructions makes a skill run automatically at the right point. The "Make it automatic" sections of the `ce-plan`, `ce-work`, and `ce-noslop` guide pages give the wording, and `ce-setup` offers the one for `ce-compound`.

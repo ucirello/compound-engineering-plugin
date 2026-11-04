@@ -25,13 +25,15 @@ If no relevant entries are found, proceed to Phase 1 without memory context.
 
 ### Phase 1: Research
 
-You classify the learning and draft its body in this context, because both depend on the conversation, which only this context holds. A fresh subagent sees only what you paste into its prompt. The Related Docs Finder runs as a subagent alongside, because its corpus search reads many docs this context does not need to keep. Each Phase 1 subagent writes its full output to a per-run scratch artifact and returns only the artifact path to the orchestrator.
+The capture orchestrator classifies and drafts from the source conversation. In the context-pressure route, that orchestrator is the fresh Full delegate, which retrieves the source through the supported export/API interface in `session-history.md`, not a parent-prepared digest. The Related Docs Finder runs alongside it. Each Phase 1 researcher writes its full output to a per-run scratch artifact and returns only the artifact path.
 
 **Run ID and run dir (before dispatching the finder):** generate a unique run identifier and create the run directory. This scopes every Phase 1 artifact file to the same directory so the orchestrator can Read them back in Phase 2.
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+workspace_root="<verified absolute JJ workspace root>";
+cd "$workspace_root" || exit 1;
+SCRATCH_ROOT="$workspace_root/.tmp/rocketclaw";
+[ ! -L "$workspace_root/.tmp" ] || exit 1;
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
@@ -66,6 +68,8 @@ Pass the JSON's `roots` (pack `id` + absolute `dir`, plus `url`/`ref` when git-s
 A generic subagent is one whose whole brief is the prompt you send it. When the host's subagent tool makes you name an agent, use only a name you have seen the host list, and list its agents before the first dispatch if you have not. Pick the plain one that adds no role of its own, which still counts as a generic subagent. Never pick a specialist, such as a reviewer or worker agent, whose own role prompt, output format, or tool limits would replace or narrow your prompt.
 
 **Dispatch.** Launch the `Related Docs Finder` in the background and do not wait on it here. Its prompt states the problem in a few lines: what broke or what was learned, the module and file names, any error text, and the fix. Its keyword search starts from that, and it cannot see this conversation. Then start session history (the body's next step), and classify and draft while the finder and any session-history synthesis run, so the wall-clock cost is the longest of the three rather than their sum.
+
+Use native subagents under `modes.md`'s separate delegation, model-selection, and depth rules. This skill explicitly requests these researchers; no second ask is needed where user-OR-skill permission suffices. Do not bypass actual denial or unavailable nesting with a harness bridge. Preserve configured role tiers and report any contract-permitted inline substitution and incomplete coverage.
 
 Classify a rejected dispatch by whether an agent launched: correct a pre-launch argument rejection once, leave capacity-limited work queued, and if another launch failure survives correction, run that role in the parent context with the same contract and artifact path rather than dropping it.
 

@@ -4,7 +4,7 @@ The Bun-era `convert` / `install --to codex` path inserted a managed block into 
 
 `<!-- BEGIN COMPOUND CODEX TOOL MAP -->` … `<!-- END COMPOUND CODEX TOOL MAP -->`
 
-in `${CODEX_HOME:-$HOME/.codex}/AGENTS.md`. That Claude-compat map is obsolete — CE skills name Codex tools inline — and one of its lines told Codex to collapse subagent dispatch onto the main thread. Native plugin install does not add it, and re-running the Bun CLI for Codex strips it.
+in `${CODEX_HOME:-$HOME/.codex}/AGENTS.md`. That compatibility map is obsolete, and one line collapsed subagent dispatch onto the main thread. Native OpenCode plugin installation does not add it. Document this legacy finding only; do not run another harness's installer or write host files automatically.
 
 ## Removal
 

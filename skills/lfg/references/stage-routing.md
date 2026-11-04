@@ -4,6 +4,12 @@ A carrier is the prefix string that passes a stage assignment (which model or ha
 
 LFG is otherwise hands-off and never stops to ask. The single question it may ask is the one in scope rule 3 below, and only on an interactive host.
 
+## Native execution and permission boundaries
+
+Carriers below preserve routing intent and configuration compatibility, not permission to launch another harness. Resolve model aliases with native `opencode.models`, then use native subagents and shell; never invoke a harness-dispatch, elevation, or workspace-bridge script. Preserve ordered candidates, configured tiers, exact requested/actual model identities, receipts, recovery, and required coverage. A legacy harness target is intent to resolve, not an executable route; disclose unsupported requirements rather than claiming that harness ran.
+
+Keep delegation permission, model permission, and nesting capacity separate. An explicit skill request for reviewers satisfies the user-OR-skill delegation exception without asking again, but unconditional prohibitions, denials, and missing tools still apply. Where the host requires an explicit user model request, configuration alone does not authorize a model override: omit the optional override and use a suitable inherited reviewer when permitted. Same-model reviewers do not establish cross-model independence; unmet required routing means incomplete coverage. Classify actual failures as depth, permission, model rejection, or missing capability; use only contract-permitted inline/parent fallback and never bypass a denial with another harness or repeated dispatch.
+
 ## What is routable
 
 Interpret whether the invoking conversation expresses **semantic intent to assign a pipeline stage** — planning or implementation — to a specific model or harness. This is judgment, not keyword or prompt-token matching: an explicit instruction such as "plan with fable" or "use Codex for implementation" creates an assignment, while a plain mention of Codex, Composer, Fable, or another model/harness in feature content, quoted material, comparison text, or a filename does not. Two pipeline stages are routable, each with its own carrier:

@@ -2,6 +2,8 @@
 
 This reference owns evidence collection after the app launches.
 
+Save screenshots, exported logs, and any temporary evidence under the target workspace's absolute `.tmp/` directory, using a run-specific subdirectory. Use that location on both success and failure paths; do not use OS temporary directories or bare `mktemp`/`tempfile` defaults. Preserve evidence needed for the handoff rather than deleting it during cleanup.
+
 ## Exercise the requested surfaces
 
 Derive the key screens and flows from the user's request and the changed iOS surface. For each one:

@@ -1,10 +1,19 @@
 {
   "name": "compound-engineering",
-  "version": "3.35.1",
+  "version": "3.35.1-oc.2.2.5.1",
   "description": "Official Compound Engineering skills plugin for coding agents",
   "type": "module",
   "private": true,
-  "main": "index.js",
+  "main": "./.opencode/plugins/rocketclaw.ts",
+  "exports": {
+    ".": "./.opencode/plugins/rocketclaw.ts"
+  },
+  "files": [
+    ".opencode/plugins/rocketclaw.ts",
+    ".opencode/plugins/continue-on-deny/index.ts",
+    "opencode.json",
+    "skills"
+  ],
   "pi": {
     "extensions": [
       "./.pi/extensions/compound-engineering.ts"
@@ -41,7 +50,8 @@
   },
   "dependencies": {
     "citty": "^0.1.6",
-    "js-yaml": "^4.1.0"
+    "js-yaml": "^4.1.0",
+    "@opencode/plugin": "latest"
   },
   "devDependencies": {
     "@semantic-release/changelog": "^6.0.3",

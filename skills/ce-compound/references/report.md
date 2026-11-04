@@ -1,5 +1,9 @@
 # Completion reports
 
+## Delegated Full capture
+
+For the context-pressure route in `modes.md`, the delegate emits the Full non-interactive report below, identifying the source session and final artifact path and any incomplete research coverage. The interactive parent relays that report/document without a second Full pass or document re-edit. The parent may then offer consented instruction-file discoverability or a writable pack-destination follow-up under the existing rules; the non-interactive delegate never asks those questions. A Lightweight fallback report names the actual unavailable/denied/depth failure and advises rerun from the same source session once delegation is available, never a fresh session.
+
 ## Success Output
 
 **User-runnable refresh rendering.** The reports below print a refresh invocation for the user to copy. Default to `/ce-compound refresh <scope>`; use `$ce-compound refresh <scope>` only when the active host is Codex or explicitly documents dollar-prefixed skill invocation. Render only the invocation as inline code and output one form only.
@@ -114,7 +118,7 @@ File updated:
 
 | ❌ Wrong | ✅ Correct |
 |----------|-----------|
-| Subagents write product files into `docs/` or edit tracked paths | Subagents write only scratch artifacts under `<run-dir>/` and return the path; orchestrator writes the final form |
+| Phase 1 researchers write product files into `docs/` or edit tracked paths | Phase 1 researchers write scratch artifacts only; the capture orchestrator writes the final form. A fresh Full-capture delegate is that orchestrator, not a Phase 1 researcher. |
 | Subagent returns a long prose body only as its inline response | Subagent writes full output to its run artifact; orchestrator Reads it back (inline return is fallback only) |
 | Research and assembly run in parallel | Research completes → then assembly runs |
 | Non-interactive Discoverability Check edits AGENTS.md/CLAUDE.md | non-interactive Full reports `Instruction-file edit: gap noted, not applied`; non-interactive Lightweight emits a discoverability tip; only interactive Full applies the edit after consent |

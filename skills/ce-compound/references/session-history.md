@@ -1,74 +1,21 @@
 # Session history (Phase 1 step 4)
 
-Session history is the final Phase 1 input, not a workflow stop. When it returns, including with "no relevant prior sessions", go straight to the form choice without pausing or summarizing.
+Optional prior-session history is a Phase 1 input, not a workflow stop. Start that probe after dispatching the Related Docs Finder. Continue to form choice when it returns, even when no prior sessions qualify. A delegated capture's primary source-session retrieval below is instead a preflight: complete it before eligibility judgment, research, or drafting.
 
-## Session context
+## Source session is primary evidence
 
-Resolve two values at runtime with the shell tool before Phase 1 session-history filtering. Run each as its own command and read its exit status. A non-zero exit is a normal state here, not an error to route around:
+For a delegated Full capture, the passed **source session ID** identifies the conversation being documented. It is primary evidence, not an optional prior-session candidate. The parent obtains it from shell `$OPENCODE_SESSION_ID`, never from guessing or a database. Accept its title if known, absolute JJ workspace root, existing learning path if any, and one-sentence topic. The parent must not substitute a pre-digested conversation. Exclude only the delegate's own session, **not the passed source session**.
 
-- **Git branch**: run `git rev-parse --abbrev-ref HEAD`. Use the branch name to filter session history in Phase 1. If it returns `HEAD` (detached) or exits non-zero (not a git repo), skip branch filtering.
-- **Repo root**: run `git rev-parse --show-toplevel`. Use it as the session-history repo filter in Phase 1. If it exits non-zero (not a git repo), fall back to the working directory.
+From the absolute target workspace root, create a private per-run directory under `.tmp/rocketclaw/ce-compound/` (validate ownership and reject symlink escapes). Use `opencode session export <source-session-id>` if supported by the installed CLI, or the supported `opencode api get /api/session/<source-session-id>/message` with the target workspace location and authentication required by that installation. Inspect CLI help when necessary rather than inventing flags. Save the response to that local scratch directory, including on failures. Never read OpenCode's internal database or raw storage. If neither supported interface works, report the evidence limitation explicitly; do not guess another session.
 
-#### 4. **Session History** (internal flow after dispatching the Related Docs Finder; automatic in Full mode, including non-interactive)
-   - This is a two-stage probe: the cheap discovery+metadata pass below always executes, and the expensive extraction+synthesis executes only when the probe clears the relevance bar (see **Escalation check** below).
-   - Run session discovery, branch/keyword filtering, scan-window selection, deep-dive selection, and per-session extraction directly inside this skill using `scripts/session-history/`.
-   - Read the skill-local synthesis prompt at `references/agents/session-historian.md`, then dispatch a generic subagent using that prompt content. Do not dispatch a standalone agent by type/name.
+**Reduce before reading.** Parse the export/API response locally into a bounded text skeleton containing only user/assistant text, tool names, and short result summaries. Omit reasoning/thinking, credentials, large raw tool payloads, and irrelevant events. Bound individual summaries and total output; select topic-relevant windows without discarding user corrections or verification evidence. Read the reduced skeleton, not the raw export. Existing extraction helpers may be used for formats they actually support; do not assume another platform's JSON schema matches OpenCode. Record source ID and provenance in the research result, never sensitive transcript content in the learning.
 
-   **Keep the session-history payload tight.** A long, keyword-rich payload invites the flow to widen its search. Use this shape:
+The fresh delegate then performs the entire Full capture, including research, overlap, form, assembly, validation, vocabulary and final writes. It does not hand the parent a draft for a second capture. See `modes.md` and `report.md` for the parent relay and consented interactive follow-ups.
 
-   - **Session context** (only if the values resolved cleanly above; otherwise omit): repo name, current git branch.
-   - **Time window**: explicit `7 days` unless the documented problem clearly spans a longer arc.
-   - **Problem topic**: one sentence naming the concrete issue — error message, module name, what broke and how it was fixed. Not a paragraph; not a bullet list of related topics.
-   - **Filter rule (one line)**: "Only surface findings directly relevant to this specific problem. Ignore unrelated work from the same sessions or branches."
-   - **Output schema**:
+## Optional prior-session probe
 
-     ```
-     Structure your response with these sections (omit any with no findings):
-     - What was tried before
-     - What didn't work
-     - Key decisions
-     - Related context
-     ```
+Resolve `jj root` from the absolute target root and use the resulting absolute workspace path as repo filter. Resolve relevant bookmarks with `jj log`/`jj bookmark list` from that root; no bookmark match means omit that filter, not invent a branch. Never invoke Git. The supported source session above is loaded first and is never subject to prior-session relevance thresholds.
 
-   Do not append additional context blocks, exclusion lists, or topic-keyword bullets. Verbose payloads let the session-history flow keep widening the search, which rapidly compounds wall time. If keyword search is needed, the internal flow decides that from the topic.
-   - Returns a structured digest, or `no relevant prior sessions`. Either is a valid final Phase 1 input, and the documentation gets written without session context when it is the latter.
+The retained `scripts/session-history/` discovery, metadata, skeleton and error helpers support other platforms' exported session files. Resolve `SKILL_DIR` to the absolute directory containing this skill. If the helpers are absent, visibly skip only this optional prior-session probe. Start with seven days, use a one-sentence problem topic, and keep at most five candidates by repo/bookmark relevance, keyword match and recency. Escalate to extraction only for a bookmark match or at least two topic-keyword matches. Do not widen the search merely to fill time. No relevant candidates yields `no relevant prior sessions`, without suppressing the primary source evidence.
 
-   **Script resolution.** Set `SKILL_DIR` to the absolute path of the directory containing the SKILL.md you just read, and run the bundled scripts from `"$SKILL_DIR/scripts/session-history/"`. Set `SKILL_DIR` inline in each bash block below (shell state does not persist between commands). If the bundled scripts are genuinely not present on disk under `"$SKILL_DIR/scripts/session-history/"`, skip session history visibly with: "Session history bundled scripts were not found in this skill's directory; skipping the session-history probe for this run." Continue Phase 2 without session context.
-
-   **Discovery pipeline.** Infer the scan window from the problem topic, starting with 7 days. Run discovery and metadata extraction:
-
-   ```bash
-   SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
-   if [ -f "$SKILL_DIR/scripts/session-history/discover-sessions.sh" ] && [ -f "$SKILL_DIR/scripts/session-history/extract-metadata.py" ]; then
-     PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c '' >/dev/null 2>&1 && { echo "$c"; break; }; done)"; [ -n "$PY" ] || { echo "no working Python 3 interpreter on PATH" >&2; exit 1; };
-     REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd); REPO_NAME=$(basename "$REPO_ROOT"); SCAN_DAYS="7"; bash "$SKILL_DIR/scripts/session-history/discover-sessions.sh" "$REPO_NAME" "$SCAN_DAYS" --cwd "$REPO_ROOT" | tr '\n' '\0' | xargs -0 "$PY" "$SKILL_DIR/scripts/session-history/extract-metadata.py" --cwd-filter "$REPO_ROOT";
-   else echo "Session history bundled scripts were not found in this skill's directory; skipping the session-history probe for this run."; fi
-   ```
-
-   The command prints JSONL. `xargs` may split a long file list across several runs of the script; each run prints one object per kept session, then its own `_meta` line. Parse the output one line at a time, because the stream as a whole is not one JSON document. A pass's `files_processed` total is the sum across its `_meta` lines; a `--keyword` re-run is a new pass, not more files. Optional fields are omitted, not set to null, so a missing key is not an error. Rank recency by `last_ts`, falling back to `ts`. If you process the output with code, look at a few lines first and use the keys you see.
-
-   Claude sessions live under `~/.claude/projects/` unless `CLAUDE_CONFIG_DIR` is set, in which case they live under that directory's `projects/`. Codex sessions live under `~/.codex/sessions/` unless `CODEX_HOME` is set, in which case they live under that directory's `sessions/`; `~/.agents/sessions/` is also scanned. Pi sessions are included when present under `~/.pi/agent/sessions/` (`PI_CODING_AGENT_DIR` / `PI_CODING_AGENT_SESSION_DIR` override), and oh-my-pi (`omp`) sessions under `~/.omp/agent/sessions/` (named profiles: `~/.omp/profiles/<name>/agent/sessions/`; XDG: `$XDG_DATA_HOME/omp/sessions` and `$XDG_DATA_HOME/omp/profiles/<name>/sessions`; `PI_CONFIG_DIR` / `PI_CODING_AGENT_DIR` / `PI_CODING_AGENT_SESSION_DIR` override). Claude, Codex, Pi, and oh-my-pi (`omp`) sessions carry a recorded `cwd` (Claude also has git branch; Pi/omp do not). `--cwd-filter` keeps a session when that cwd is the repo root, an ancestor of it, or a path inside it (path-component boundaries: `my-repo` vs `my-repo-old` do not match). Claude, Codex, Pi, and omp sessions with no recorded cwd are dropped. Cursor has no cwd and stays. Do not drop a Claude session because its project folder name lacks the repo basename. That is how Claude stores parent-started sessions. If the first pass's `files_processed` total is `0`, return `no relevant prior sessions`. If the first pass finds no relevant branch matches, or if processing Codex, Pi, or oh-my-pi (`omp`) sessions, derive 2-4 keywords from the topic and re-run metadata extraction with `--keyword K1,K2,...`. Keep at most 5 sessions across Claude Code, Codex, Cursor, Pi, and oh-my-pi (`omp`), ranked by branch match, keyword match count, file size over 30KB, and recency. Exclude the current session.
-
-   **Escalation check.** The discovery+metadata pass above is the cheap probe and always runs in Full mode. Escalate to the extraction and synthesis stages below **only** when at least one retained candidate clears the relevance bar: a current-branch match, or ≥2 topic-keyword matches. If no candidate clears the bar (including a `files_processed` total of `0`), stop here, record `no relevant prior sessions` as the session-history input, and skip extraction and synthesis. This check is what keeps the always-on probe cheap. The expensive synthesis runs only when a prior session is genuinely relevant.
-
-   **Extraction pipeline.** Create `SCRATCH=$(mktemp -d "${TMPDIR:-/tmp}/ce-compound-sessions-XXXXXX")`. For each selected session, write extracted content to scratch files:
-
-   ```bash
-   SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
-   if [ -f "$SKILL_DIR/scripts/session-history/extract-skeleton.py" ]; then
-     PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c '' >/dev/null 2>&1 && { echo "$c"; break; }; done)"; [ -n "$PY" ] || { echo "no working Python 3 interpreter on PATH" >&2; exit 1; };
-     "$PY" "$SKILL_DIR/scripts/session-history/extract-skeleton.py" --output "$SCRATCH/<session-id>.skeleton.txt" < <session-file>;
-   else echo "Session history bundled scripts were not found in this skill's directory; skipping the session-history probe for this run."; fi
-   ```
-
-   Use `extract-errors.py` selectively when dead ends or recurring errors are likely useful. Pass only the scratch file paths and metadata to the synthesis subagent.
-
-   **Synthesis dispatch.** Build a generic subagent prompt containing:
-   - the full content of `references/agents/session-historian.md`
-   - `problem_topic`
-   - `scratch_dir`
-   - a `sessions` array with extracted file paths and metadata
-   - the output schema above
-   - the filter rule above
-
-   The subagent reads only the scratch paths, **writes its prose findings to `{run_dir}/session-history.md`, and returns only that artifact path once the write is confirmed** (the same #956 reliability reason applies, because session-history findings are long-form prose prone to summary-collapse). If `{run_id}` did not resolve or the artifact write failed, it returns the prose inline instead (per the inline-fallback rule above). If synthesis fails, note the failure and continue without session context.
+Put all extracted files under the same local run directory. Dispatch a generic native synthesis subagent with the full `agents/session-historian.md` prompt, `problem_topic`, `scratch_dir`, source session identity when applicable, and `sessions` metadata/paths. Request these sections, omitting empty ones: What was tried before; What didn't work; Key decisions; Related context. It writes `{run_dir}/session-history.md`, confirms it exists and is nonempty, and returns the artifact path. On a failed write it returns the full findings inline. Read the artifact before assembly. Classify dispatch failures under `modes.md`; only contract-permitted inline synthesis substitutes for unavailable nesting, with reduced coverage reported. Never route through a harness bridge.

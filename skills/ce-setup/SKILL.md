@@ -1,11 +1,29 @@
 ---
 name: ce-setup
-description: "Check Compound Engineering health and repo-local config, scaffold a Compound Pack with `pack:<id>`, or draft or refresh coding standards and review docs with `standards`."
+description: "Check Rocketclaw health and repo-local config, scaffold a knowledge pack with `pack:<id>`, or draft or refresh coding standards and review docs with `standards`."
 argument-hint: "[pack:<id> | standards]"
 disable-model-invocation: true
 ---
 
-# Compound Engineering Setup
+# Rocketclaw Setup
+
+## Installation prerequisite: user-level OpenCode configuration
+
+Before any skill dispatch, locate the actual global configuration directory with `opencode debug paths` (or `opencode debug paths config` where supported). The usual file is `~/.config/opencode/opencode.json`; if that directory already uses `opencode.jsonc`, edit that existing file instead. Never create a competing JSON/JSONC file. These are instructions for the operator: do not write host configuration automatically.
+
+Merge `experimental.subagent_depth` as an integer of at least `3` into that existing user-level document. Preserve unrelated top-level keys, sibling `experimental` fields, comments in JSONC, and any existing integer greater than 3. If no global document exists, the operator may create one in the discovered directory, after confirming no competing file exists:
+
+```json
+{"experimental": {"subagent_depth": 3}}
+```
+
+Installing the package or its bundled `opencode.json` alone does not satisfy this prerequisite: package configuration is not automatically adopted by consumers. Inspect effective configuration and all higher-precedence project/ancestor, `.opencode`, and managed sources; none may lower the effective depth below 3. If a managed setting prevents this, report a blocker rather than adding a lower-precedence override. Reopen the session after the operator updates configuration and verify the effective value before dispatch.
+
+### Native routing and permissions
+
+Read active `.rocketclaw/config.yaml` and `config.local.yaml` according to their documented precedence. Model aliases, peer families, ordered implementation preferences, effort, and `off`/`prefer`/`require` retain their intent, but are resolved with native `opencode.models` and executed only through permitted native subagents and shell; never launch another harness or a dispatcher bridge. Legacy `harness` labels are model-family intent, not executable choices. Resolve exact available model IDs and supported effort before use; never silently substitute a configured pin.
+
+Delegation permission, model-selection permission, and nesting capacity are separate gates. An explicit skill request for reviewers satisfies a user-OR-skill delegation exception without asking twice, but cannot override a prohibition, denial, or missing tool. Where the host requires an explicit user model request, do not pass an optional model override without one; use an inherited suitable reviewer if allowed. Same-model reviewers are not cross-model independence: an unmet required distinct-model route is incomplete coverage. Classify actual depth, permission, model, and missing-tool failures separately; use only a fallback the calling skill permits, never a second harness or a retry of denied delegation.
 
 ## Interaction Method
 
@@ -23,13 +41,13 @@ When the invocation asks to draft, refresh, or update coding standards or review
 
 ## Artifact Root Resolution
 
-Every Compound Engineering skill that writes or reads an artifact directory (`solutions`, `plans`, `ideation`, and the other CE-owned trees) resolves its root through the rule below. `ce-setup` carries the canonical statement and reports the resolved root so an operator can confirm where artifacts land before running other skills.
+Every Rocketclaw skill that writes or reads an artifact directory (`solutions`, `plans`, `ideation`, and the other owned trees) resolves its root through the rule below. `ce-setup` carries the canonical statement and reports the resolved root so an operator can confirm where artifacts land before running other skills.
 
 <!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only (`<repo-root>` = the absolute enclosing JJ workspace root, discovered from its `.jj` ancestor and verified by `(cd "$workspace_root" && jj root)`). Run every JJ subprocess from that absolute root. Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/` or `.jj/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
 
@@ -37,7 +55,7 @@ Every Compound Engineering skill that writes or reads an artifact directory (`so
 
 ### Step 1: Determine Plugin Version
 
-Detect the installed compound-engineering plugin version by reading the plugin metadata or manifest when the platform exposes it. If the version cannot be determined, skip this step.
+Detect the installed Rocketclaw plugin version by reading the plugin metadata or manifest when the platform exposes it. If the version cannot be determined, skip this step.
 
 If a version is found, pass it to the check script via `--version`. Otherwise omit the flag.
 
@@ -46,7 +64,7 @@ If a version is found, pass it to the check script via `--version`. Otherwise om
 Before running the script, display:
 
 ```text
-Compound Engineering -- checking your environment...
+Rocketclaw -- checking your environment...
 ```
 
 Run the bundled check script. Set `SKILL_DIR` to the absolute directory you loaded this `ce-setup` SKILL.md from — the Bash tool's CWD is the user's project, not the skill dir, so a bare `scripts/` path will not resolve:
@@ -60,7 +78,7 @@ Use the same command without `--version VERSION` if Step 1 could not determine a
 
 If the script is unavailable, run the inline equivalent listed in `references/repo-fixes.md`.
 
-Display the diagnostic output to the user. Missing optional tools are not setup failures. The health report includes the resolved artifact root and which config layer supplied it (per Artifact Root Resolution above); show that line so the operator can confirm where CE artifacts will be written. Missing `config.yaml` is a reported absence, not a project issue.
+Display the diagnostic output to the user. Missing optional tools are not setup failures. The health report includes the resolved artifact root and which config layer supplied it (per Artifact Root Resolution above); show that line so the operator can confirm where artifacts will be written. Missing `config.yaml` is a reported absence, not a project issue.
 
 ### Step 3: Decide Whether Fixes Are Needed
 
@@ -68,11 +86,11 @@ Repo-local fixes the health report names apply only to the checkout that report 
 
 After the health report, decide Phase 2 from writable-checkout availability:
 
-- If this session has a writable git checkout, run Phase 2 locally, including when `project_issues` is 0. Phase 2 always refreshes the example and always offers to create `config.yaml` when that file is missing.
+- If this session has a writable JJ workspace, run Phase 2 locally, including when `project_issues` is 0. Phase 2 always refreshes the example and always offers to create `config.yaml` when that file is missing.
 - If this session has no writable checkout, but the user named a repository and the harness exposes a remote repo-work surface with a writable checkout, run Phase 2 on that surface instead and report the remote repo-local fixes in Phase 3.
 - Otherwise skip Phase 2 and go to Phase 3, saying repo-local writes were skipped because no writable checkout is available.
 
-Two offers concern this machine rather than the checkout, so they stand whether or not Phase 2 runs. If the report names a legacy Compound Codex tool map, offer to remove it following `references/legacy-codex-tool-map.md` from this skill's directory. If the bundled health script reported the `node` row available, offer to warm the npm cache for cross-model peers following `references/acpx-cache-warm.md`.
+If the report names a legacy tool map, explain its retirement using `references/legacy-codex-tool-map.md`. If the bundled health script reported the `node` row available, offer optional package-cache warming following `references/acpx-cache-warm.md`. These retained mechanical cache packages are not dispatch routes or prerequisites for native model reviewers.
 
 Phase 2 remediates every project issue the report names, each in its own step of `references/repo-fixes.md`. That includes a `ce-work` implementation engine the report marks unavailable or invalid, retired scalar routing keys, and malformed dormant `work_engine_preferences` or `work_engine_effort`.
 
@@ -80,7 +98,7 @@ If optional tools are missing, do not offer a bulk install. The diagnostic alrea
 
 ## Phase 2: Fix Repo-Local Issues
 
-Read `references/repo-fixes.md` from this skill's directory before making any repo-local change. It carries Steps 4-10: removing the obsolete `compound-engineering.local.md`, refreshing the example config, offering to create `config.yaml`, repairing invalid `work_engine_preferences` and `docs_root`, the two `.gitignore` offers, and the agent-instructions offers (a knowledge-store mention, the compounding directive, and the chat-register directive for `ce-noslop`), and the offer to draft the project's review docs.
+Read `references/repo-fixes.md` from this skill's directory before making any repo-local change. It carries Steps 4-10: removing the obsolete `rocketclaw.local.md`, refreshing the example config, offering to create `config.yaml`, repairing invalid `work_engine_preferences` and `docs_root`, the two `.gitignore` offers, and the agent-instructions offers (a knowledge-store mention, the compounding directive, and the chat-register directive for `ce-noslop`), and the offer to draft the project's review docs.
 
 Every change to a user-owned file is offered and applied only if the user approves.
 
@@ -90,8 +108,10 @@ Every change to a user-owned file is offered and applied only if the user approv
 
 Display a brief summary:
 
+If the installation prerequisite is not verified, report setup as blocked, name the actual global file and any overriding source, and do not dispatch or print the success banner below. Include the effective depth and any separate delegation/model restrictions in the summary; depth 3 alone does not authorize delegation.
+
 ```text
-✅ Compound Engineering setup complete
+✅ Rocketclaw setup complete
 
 Fixed:     <fixes applied, or none>
 Skipped:   <fixes declined, or none>

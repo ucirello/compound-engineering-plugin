@@ -6,21 +6,23 @@ Read this before dispatching scouts. It defines how the Ground step (SKILL.md Ph
 
 Dispatch is tiered by task shape, never hardcoded to a model name:
 
-- **Extraction tier** — the project-grounding scout and the precedent-&-activity scout: search-and-quote work. Use the platform's cheapest capable model when the harness exposes a known override; otherwise inherit.
-- **Generation tier** — the external-evidence researcher: web/docs retrieval and entailment checking. Use the platform's mid-tier model when a known override exists; otherwise inherit.
+- **Extraction tier** — the project-grounding scout and the precedent-&-activity scout: search-and-quote work. Prefer the cheapest capable model where model selection is authorized; otherwise inherit.
+- **Generation tier** — the external-evidence researcher: web/docs retrieval and entailment checking. Prefer a mid-tier model where model selection is authorized; otherwise inherit.
 - **Ceiling tier** — the final assessment stays with the agent running `ce-pov`, even when another agent delegated the task to it. That agent checks whether the evidence is sufficient, weighs skeptical findings, and produces the required result. Research subagents gather evidence; they do not make this final assessment.
 
 If the user's or project's active instructions or the live prompt name a model for this subagent, use that model instead of the default tier above. They can name it by the subagent's tier, by its prompt-asset name, or for the subagents being dispatched. Without such an instruction, a model configured for this subagent's role takes precedence over the default tier.
 
 **When per-agent models cannot be chosen.** If the platform's subagent mechanism cannot select a model per agent, dispatch every scout on the inherited model and keep their read budgets. Cost control then comes from the read budgets and the tier-sensitive scout count, not from tiering.
 
-When a scout dispatch is rejected, first check whether an agent launched. If the rejection was a bad argument before launch, correct it once. If the platform is out of capacity, leave the work queued. If a launch still fails after the correction, gather that scout's bounded evidence inline and lower the verdict's stated confidence.
+Use native `opencode.models` for discovery and native subagents for dispatch. This skill explicitly requests the scouts, satisfying a user-OR-skill delegation exception without another ask. An unconditional prohibition, actual denial, or missing tool still blocks delegation. Model override permission is separate: where explicit user model selection is required, omit optional overrides unless the user requested one; retain configured tiers as intent and use suitable inherited reviewers. Model discovery alone grants no permission.
+
+When a scout dispatch fails, check whether an agent launched and classify the actual error: permission, model rejection, depth exhaustion, missing tool, capacity, or invalid argument. Correct a pre-launch bad argument once; do not retry a denial or bypass depth via a harness/shell bridge. For unavailable delegation, gather bounded evidence inline and lower confidence; inline evidence is not independent review. A permitted parent may take back depth-blocked work. Never claim cross-model completeness from inherited same-model reviewers.
 
 Create the scratch dir once, and reuse the echoed path for every scout this run:
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+PROJECT_ROOT="<resolved absolute workspace or non-repository project root>";
+SCRATCH_ROOT="$PROJECT_ROOT/.tmp/rocketclaw";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;

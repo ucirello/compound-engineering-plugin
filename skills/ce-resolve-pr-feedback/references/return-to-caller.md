@@ -14,7 +14,7 @@ PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c 
 "$PY" "$SKILL_DIR/scripts/pending-feedback.py" preflight
 ```
 
-When the invocation supplies `handoff:<path>`, append `--path '<caller path>'` to that command, preserving the actual argument. Preflight refuses an existing destination, including a dangling symlink, and probes exclusive temporary-file creation in its parent directory. Without a supplied path it allocates a private OS scratch directory and returns an unused `pending.json` path. Retain the returned absolute `handoff` path. Do not clean it up at skill completion; the caller owns retention.
+Run the helper from the absolute target workspace root (the absolute `SKILL_DIR` locates its code). Keep caller-supplied handoff paths and prepared/updated JSON files inside that root's `.tmp/`, including after symlink resolution. Append `--path '<caller path>'` when supplied; reject an outside path rather than silently relocating it. Preflight refuses existing destinations, including dangling symlinks, and probes exclusive temporary-file creation in the parent. By default it allocates a private directory under the workspace `.tmp/` and returns an unused `pending.json`. Retain the returned absolute path; the caller owns retention. If workspace retirement is planned, the caller must copy and read back the record in a surviving workspace's `.tmp/` first; completion alone never authorizes cleanup.
 
 If preflight fails, stop before editing and return the blocker. Do not substitute another destination for a rejected caller path. Creation also refuses overwrite, so a destination that appears during preparation cannot be replaced.
 

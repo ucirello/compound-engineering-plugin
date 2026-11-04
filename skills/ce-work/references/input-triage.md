@@ -13,14 +13,16 @@ Invocation origin is not observable or relevant: apply the same source-resolutio
 This skill discovers plans under `<root>/plans/`. Resolve `<root>` when you first compose a `<root>/` path (per the block below), never before you need it. A write to `<root>/...` and a read of `<root>/solutions/` both count as composing a `<root>/` path, so either one triggers resolution; only a run that touches no `<root>/` path at all -- a scratch-only or no-repo flow -- skips it; pass the resolved path to any subagent, not the config.
 
 <!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only (`<repo-root>` is the absolute JJ workspace root). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
 - **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
 
 ## Recovery and Control Grammar
+
+**Native lifecycle vocabulary:** The run controller in the grammar below means the host-owned durable native receipt under the absolute workspace's `.tmp/rocketclaw/ce-work/<run-id>/`, not a bundled executable. `resume --run-id` means read/reconcile that exact receipt and native handle, never execute an old bridge command. `verify-run` denotes stored source-wide evidence, not an executable. Initialization means writing/read-back of source/base/authority receipts before dispatch. Unsupported legacy manifests block safely without dispatch, destructive conversion, or completed-check reruns. `cross-model-execution.md` is authoritative for native operations and independent delegation/model/depth gates.
 
 **Recovery activation comes first.** Before normal plan, path, blank-input, or bare-prompt classification, interpret whether the user is semantically asking to resume, inspect status, reap, or clean up an existing external implementation run and has supplied its run id. This is intent recognition, not verb-only matching. Validate the id with the controller's safe-id contract: `^[A-Za-z0-9._-]{1,128}$` and at least one non-period character. When this direct recovery intent is present, read `references/cross-model-execution.md`, use that run id as authoritative for the requested controller operation, and return the observed state or blocker. Recovery must not dispatch a new worker, select a new route, fall through to latest-plan discovery, or run the shipping steps of either mode. When every unit is already cleaned, **completed recovery is read-only reconciliation**: Do not rerun test, build, format, install, generation, or `verify-run`; report the stored unit and plan-wide verification receipts. If recovery intent is clear but the run id is missing, request the id instead of guessing or classifying the text as new work.
 

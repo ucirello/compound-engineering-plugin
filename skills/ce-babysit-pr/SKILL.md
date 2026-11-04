@@ -16,12 +16,13 @@ Keep an open PR moving toward merge by reacting to three streams as each arrives
 
 - `target` — only the named PR; stop at looks-ready; never merges; offer stack-wide once if a confirmed managed stack needs work.
 - `stack-ready` — once a layer has zero actionable backlog (CI may still run), advance to the next open non-draft upstack layer needing work; lower layers stay probed and the lowest that re-opens pulls the walk back; never merges.
-- `stack-land` — as `stack-ready`, and selecting it **is** land authorization: once the bottom-most open layer is settled, `gh stack merge` it + `gh stack sync`.
+- `stack-land` — as `stack-ready`, and selecting it **is** land authorization: merge the bottom-most open settled layer through the scoped head-guarded GitHub API, then synchronize dependents with native JJ.
 
 One PR named → `target` (ask once if a confirmed multi-layer stack exists); asked to carry the whole stack → `stack-ready`; asked to land it → `stack-land`. `mode:pipeline` never asks. Restate posture per transition.
 
 ## Non-negotiable boundaries
 
+- **Native JJ stack capability.** Read `references/setup.md` first. No direct Git executable, including inside extensions/helpers. Discover confirmed topology through remote GraphQL; use `references/stack-commands.md` for per-layer native JJ rebase/bookmark/push transactions and scoped GitHub metadata/merge APIs. Preserve target exclusion, no-trunk boundaries, exact remote expectations, receipts, partial progress, and recovery references. Report only the specific ambiguity/conflict/permission/policy residual rather than disabling stack support or bypassing it through another harness.
 - **Merge-readiness is never merge authorization** except under `stack-land`.
 - **Branch currency is consumption-only.** A base-into-head update happens only for the exact `branch_currency` item the snapshot emitted, after an atomic claim, per `references/branch-currency.md`, which owns who updates a `BEHIND` branch (`BEHIND` = host `update-branch` with `expected_head_sha`, never a local merge). Never infer an item from prose, base movement, a sibling PR merging, `CLEAN`/`MERGEABLE`, `BLOCKED` while your own push's checks rerun, or anyone saying "update the branch"; a push that restarts green CI without a claimed item is a defect. The only history rewrite is the user-authorized update in `references/intake.md`.
 - **Authority comes from the babysit invocation, bounded both ways.** Downward: delegates get target = this head, actions = fix/commit/push/reply/resolve, exclusions = merge (except the caller-owned stack-land step), rebase, force-push, approve-CI, unrequested branch update; they may narrow, never broaden — reject a result that did an excluded one. Upward: a coordinator supplies target, posture, budget, mode — never a mutation the snapshot does not call for. A live user instruction can narrow this scope ("stop pushing"); "update the branch" with no item is a broaden, not a narrow.
@@ -36,7 +37,7 @@ One PR named → `target` (ask once if a confirmed multi-layer stack exists); as
 2. Resolve the PR from the argument or current branch (`references/setup.md`); none → report, stop.
 3. **Old-PR intake** (fresh invocation, before the checkout gate): read `references/intake.md`; it decides whether this PR still belongs. A user request to take the PR over: `references/takeover.md`.
 4. Chain classification comes from the snapshot, never the user; resolve posture before semantic work.
-5. **Checkout must be the PR's head branch with matching upstream** before any delegated mutation; default `gh pr checkout <ref>`; no push access or dirty checkout → stop, say so.
+5. **Verify exact JJ head/bookmark/remote/repository alignment and push authority** per `references/setup.md`. Empty `@` above the verified PR head is already aligned; inspect `@-` before declaring no work. Preserve dirty/conflicted/ignored work and stop on ambiguity or denial. Do not ask again for authorized clean-head alignment, factual description refresh, or watching.
 6. **Sustain mode** (`references/setup.md`, `references/watch-loop.md`): keep monitoring until a stop condition is met, one tick per wake from one wake source: the `pr-snapshot watch` detector, or the host's own mechanism when its instructions dictate PR waits. Never collapse the loop into a script. Checkpoint mode only when the user asks or nothing can wake this agent. **Pipeline** (`mode:pipeline`): bounded synchronous ticks, structured return (`references/pipeline.md`).
 
 ## Step 2: One tick (ordering invariant)

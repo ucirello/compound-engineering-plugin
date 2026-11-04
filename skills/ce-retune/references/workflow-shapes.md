@@ -7,7 +7,11 @@ Two primitives are assumed, both platform-neutral:
 - **A dispatch primitive** that launches an independent agent with its own context window and returns a result to the orchestrator (in one host it is a subagent-spawning tool; in another a job runner). Only two properties matter: fresh context per agent, and a result the orchestrator can read.
 - **A concurrency cap** the host enforces on how many agents run at once (often around 10). Dispatches above the cap queue rather than fail, so a 31-unit fan-out is three waves, not one. Plan the wave count; do not assume flat cost.
 
-Classify a rejected dispatch by whether an agent launched. Correct a pre-launch argument rejection once, and leave capacity-limited work queued. Any other launch failure follows the phase's own failure direction. In the corpus audit, the proposal and defense contexts must be independent for the audit to mean anything, so a launch failure there is a blocker: stop the audit rather than running the missing side inline.
+Use native subagents and shell, never harness-dispatch or workspace-bridge helpers. This skill explicitly requests independent auditors, defenders, and critics, satisfying a user-OR-skill delegation exception without a second ask; unconditional prohibition, denial, or missing tooling still applies. Delegation permission, model-selection permission, and nesting capacity are separate. Preserve configured model tiers as routing intent; discover models with native `opencode.models`. Where the host requires an explicit user model request, omit optional model overrides without one. Inherited suitable reviewers are allowed; the same model is not cross-model independence, and an unmet required cross-model route means incomplete coverage.
+
+Classify dispatch failures by actual error: argument rejection, permission denial, model rejection, missing tool, or nesting-depth exhaustion. Correct a genuine pre-launch argument rejection once; queue capacity-limited work only if the host supports queuing. Never retry denial or bypass depth through a harness. Other launch failures follow the phase's own failure direction; inline/parent fallback requires explicit phase permission. In the corpus audit, proposal and defense contexts must be independent: a launch failure is a blocker, never permission to run the missing side inline.
+
+Keep all per-run and failure-path scratch under the target workspace's local `.tmp/`, never OS temporary directories, bare `mktemp`, or default tempfile locations. Preserve durable evidence before retiring its workspace.
 
 ## The shapes
 

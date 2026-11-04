@@ -6,6 +6,8 @@ In this mode `ce-work` performs implementation and local verification only — i
 
 Return:
 
+Here “controller” means the host-owned durable native receipt, and “detached-process” means the observed native worker lifecycle; neither implies a deleted helper executable. Preserve requested versus actual identity, configured tier intent, independent delegation/model/depth outcomes, required independence/coverage gaps, and terminal evidence. A same-model fallback never counts as completed required cross-model coverage. Completed recovery reads stored evidence without rerunning checks.
+
 - `status`: `complete`, `blocked`, or `failed`
 - `plan_path`: the plan's path, or `null` for a work statement. For a work statement, read "the plan" in this file as the statement.
 - `changed_files`

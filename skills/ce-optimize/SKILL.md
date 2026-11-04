@@ -16,6 +16,41 @@ Invoking this skill authorizes reading the repo, building the harness, and (afte
 
 Independent calls and dispatches go in one response; serialize only real dependencies.
 
+### Native execution contract
+
+Use native subagents and shell tools, not dispatch or workspace bridge scripts. This skill explicitly requests its research, experiment, and independent judge subagents: that satisfies a user-OR-skill delegation exception without a second question, but never overrides a prohibition, denial, or missing tool. Discover available models with `opencode.models`; configured capability tiers remain routing intent. Where the host requires an explicit user model request, omit optional model overrides unless the user supplied one; use a suitable inherited model or report unmet coverage. Delegation permission, model-selection permission, and nesting capacity are separate checks. Classify actual depth errors separately from denial, rejected models, or unavailable tools; do not retry denials through another harness. Preserve receipts and checkpoints. Judges require separate contexts; never replace an unavailable independent judge with inline self-scoring. Required cross-model coverage is incomplete if the only available reviewer uses the same model.
+
+Read `references/workspaces.md` before creating, resuming, integrating, or retiring experiment isolation. All JJ commands run with cwd set to the absolute target workspace root (`cd "$workspace_root" && jj ...`), never a direct Git executable. Resolve and pass that absolute root to every worker. Repository-scoped `gh` calls run there with `GIT_DIR=$(jj git root)`. Keep temporary files under that workspace's `.tmp/` on success and failure paths.
+
+### Change descriptions
+
+Before every candidate, result-marker, integration, report, or other change-description composition, read the full https://go.dev/wiki/CommitMessage and inspect multiple recent subjects AND bodies using `jj log` at the absolute target workspace root, anchored to this task's verified history head (not a hardcoded main). Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards. Compare package/prefix, casing, tense, subject/body structure, wrapping, and issue references; repository-local syntax wins. Without history, use explicit project/user standards and compatible Go guidance, never invent precedent. Use `jj describe -m "<message composed from the standards above>"`; express the hypothesis, experiment identity, result-marker purpose, or report purpose as appropriate without a fixed message template. Do not add model/harness attribution.
+
+**Go source guidance — illustrative excerpts, not a repository template.** These verbatim SOURCE excerpts are subordinate to observed repository syntax and explicit project/user instructions. Read the full guide and compare history as required above; apply only compatible guidance.
+
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+
+```text
+net/http: handle foo when bar
+
+[longer description here in the body]
+
+Fixes #12345
+```
+
+> Notably, for the subject (the first line of description):
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+
+> For the body (the rest of the description):
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
+
 Report findings, user decisions, blockers, and results. During longer work, give occasional updates on what was learned and what remains. Routine preparation and phase or batch transitions need no announcement. Keep accounting in the log and final recap unless it affects a current decision.
 
 Explain the target, evidence, and decision in ordinary task language. Workflow labels (such as 'harness') belong in artifacts unless the user asks about those mechanics. State unknown duration or cost as unknown; caps are limits, not forecasts.
@@ -28,15 +63,15 @@ Use the host's blocking question tool already in the current tool list (match by
 
 ## Execution Surface
 
-Three capabilities decide where run state lives, how the loop waits, and where experiments run. A **durable state root** is a writable location the harness names that persists across turns and context resets, outside the repo checkout; without one, state lives under `.context/compound-engineering/ce-optimize/<spec-name>/`. A **wake after turn end** is a way to be re-invoked by an external event or timer without holding a tool call open; without one, the loop runs inside this session, and a wait it cannot hold ends the turn as a checkpoint with a resume invocation. A **detached worker** is a dispatch whose result arrives as a pushed ref, a store file, or a host-delivered message, not as edits in the local tree; `execution.backend: remote` needs one; without one that spec runs on `worktree`. Presence in the current tool list, or in context the harness gave you, is proof; a missing binary or environment variable proves nothing. Take a fallback without asking.
+Three capabilities decide where run state lives, how the loop waits, and where experiments run. A **durable state root** is a writable location the harness names that persists across turns and context resets, outside the repo checkout; without one, state lives under `.context/ce-optimize/<spec-name>/`. A **wake after turn end** is a way to be re-invoked by an external event or timer without holding a tool call open; without one, the loop runs inside this session, and a wait it cannot hold ends the turn as a checkpoint with a resume invocation. A **detached worker** is a dispatch whose result arrives as a pushed ref, a store file, or a host-delivered message, not as edits in the local tree; `execution.backend: remote` needs one; without one that spec runs on `worktree`. Presence in the current tool list, or in context the harness gave you, is proof; a missing binary or environment variable proves nothing. Take a fallback without asking.
 
 ## Artifact Root
 
 <!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only (`<repo-root>` is the absolute `jj root` resolved from the known project working directory). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/` or `.jj/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
 

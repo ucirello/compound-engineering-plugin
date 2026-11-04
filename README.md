@@ -319,15 +319,25 @@ Qwen Code installs Claude Code-compatible plugins directly from GitHub and conve
 
 ### OpenCode
 
-Add Compound Engineering to the `plugins` array in your global or project `opencode.json`:
+Install RocketClaw with OpenCode V2's native package/plugin loader, using the verified URL of this fork rather than the upstream package. Add that package specifier to the `plugins` array in your existing global or project configuration:
 
 ```json
 {
-  "plugins": ["compound-engineering@git+https://github.com/EveryInc/compound-engineering-plugin.git"]
+  "plugins": ["<verified RocketClaw Git/npm package specifier>"]
 }
 ```
 
-On OpenCode 1.x, the config key is `plugin` (singular). Restart OpenCode after changing the config. The plugin registers the Compound Engineering skills and `/commands` directly; no Bun installer or generated skill copy is required. See [`.opencode/INSTALL.md`](.opencode/INSTALL.md) for pinning examples.
+This plugin supports **OpenCode V2 only** and registers the package skills and slash commands directly; no generated skill copy is required.
+
+**Required user-level prerequisite:** deep agentic delegation needs a subagent depth of at least `3`. Merge the following setting into your **existing** `~/.config/opencode/opencode.json`, or use `opencode debug paths` / `opencode debug paths config` to locate your actual global configuration directory and edit the existing `opencode.json(c)` there:
+
+```json
+{
+  "experimental": { "subagent_depth": 3 }
+}
+```
+
+Merge, do not replace the file: preserve unrelated settings, sibling `experimental` fields, and any existing integer depth higher than `3`. Do not create a competing JSON/JSONC file. Installing the plugin or shipping this package's local `opencode.json` alone does **not** adopt that setting in a consuming project. Ensure higher-precedence configuration does not lower the depth below `3`, then restart OpenCode. See the [V2 configuration](https://opencode.ai/v2/docs/config) and [plugin loading](https://opencode.ai/v2/docs/plugins) guides.
 
 ### Pi
 

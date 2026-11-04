@@ -18,7 +18,7 @@ Also require the fields that record which route actually ran: `implementation_en
 
 ## The work must be committed
 
-`ce-code-review` leaves out untracked files, so files this run added go unreviewed until they are committed. Before step 3, confirm the return's `changed_files` are committed. If any are not, commit those files and continue. Do not stop for this.
+Before step 3, confirm the return's `changed_files`, including newly added files, are recorded in the intended JJ change and included in the review scope. Respect ignored-file boundaries and preserve unrelated work. If persistence or description is still needed, isolate only those paths and use the full Go-guide and verified-history composition standard in `references/review-followup.md`; never invent a fixed description. Continue after persistence rather than stopping solely because the files were not yet committed.
 
 ## Verification evidence
 

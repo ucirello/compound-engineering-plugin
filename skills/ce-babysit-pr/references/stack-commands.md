@@ -1,49 +1,38 @@
-# Managed-stack CLI recipes
+# Native JJ stack transactions
 
-Load this file when the active run uses a confirmed managed stack (`manager_status == "confirmed"`) and needs `gh stack` command recipes. Soft-depend on the CLI: if `gh stack` is missing or exits unavailable (e.g. code 9), surface a clear residual — do not invent managed membership from topology.
+Use these operations for a positively confirmed managed stack. No extension or helper may invoke Git. Every JJ command below runs with cwd set to the verified absolute `WORKSPACE_ROOT`; shell examples use `(cd "$WORKSPACE_ROOT" && jj ...)`. Every repository `gh` command runs from that root with `GIT_DIR=$(jj git root)` (including API calls with an explicit repository). Use native JJ. Store receipts under `$WORKSPACE_ROOT/.tmp/rocketclaw/ce-babysit-pr/`; never OS temporary paths.
 
-Always non-interactive. Prefer JSON/view probes and explicit branch names; never rely on interactive prompts. Substitute `<tracking-remote>` with the stack branches' actual tracking remote (often `origin`, but may be `upstream` or a fork remote) — never hard-code `origin` when SKILL.md already resolved a different tracking remote.
+## Discover and record topology
 
-## After an owned push on the active layer (dependents exist)
+Use the snapshot's paginated GitHub GraphQL stack metadata, not a local manager. Require positive membership for the target, stable ordered PR IDs, head/base repositories and bookmarks, and parent edges; topology alone never promotes a manual chain to managed. Resolve each head repository to its verified configured JJ remote; never assume `origin`. Fetch each exact bookmark with `jj git fetch --remote <remote> --branch <bookmark>`. Compare the fetched remote bookmark OID to a fresh scoped GitHub head-ref read. Require one linear unique parent edge and a unique layer revision set; ambiguity is a specific topology residual, not permission to guess.
 
-```bash
-gh stack rebase "<first-open-dependent-branch>" --upstack --no-trunk --remote <tracking-remote>
-gh stack push --remote <tracking-remote>
-```
+Persist the ordered topology, invocation ID, workspace root, old local/remote OIDs, old parent OIDs, target OID, and expected push destinations before any mutation. Create run-owned recovery bookmarks at old layer tips with `jj bookmark create <recovery-name> -r <old-tip>`. Preserve preexisting source, recovery, best, and archive bookmarks. Read back the receipt before dispatch. Check clean state, conflicts, ignored/untracked content, and exact local/remote alignment; do not discard work. An empty clean `@` directly above the verified published head is already aligned.
 
-Starting at the first dependent excludes the active target from the cascading rebase. Quote the branch name — git branch names may contain shell metacharacters. On conflict: `gh stack rebase --abort`, then surface a needs-human / stack-sync residual.
+## Propagate an authorized target push (no trunk update)
 
-## Check out a layer on a fresh checkout
+1. Re-read topology and fetch the exact target bookmark. Both its local bookmark and remote bookmark must equal the delegate-reported pushed OID. Recheck this invariant before and after each layer operation. The target's intentional push is not dependent divergence. Do not rebase or move the target.
+2. Starting at the first open dependent, process immediate parent edges bottom-up, with one writer. For each dependent require the fetched head still equals its recorded expected remote OID and its local bookmark equals its baseline or receipted rewritten tip. Revalidate push authority. A changed head is a lease/concurrency residual, not an invitation to overwrite it.
+3. Compute and inspect the exact dependent-only revision set from the recorded old parent boundary to the old dependent tip, excluding the parent and all lower-layer revisions. Save its full commit/change IDs and old bookmark topology in the receipt. For a linear layer this is `<old-parent>..<old-dependent-tip>`; do not include unrelated side branches or other bookmark owners. Rebase only that verified set with `jj rebase --revisions '<verified-layer-revset>' --destination <new-immediate-parent-tip>`. Recompute each higher layer against its own recorded old parent and the preceding rewritten tip. This explicit per-edge operation preserves the no-trunk rule: never fetch/rebase onto trunk as a substitute for the immediate parent and never select descendants broadly enough to rewrite the active target.
+4. Read the resulting JJ mapping, verify the dependent tip, intended diff, parent topology, and `jj log -r '<rewritten-layer> & conflicts()'`. Account for JJ's automatic descendant rewrites and bookmark movement: record every affected commit/change/bookmark, use that mapping at the next edge, and stop if any unrelated revision or bookmark was affected. Re-anchor run-owned recovery bookmarks to their recorded **old commit OIDs** after each rewrite (bookmarks otherwise follow rewritten changes), and verify their old content remains readable; retain the pre-operation ID as additional recovery evidence. On a conflict, preserve the conflicted rewrite and recovery references, leave remote bookmarks unchanged for that layer, stop the cascade, and return its exact PR/bookmark, old/new parent, operation ID, and conflicting paths as a needs-human residual. Never broadly undo an operation that could contain other work. Already-pushed lower layers remain recorded progress.
+5. Move only the dependent's authorized local bookmark using `jj bookmark set <bookmark> -r <verified-new-tip> --allow-backwards` after verifying it still equals the recorded baseline or the exact receipted JJ rewrite of that baseline; if JJ already moved it to the verified new tip, no additional move is needed. Record expected old remote and new tip before pushing with `jj git push --remote <remote> --bookmark <bookmark>`. JJ's tracked remote expectation is the lease: retain the recorded expected OID, do not refetch a moved remote and blindly retry. Do not force push, delete bookmarks, or push recovery bookmarks. Read back scoped GitHub head refs and fetched JJ remote bookmarks after success **or rejection**; record per-layer observed results. No multi-ref atomicity is assumed.
+6. Resume from the first uncompleted dependent only after reconciling local, recorded old remote, expected rewritten, and freshly observed remote OIDs. A remote already at the expected new tip is observed success; another tip is a precise concurrent-update residual. Preserve partial progress and all receipts. Only resume monitoring after required propagation is complete or its residual is explicitly parked; never claim stack readiness while any open dependent diverges.
 
-```bash
-gh stack checkout <PR_NUMBER>
-```
+## Align to another authorized layer
 
-Use the PR number, which pulls the stack from GitHub. A branch name only resolves stacks already known locally, and `gh pr checkout` leaves the manager unaware of the branch.
+Stop the prior watcher and finish any delegate first. Revalidate remote metadata, exact bookmark/repository/push authority, and clean state. Fetch the verified layer bookmark, compare its exact OID, and use `jj new <verified-head>` only if needed. Existing clean empty `@` above that head needs no change. Do not ask again for authorized alignment or continuation, move source bookmarks, or replace harness isolation. Continue the same invocation budget and posture as `stack.md` specifies.
 
-## Discover order / next open layer
+## Land and synchronize one bottom-most layer
 
-```bash
-gh stack view --json
-```
-
-## Land one prefix (only under `posture:stack-land`)
-
-Merge the **bottom-most open settled** PR — `gh stack merge <PR>` merges the full stack prefix through that PR atomically. Never merge an upstack active PR while downstack PRs remain open when single-prefix landing is intended.
+Only `posture:stack-land` authorizes execution. Identify the bottom-most open settled layer from fresh metadata; never merge an upper layer while a lower layer is open. Recheck the full readiness/pipeline gate and exact head. Record the verified base and expected head in the receipt. From the absolute root execute the scoped GitHub merge API, not a local extension:
 
 ```bash
-gh stack merge <BOTTOM_MOST_OPEN_SETTLED_PR> --yes --squash
-gh stack sync --remote <tracking-remote>
+(cd "$WORKSPACE_ROOT" && GIT_DIR=$(jj git root) gh api --hostname "<host>" --method PUT \
+  "repos/<base-owner>/<base-repo>/pulls/<bottom-pr>/merge" \
+  -f merge_method=squash -f sha="<verified-head-oid>")
 ```
 
-Run the sync only after the merge succeeded. A sync after a failed merge rebases and pushes every layer, which restarts their CI and review. If the merge says another process is editing the stack, retry it shortly: that lock is temporary, and all worktrees of one clone share it.
+Check both exit status and response `merged`/message, then re-read PR state and merge OID. A head mismatch, denied merge, policy rejection, or changed base requires fresh assessment and a precise residual; never retry with weaker checks or change repository settings. On a merge-queue base use the supported scoped GraphQL `enqueuePullRequest` mutation with the verified pull-request ID and `expectedHeadOid`; enqueue success is **not** merged. Observe `MERGED` before synchronization/advancement; an unavailable queue API is a queue residual, not permission to bypass policy. In pipeline mode return a queued residual rather than success on an open PR.
 
-Re-probe the landed PR before advancing: on merge-queue bases the CLI may succeed after enqueue while the PR stays OPEN — keep watching or return a queued residual until `pr_state` is `MERGED`. Only then treat the just-merged PR as a **layer transition** (stop watcher, re-probe, continue next open non-draft needing work with posture restated) — not a run-level Terminal stop for this babysit invocation.
+After actual merge, record the merge commit OID and fetch the exact surviving base bookmark. Verify the merge belongs to that base's ancestry. Preserve each remaining dependent's premerge parent boundary; update the first dependent's base with scoped `gh api --method PATCH repos/<owner>/<repo>/pulls/<N> -f base='<surviving-base-bookmark>'` only when its current base is the just-landed layer. Verify that edit. Rebase only that dependent's unmerged revision set onto the verified merged base tip, then propagate higher layers with the per-edge transaction above. Record old/new PR base edges and verify remote metadata after each edit. Retain source bookmarks and merged-layer/recovery references; no implicit deletion. A failed merge never triggers synchronization. A successful merge followed by failed sync records the merged layer as progress and returns the first unsynchronized layer as a recoverable residual; do not merge another layer meanwhile.
 
-## Forbidden on managed stack members
-
-```bash
-gh pr merge …
-```
-
-Use `gh stack merge` only. Under `posture:target` and `posture:stack-ready`, print the exact merge command when reporting ready-as-next; do not execute it.
+Only after actual merge and synchronization, stop the watcher and continue the next eligible open non-draft layer under the same invocation/posture. An externally merged/closed layer not landed by this run remains a true terminal stop. Under `target`/`stack-ready`, show the exact scoped API command above with resolved PR/head values as an **unexecuted final-merge option**, not authorization; explain that subsequent native JJ synchronization remains required.

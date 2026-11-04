@@ -53,7 +53,32 @@ Do not treat `autofix_class` as permission to auto-apply.
 1. Filter `actionable_findings` (or markdown Actionable Findings) with the bar above.
 2. Apply eligible fixes in the working tree in severity order (`#` stable from the review).
 3. Run targeted tests when `requires_verification: true` on any applied finding.
-4. If `git status --short` shows changes, stage only review-driven files and commit `fix(review): apply review findings`. Then push before step 6 **when a remote is configured** (per LFG's shipping precondition) and, on the defect route, when everything the push would publish is work the user offered (`references/debug-return.md`). To push: if an upstream exists, run `git push`. If no upstream exists but a remote is configured (common on a fresh feature branch), pick a writable remote at run time: prefer `origin` when present, otherwise run `git remote` and choose the first configured remote. Then run `git push --set-upstream <remote> HEAD`. If there is no remote at all, do not push; the local commit suffices. If no eligible fixes were applied, say so explicitly and skip the commit.
+4. Inspect `jj status` and `jj diff --summary` from the absolute workspace root. Persist only review-driven paths in their own change, preserving unrelated and pre-existing edits (use path-scoped `jj split` when needed). Before composing any description, read the full https://go.dev/wiki/CommitMessage and multiple recent subjects AND bodies with `jj log` anchored to the task's verified history head, not a hardcoded main. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards. Compare package/prefix, casing, tense, subject/body, wrapping, and issue references; repository-local syntax wins. With no history, use explicit project/user instructions plus compatible Go guidance without inventing precedent. Describe the isolated change with `jj describe -m "<message composed from the standards above>"`, expressing the review fixes accurately. Then push before step 6 **when a remote is configured** and everything published is authorized (including the defect-route scope gate). Verify the task bookmark and exact revision, advance only that bookmark and use `jj git push --remote <verified-writable-remote> --bookmark <task-bookmark>`; preserve existing remote tracking and do not guess a writable remote from list order. No remote means local-only. If no eligible fixes were applied, say so explicitly and skip the commit.
+
+   **Go source guidance — illustrative excerpts, not a repository template.** These verbatim SOURCE excerpts are subordinate to observed repository syntax and explicit project/user instructions. Read the full guide and compare history as required above; apply only compatible guidance.
+
+   > Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+
+   ```text
+   net/http: handle foo when bar
+
+   [longer description here in the body]
+
+   Fixes #12345
+   ```
+
+   > Notably, for the subject (the first line of description):
+   > - the name of the package affected by the change goes before the colon
+   > - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+   > - the verb after the colon is lowercase
+   > - there is no trailing period
+   > - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+
+   > For the body (the rest of the description):
+   > - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+   > - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+   > - there is no Markdown in the commit message.
+   > - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
 
 ## Step 6 — residual handoff
 

@@ -117,7 +117,15 @@ CENSOR_STATUS_FILE=""
 if [[ -n "$CENSOR_AFTER" ]] && awk -v a="$CENSOR_AFTER" -v t="$TIMEOUT" 'BEGIN { exit !(a ~ /^[0-9]+(\.[0-9]+)?$/ && t+0 == t && a+0 > 0 && a+0 < t+0) }'; then
   TIMEOUT="$CENSOR_AFTER"
   CENSORING=1
-  CENSOR_STATUS_FILE=$(mktemp "${TMPDIR:-/tmp}/ce-optimize-censor-XXXXXX")
+  MEASUREMENT_ROOT=$(pwd -P)
+  WORKSPACE_ROOT=$(cd "$MEASUREMENT_ROOT" && jj root) || {
+    echo "Error: measurement censoring requires a JJ workspace for local scratch" >&2
+    exit 1
+  }
+  WORKSPACE_ROOT=$(cd "$WORKSPACE_ROOT" && pwd -P)
+  mkdir -p "$WORKSPACE_ROOT/.tmp"
+  CENSOR_STATUS_FILE=$(mktemp "$WORKSPACE_ROOT/.tmp/ce-optimize-censor-XXXXXX")
+  trap '[[ -z "$CENSOR_STATUS_FILE" ]] || rm -f "$CENSOR_STATUS_FILE"' EXIT
 fi
 
 # Run the measurement command with timeout

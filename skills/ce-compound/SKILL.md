@@ -27,6 +27,8 @@ Otherwise run capture. A non-interactive run without `mode:refresh` is always ca
 
 Document only a problem that is solved and verified.
 
+For the context-pressure Full delegate, first hydrate the passed source session through the supported export/API and reduction procedure in `references/session-history.md`, before judging these preconditions or beginning research. A fresh delegate's empty conversation is not evidence that the source has no qualifying lesson. Only the optional prior-session probe waits until after the Related Docs Finder is dispatched.
+
 <!-- ce-durable-bar:start -->
 A learning earns its place only when it holds durable project reasoning that is not readily recoverable from the final code, tests, types, comments, or existing documentation, and losing it would plausibly cause recurrence, material risk, or substantial rediscovery. Apply this counterfactual: if the learning document disappeared, would a future engineer reading the final implementation still be likely to repeat the mistake or redo substantial investigation? Completion, effort, and diff size do not establish eligibility.
 <!-- ce-durable-bar:end -->
@@ -54,9 +56,9 @@ Enter non-interactive mode when **either** holds: the arguments you were invoked
 Resolve `<root>` when you first compose a `<root>/solutions/` path, and pass a subagent the resolved path rather than the config.
 
 <!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only (`<repo-root>` = absolute path returned by `jj root` from the target workspace). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
 - **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
@@ -65,7 +67,11 @@ Resolve `<root>` when you first compose a `<root>/solutions/` path, and pass a s
 
 **Only the orchestrator writes product files.** Phase 1 subagents write to per-run scratch only, and never touch `<root>/`, project instruction files, or any other tracked path.
 
-The orchestrator writes what `references/form.md` chooses, in every mode and without asking: at most one added test, added or tightened lint rule with any baseline entries it needs, or condition in an existing `CODING_STANDARDS.md`, and at most one learning under `<root>/solutions/`. It never changes product code. It also writes two maintenance side effects that their own step describes: `CONCEPTS.md` during vocabulary capture, and — **only in interactive Full mode after consent** — a small discoverability line in a project instruction file. Two further writes exist **only in interactive Full mode when the user selects them at the assembly destination step**: a rule file inside a writable declared Compound Pack, and the `packs:` entry appended to `.compound-engineering/config.yaml`. An instruction file is only ever edited, never created. Nothing else in the tree is written. Edits to *other* docs belong to a refresh, which a capture recommends or runs with a narrow scope.
+The fresh Full-capture delegate in `references/modes.md` is the capture orchestrator, not a Phase 1 researcher: it may write the final artifacts within this boundary. Its parent only relays results and handles explicitly consented interactive follow-ups, never a second capture or document re-edit.
+
+Use native JJ only, including retained scripts and read-only history. Run JJ from the absolute target workspace root (`cd "$workspace_root"`), never a direct Git executable. Scope repository `gh` calls with `GIT_DIR=$(jj git root)` from that root. Scratch and caches, including failure paths, stay under the workspace's `.tmp/`; do not use OS temporary directories. Preserve active workspace/session ownership and do not create or retire workspaces as part of capture.
+
+The orchestrator writes what `references/form.md` chooses, in every mode and without asking: at most one added test, added or tightened lint rule with any baseline entries it needs, or condition in an existing `CODING_STANDARDS.md`, and at most one learning under `<root>/solutions/`. It never changes product code. It also writes two maintenance side effects that their own step describes: `CONCEPTS.md` during vocabulary capture, and — **only in interactive Full mode after consent** — a small discoverability line in a project instruction file. Two further writes exist **only in interactive Full mode when the user selects them at the assembly destination step**: a rule file inside a writable declared Compound Pack, and the `packs:` entry appended to `.rocketclaw/config.yaml`. An instruction file is only ever edited, never created. Nothing else in the tree is written. Edits to *other* docs belong to a refresh, which a capture recommends or runs with a narrow scope.
 
 ## Choosing the path
 

@@ -13,17 +13,17 @@ Think in terms of the deploy window: old code on new schema, new code on old dat
 Run this **first** when `db/schema.rb` or `db/structure.sql` appears in the diff. Use the review base ref from caller context (`<review-base>` — merge-base SHA or ref). **Never assume `main`.**
 
 ```bash
-git diff <review-base> --name-only -- db/migrate/
+(cd "$workspace_root" && jj diff --from <review-base> --to <captured-head> --summary db/migrate/)
 ```
 
 Then diff each dump file that is actually in the PR diff (one or both may apply):
 
 ```bash
 # When db/schema.rb is in the diff:
-git diff <review-base> -- db/schema.rb
+(cd "$workspace_root" && jj diff --from <review-base> --to <captured-head> --git db/schema.rb)
 
 # When db/structure.sql is in the diff:
-git diff <review-base> -- db/structure.sql
+(cd "$workspace_root" && jj diff --from <review-base> --to <captured-head> --git db/structure.sql)
 ```
 
 Cross-reference every change in each in-scope dump against migrations **in this PR's diff**:
@@ -34,15 +34,7 @@ Cross-reference every change in each in-scope dump against migrations **in this 
 
 When drift is present, emit a **P1** finding on the affected dump path (`db/schema.rb` or `db/structure.sql`) with `autofix_class: manual`, concrete unrelated objects listed, and `suggested_fix`:
 
-```bash
-# schema.rb:
-git checkout <review-base> -- db/schema.rb
-bin/rails db:migrate
-
-# structure.sql (regenerate after restoring and migrating):
-git checkout <review-base> -- db/structure.sql
-bin/rails db:migrate
-```
+Describe regenerating the affected dump from the captured base plus only this change's migrations, preserving unrelated work. This is a suggested fix, not reviewer authority to restore files or run migrations/tests.
 
 If neither dump file is in the diff, skip this step.
 

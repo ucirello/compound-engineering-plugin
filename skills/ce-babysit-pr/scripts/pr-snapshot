@@ -296,18 +296,13 @@ def _run(cmd):
     env["NO_COLOR"] = "1"
     env.pop("CLICOLOR_FORCE", None)
     env.pop("GH_FORCE_TTY", None)
-    return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", env=env)
-
-
-def _run_git(cmd):
-    env = os.environ.copy()
-    env["GIT_TERMINAL_PROMPT"] = "0"
-    env["GCM_INTERACTIVE"] = "never"
-    env["GIT_ASKPASS"] = ""
-    env["SSH_ASKPASS"] = ""
-    return subprocess.run(
-        cmd, capture_output=True, text=True, encoding="utf-8", env=env, timeout=30,
-    )
+    root = os.environ.get("WORKSPACE_ROOT")
+    if not root or not os.path.isabs(root):
+        raise SystemExit("WORKSPACE_ROOT must be the verified absolute JJ workspace root")
+    scope = subprocess.run(["jj", "git", "root"], cwd=root, capture_output=True,
+                           text=True, encoding="utf-8", check=True)
+    env["GIT_DIR"] = scope.stdout.strip()
+    return subprocess.run(cmd, cwd=root, capture_output=True, text=True, encoding="utf-8", env=env)
 
 
 def _run_checked(cmd, label):
@@ -516,31 +511,8 @@ def fetch_base_ref(owner, name, ref, merge_identity, host=None):
         "--jq", ".object.sha",
     ])
     current_oid = (r.stdout or "").strip()
-    if r.returncode != 0 and re.search(r"\bHTTP\s+404\b", r.stderr or "", re.IGNORECASE):
-        exact_ref = f"refs/heads/{ref}"
-        remote_url = (f"https://{host or 'github.com'}/"
-                      f"{quote(owner, safe='')}/{quote(name, safe='')}.git")
-        try:
-            # Reuse the gh session (GH_TOKEN or keyring) as git's credential source so a
-            # headless host with no configured Git credential helper is not anonymous here.
-            git_result = _run_git([
-                "git", "-c", "core.askPass=",
-                "-c", "credential.helper=",
-                "-c", "credential.helper=!gh auth git-credential",
-                "ls-remote", "--exit-code", "--refs",
-                remote_url, exact_ref,
-            ])
-        except (subprocess.TimeoutExpired, OSError):
-            git_result = None
-        if git_result is not None and git_result.returncode == 0:
-            matches = []
-            for line in (git_result.stdout or "").splitlines():
-                fields = line.split()
-                if len(fields) == 2 and fields[1] == exact_ref and _valid_oid(fields[0]):
-                    matches.append(fields[0])
-            if len(matches) == 1:
-                current_oid = matches[0]
-                r = git_result
+    # Exact-ref failures remain probe errors; never substitute a different ref
+    # or bypass the JJ-only boundary with a Git transport fallback.
     if r.returncode != 0 or not _valid_oid(current_oid):
         return base
     base["oid"] = current_oid
@@ -806,18 +778,9 @@ def _manual_relationships(pr, repo, base_ref_name, head_ref_name, owner, name,
 def fetch_pr_chain(pr, repo, url, base_ref_name, head_ref_name, owner, name, host=None):
     """Classify manager membership and ordinary dependency relationships without mutation.
 
-    The local manager is the fast/rich path, but its output is accepted only when it contains the
-    requested PR. `gh stack view` has no target argument and may describe a different current stack.
+    Read remote GraphQL metadata directly. Do not invoke a local manager that
+    shells out to the Git executable, even for read-only discovery.
     """
-    local = _run(["gh", "stack", "view", "--json"])
-    if local.returncode == 0:
-        try:
-            chain = _chain_from_stack_view(json.loads(local.stdout), pr, url)
-        except (TypeError, ValueError, json.JSONDecodeError):
-            chain = None
-        if chain:
-            return chain
-
     manager_status, chain, default_branch = _fetch_graphql_stack(pr, owner, name, host)
     if manager_status == MANAGER_CONFIRMED:
         chain["default_branch"] = default_branch
@@ -2480,12 +2443,22 @@ def locked_state(state_dir, pr, repo, now):
         state.setdefault("invocation_backstop_seconds", DEFAULT_INVOCATION_BACKSTOP_SECONDS)
         box = {"state": state}
         yield box
-        tmp = tempfile.NamedTemporaryFile("w", dir=state_dir, delete=False)
-        json.dump(box["state"], tmp, indent=2)
-        tmp.flush()
-        os.fsync(tmp.fileno())
-        tmp.close()
-        _replace_atomic(tmp.name, state_path)
+        _write_json_atomic(state_path, box["state"])
+
+
+def _write_json_atomic(path, value):
+    tmp = tempfile.NamedTemporaryFile("w", dir=os.path.dirname(path), delete=False)
+    try:
+        with tmp:
+            json.dump(value, tmp, indent=2)
+            tmp.flush()
+            os.fsync(tmp.fileno())
+        _replace_atomic(tmp.name, path)
+    finally:
+        try:
+            os.unlink(tmp.name)
+        except FileNotFoundError:
+            pass
 
 
 def _fetch_snapshot(args):
@@ -2780,12 +2753,7 @@ def _reserve_watch_candidate(args, generation):
     }
     with _state_lock(args.state_dir, exclusive=True):
         previous = _read_watch_candidate(args)
-        tmp = tempfile.NamedTemporaryFile("w", dir=args.state_dir, delete=False)
-        json.dump(candidate, tmp)
-        tmp.flush()
-        os.fsync(tmp.fileno())
-        tmp.close()
-        _replace_atomic(tmp.name, _watch_candidate_path(args))
+        _write_json_atomic(_watch_candidate_path(args), candidate)
     return previous
 
 
@@ -3640,6 +3608,16 @@ def main():
     w.set_defaults(func=cmd_watch)
 
     args = p.parse_args()
+    root = os.environ.get("WORKSPACE_ROOT")
+    if not root or not os.path.isabs(root):
+        p.error("WORKSPACE_ROOT must be the verified absolute JJ workspace root")
+    local_tmp = os.path.realpath(os.path.join(root, ".tmp"))
+    if os.path.commonpath([os.path.realpath(root), local_tmp]) != os.path.realpath(root):
+        p.error("workspace .tmp must not resolve outside the workspace")
+    state_dir = os.path.realpath(args.state_dir)
+    if os.path.commonpath([local_tmp, state_dir]) != local_tmp or state_dir == local_tmp:
+        p.error("--state-dir must be contained in the workspace-local .tmp directory")
+    args.state_dir = state_dir
     if (args.cmd in ("snapshot", "watch")
             and args.invocation_budget_seconds is not None
             and args.invocation_budget_seconds <= 0):

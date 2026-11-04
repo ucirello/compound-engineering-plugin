@@ -42,16 +42,16 @@ A case a stated condition already covers is not a finding; answer it with the co
 ## Git and targets
 
 - A step that commits, stashes, switches branches, or pushes keeps pre-existing user changes, including staged and untracked files, out of its result, and restores exactly what it saved.
-- The target (host, owner, repo, PR, ref) is resolved once and passed to every read and mutation. A bare `gh` or `git` call falls back to the checkout, which is the wrong repo for forks and Enterprise hosts.
+- The target (host, owner, repo, PR, ref) is resolved once and passed to every read and mutation. Run native JJ at the target's absolute workspace root, and repository `gh` there with `GIT_DIR=$(jj git root)`; never invoke Git directly. An unscoped call can target the wrong repo for forks and Enterprise hosts.
 - The default branch and remote are stated as conditions ("the default branch on its tracking remote; unknown means create a branch"), never as literal `main`, `master`, or `origin` and never as an enumerated list of fallback commands.
-- In a runnable template, a placeholder filled from branch, PR, or remote metadata is double-quoted, and positional git refs follow `--`.
+- In a runnable template, a placeholder filled from bookmark, PR, or remote metadata is double-quoted, and positional refs use the native command's supported option separation.
 
 ## Temp directories
 
 The authoring statement is "Temp directories" in `docs/solutions/skill-design/portable-agent-skill-authoring.md`; review checks:
 
 - A directory that something must rediscover without being handed its path (a later invocation that resumes state, attaches to a live session, or polls a job it did not start) is created under the scratch-root preamble copied from a shipped skill. Only a known root makes it findable.
-- A directory whose absolute path is passed to everything that uses it, including a worker the run starts and later polls, may be a unique `mktemp -d "${TMPDIR:-/tmp}/<name>-XXXXXX"`. It is created private (0700) and atomically, so moving it under the scratch root adds no privacy. Asking for that move is not a finding.
+- A directory whose absolute path is passed to everything that uses it, including a worker the run starts and later polls, must be created privately and atomically beneath the target workspace's local `.tmp/`, for example `mktemp -d "$workspace_root/.tmp/<name>-XXXXXX"` after creating that parent. Without a JJ repository, use the project's local `.tmp/`. This applies to fallback and failure paths too; never use OS-global temporary defaults.
 - No skill creates a temp directory with a fixed name or a name from an optional tool such as `openssl`. Two runs then share a path, or a missing tool collapses every run onto one.
 
 ## Edits that move or shrink text

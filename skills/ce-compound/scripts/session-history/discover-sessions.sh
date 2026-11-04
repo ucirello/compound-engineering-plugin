@@ -115,7 +115,7 @@ discover_pi() {
 
 # --- oh-my-pi (omp) ---
 # Encode omp's raw bucket name for a cwd: home-relative "-<rel>",
-# tmp-relative "-tmp-<rel>", and otherwise "--<abs>--", with path separators
+# workspace-.tmp-relative "-tmp-<rel>", and otherwise "--<abs>--", with path separators
 # and ":" encoded as "-" (session-paths.ts getDefaultSessionDirName /
 # encodeLegacyAbsoluteSessionDirName). This raw scheme predates the hashed
 # scheme and is current again since omp 17.2.9 (#7646 restored it and removed
@@ -123,7 +123,7 @@ discover_pi() {
 # with physical paths so symlinked cwds resolve to the same bucket, mirroring
 # omp's resolveEquivalentPath. Prints nothing when the cwd cannot be resolved.
 encode_omp_raw_cwd() {
-    local cwd canon_home canon_tmp rel
+    local cwd canon_home canon_tmp rel workspace_root
     cwd="$(cd "$1" 2>/dev/null && pwd -P)" || return 0
     canon_home="$(cd "$HOME" 2>/dev/null && pwd -P)" || canon_home="$HOME"
     case "$cwd" in
@@ -135,7 +135,23 @@ encode_omp_raw_cwd() {
             printf -- '-%s' "$rel"
             ;;
         *)
-            canon_tmp="$(cd "${TMPDIR:-/tmp}" 2>/dev/null && pwd -P)" || canon_tmp=""
+            # Resolve only the target workspace's local scratch root. Do not
+            # probe OS temporary roots or widen discovery to sibling repos.
+            workspace_root="${REPO_CWD:-$cwd}"
+            workspace_root="$(cd "$workspace_root" 2>/dev/null && pwd -P)" || return 0
+            while [ ! -d "$workspace_root/.jj" ] && [ "$workspace_root" != / ]; do
+                workspace_root="${workspace_root%/*}"
+                [ -n "$workspace_root" ] || workspace_root=/
+            done
+            canon_tmp=""
+            if [ -d "$workspace_root/.jj" ] && [ ! -L "$workspace_root/.tmp" ]; then
+                canon_tmp="$(cd "$workspace_root/.tmp" 2>/dev/null && pwd -P)" || canon_tmp=""
+            fi
+            if [ -z "$canon_tmp" ]; then
+                rel="$(printf '%s' "${cwd#/}" | sed 's/[/\\:]/-/g')"
+                printf -- '--%s--' "$rel"
+                return 0
+            fi
             case "$cwd" in
                 "$canon_tmp")
                     printf -- '-tmp'

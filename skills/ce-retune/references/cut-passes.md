@@ -39,11 +39,17 @@ Disjoint paths in one tree are enough when nothing an agent runs mutates state o
 Pay for a worktree (or equivalent per-agent checkout) when any of these is true:
 
 - Agents run builds, formatters, generators, or anything that writes outside its unit, such as lockfiles, caches, generated output, or a repo-root config.
-- An agent needs to run the suite or the harness to check its own edit. Concurrent runs in one tree race on scratch and on git index state.
-- Agents commit, stage, or use branch operations. One git index shared by parallel agents corrupts staging.
+- An agent needs to run the suite or the harness to check its own edit. Concurrent runs in one tree race on scratch and working-copy state.
+- Agents describe changes or move bookmarks. Parallel agents sharing one JJ working copy can capture each other's edits or move shared references unexpectedly.
 - A pass may need to be abandoned wholesale, and a clean discard is worth more than a shared diff.
 
 Otherwise the isolation cost is real: N checkouts to create, N results to merge, and merge conflicts reintroduced on exactly the files the manifest was designed to keep apart.
+
+Use native JJ workspaces, never Git worktree helpers. Detect existing isolation first; preserve its name, harness ownership, and session adoption, even when nonconforming. Never rename or recreate it. Run every JJ command from its absolute workspace root. Verify source root, status, and base revision before creation. Capture the date once and persist one `YYYYMMDD-task-slug` identity for registered name and destination basename across retries, resumes, and midnight; normalize dated callers without double prefixes and derive meaningful task/PR/review slugs. Check registrations and destination collisions, appending `-2`, `-3` as needed. From the source root run `jj workspace add --colocate --name "$identity" --revision "$verified_base" "$absolute_destination"` under its local `.tmp/`, then verify `jj git colocation status` from the new root. Unsupported harness naming or colocation is a compatibility blocker, not permission to bypass isolation.
+
+Remove only explicitly authorized, owned disposable workspaces. Stop workers, leave the target, and move active sessions to a surviving workspace first. From the surviving absolute root verify exact registered name/path/run ownership, required integration, changes/conflicts, and ignored/untracked contents. Copy evidence outside the target and read it back; preserve recovery/best/archive references. Ambiguous ownership, unrelated content, or incomplete integration blocks removal; completion alone grants no authority. Run `jj workspace remove "$identity"` from the survivor and verify both deregistration and directory disappearance. Warnings or incomplete cleanup mean retain state and report, never force-delete or use Git cleanup. Reserve `jj workspace forget` for unregistering while preserving files, never pair it with directory deletion. Bookmark deletion remains separate and authorized.
+
+Removal snapshots working-copy state, but ignored files and files left untracked are not protected by that snapshot. Do not remove still-referenced or non-disposable content on the assumption it can be recovered from that snapshot.
 
 ## The shared-asset trap
 
@@ -125,5 +131,32 @@ A failure that moves to a later phase is progress and names the next target. A f
 ## Ship (Phase 6)
 
 Commit each pass separately with its own message so the history says which change was made and why, and so release tooling can classify intent. Keep the measurement artifacts.
+
+Before composing each description, read the full https://go.dev/wiki/CommitMessage and multiple recent subjects **and bodies** using `jj log` and `jj show` from the absolute target workspace root, anchored to the task's verified history head rather than hardcoded main. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards. Repository-local syntax wins: compare package/prefix conventions, casing, tense, subject/body structure, wrapping, and issue references. Without history, state the limitation and use explicit project/user requirements plus compatible Go guidance, never invented precedent. Use `jj describe -m "<message composed from the standards above>"`, not fixed experiment syntax.
+
+**Go source guidance — illustrative excerpts, not a repository template.** These verbatim SOURCE excerpts are subordinate to observed repository syntax and explicit project/user instructions. Read the full guide and compare history as required above; apply only compatible guidance.
+
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+
+```text
+net/http: handle foo when bar
+
+[longer description here in the body]
+
+Fixes #12345
+```
+
+> Notably, for the subject (the first line of description):
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+
+> For the body (the rest of the description):
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
 
 Then write the finding down where the next person will hit it: the mechanism, the before and after, the measured numbers, and the hypotheses that died. **Record the ones that died.** They are what stops the next attempt from re-running a dead end, and they are the part every write-up omits.

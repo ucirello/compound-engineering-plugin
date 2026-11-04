@@ -1,5 +1,7 @@
 # Grounding Validation (Phase 2.45)
 
+Native delegation follows the permission/model/depth distinctions in `modes.md`. This skill's explicit reviewer request satisfies a user-OR-skill exception, not an unconditional denial. Preserve configured tiers as intent; discover available models natively, but omit optional overrides where an explicit user model request is required and absent. Inherited reviewers are allowed but do not establish cross-model independence. Classify actual depth failures separately from permission/model rejection or unavailable tools and report incomplete coverage; never bypass them with dispatch helpers.
+
 Read this when Phase 2.45 runs. The doc just written becomes permanent, trusted knowledge. Future agents will act on its claims without re-verifying them. This phase checks the claims against reality before they compound: a deterministic mechanical pass (bundled script) plus a semantic pass (one read-only validator subagent). Neither pass is a hard stop. You judge every flag, because solution docs legitimately cite deleted paths and pre-fix states.
 
 ## Which tree is the ground truth
@@ -9,7 +11,7 @@ Two claim categories verify against different trees:
 - **Code-behavior claims** (enum values, status semantics, limits, defaults) verify against the **local working tree**. They describe what this session's work produced and verified here.
 - **Merge-state claims** ("fixed in #1608", "landed", "shipped") verify against **remote truth**. The checkout may predate a merge, so `gh pr view` (or the tracker equivalent) is primary and local git reachability is only the fallback. The script's `INFO: worktree is N commits behind …` line tells you how much to distrust the local tree for this category.
 
-Before running the script, optionally run `git fetch --quiet` (best-effort; skip silently on failure or offline, because the network is never a correctness dependency). When remote state cannot be checked at all, keep the claim, add an as-of qualifier ("as of this writing"), and record degraded verification in the run report.
+Before running the script, optionally run `(cd "$workspace_root" && jj git fetch)` (best-effort; skip silently on failure or offline, because the network is never a correctness dependency). Scope repository `gh` commands from that root with `GIT_DIR=$(jj git root)`. When remote state cannot be checked at all, keep the claim, add an as-of qualifier ("as of this writing"), and record degraded verification in the run report.
 
 ## Step 1: Adjudicate the mechanical flags
 
@@ -43,7 +45,7 @@ Build its prompt from this template:
 ```
 You are a grounding validator for documentation about to enter a permanent
 knowledge store. You are read-only: never edit files. Inspect with Read,
-Grep, Glob, git (non-mutating), and gh when available.
+Grep, Glob, JJ (non-mutating, from the absolute workspace root), and repository-scoped gh when available. Never invoke the Git executable.
 
 Inputs: the doc content below, the CONCEPTS.md entries below (if any), and
 this staleness context: <INFO line from the mechanical script, or "none">.

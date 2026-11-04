@@ -13,17 +13,17 @@ Think in terms of the deploy window: old code on new schema, new code on old dat
 Run this **first** when `db/schema.rb` or `db/structure.sql` appears in the diff. Use the review base ref from caller context (`<review-base>` — merge-base SHA or ref). **Never assume `main`.**
 
 ```bash
-git diff <review-base> --name-only -- db/migrate/
+jj diff --from <review-base> --to <review-head> --summary -- db/migrate/
 ```
 
 Then diff each dump file that is actually in the PR diff (one or both may apply):
 
 ```bash
 # When db/schema.rb is in the diff:
-git diff <review-base> -- db/schema.rb
+jj diff --from <review-base> --to <review-head> --git -- db/schema.rb
 
 # When db/structure.sql is in the diff:
-git diff <review-base> -- db/structure.sql
+jj diff --from <review-base> --to <review-head> --git -- db/structure.sql
 ```
 
 Cross-reference every change in each in-scope dump against migrations **in this PR's diff**:
@@ -36,15 +36,17 @@ When drift is present, emit a **P1** finding on the affected dump path (`db/sche
 
 ```bash
 # schema.rb:
-git checkout <review-base> -- db/schema.rb
+jj restore --from <review-base> -- db/schema.rb
 bin/rails db:migrate
 
 # structure.sql (regenerate after restoring and migrating):
-git checkout <review-base> -- db/structure.sql
+jj restore --from <review-base> -- db/structure.sql
 bin/rails db:migrate
 ```
 
 If neither dump file is in the diff, skip this step.
+
+Run inspection from the absolute target workspace root using the captured exact base/head range. The restore/migrate snippets are suggested fixes only, never authority for this read-only reviewer to mutate the shared tree; execute them only in an authorized faithful isolated copy.
 
 ## Migration safety (what you're hunting for)
 

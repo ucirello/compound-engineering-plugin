@@ -205,9 +205,17 @@ def write_record(path: Path, raw: bytes, *, checkpoint: bool) -> None:
 
 
 def github_json(host: str, endpoint: str) -> dict:
+    environment = os.environ.copy()
+    root = subprocess.run(["jj", "workspace", "root"], capture_output=True, text=True, check=False)
+    workspace_root = root.stdout.strip() if root.returncode == 0 else None
+    if workspace_root:
+        backend = subprocess.run(["jj", "git", "root"], cwd=workspace_root,
+                                 capture_output=True, text=True, check=False)
+        require(backend.returncode == 0, backend.stderr.strip() or "Cannot resolve JJ Git backend")
+        environment["GIT_DIR"] = backend.stdout.strip()
     result = subprocess.run(
         ["gh", "api", "--hostname", host, "--method", "GET", endpoint],
-        capture_output=True, text=True, check=False,
+        cwd=workspace_root, env=environment, capture_output=True, text=True, check=False,
     )
     require(result.returncode == 0, result.stderr.strip() or f"GitHub GET failed: {endpoint}")
     return object_value(json.loads(result.stdout), "GitHub response")
@@ -257,7 +265,13 @@ def main() -> None:
             command_parser.add_argument("--input", required=True)
     args = parser.parse_args()
     if args.command == "preflight":
-        path = Path(args.path).absolute() if args.path else Path(tempfile.mkdtemp(prefix="ce-pending-feedback-")) / "pending.json"
+        if args.path:
+            path = Path(args.path).absolute()
+        else:
+            root = subprocess.run(["jj", "workspace", "root"], capture_output=True, text=True, check=False)
+            temporary_root = (Path(root.stdout.strip()) if root.returncode == 0 else Path.cwd()) / ".tmp"
+            temporary_root.mkdir(parents=True, exist_ok=True)
+            path = Path(tempfile.mkdtemp(dir=temporary_root, prefix="pending-feedback-")) / "pending.json"
         require(not os.path.lexists(path), "handoff destination already exists")
         require(path.parent.is_dir(), "handoff parent directory does not exist")
         with tempfile.TemporaryFile(dir=path.parent):

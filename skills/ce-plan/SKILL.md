@@ -6,6 +6,14 @@ argument-hint: "[optional: feature description, requirements doc path, plan path
 
 # Create Technical Plan
 
+## Native execution boundaries
+
+Run JJ from the target workspace's absolute root (set shell/subprocess cwd, not merely `-R`); never invoke the Git executable. See https://docs.jj-vcs.dev/latest/cli-reference/. Repository-scoped `gh` commands require `GIT_DIR=$(jj git root)` in that workspace. Scratch data, including error/fallback paths, stays in workspace-local `.tmp/` (local `.tmp/` for non-repository work).
+
+The research, deepening, and elevation dispatch instructions explicitly request native OpenCode subagents. Under a user-OR-loaded-skill delegation rule, this satisfies the skill-requested exception without another approval. Respect actual higher-priority prohibitions and tool denials. Resolve model choices with `opencode.models`; preserve configured models and tiers as intent, but pass an optional model override only when host model-selection policy permits it. When overrides are forbidden, use a suitable inherited model and disclose unmet model requirements. Same-model agents are separate reviewers, not cross-model independence.
+
+Check effective nesting depth separately using supported OpenCode configuration inspection. Classify actual failures as permission denial, depth/capacity limit, rejected model argument, missing tool, or infrastructure failure; never bypass a denial/depth limit through shell or another harness. Correct a permitted pre-launch argument error once, queue capacity-limited work, and use inline/parent fallback only where that phase permits it. Required independent or different-model coverage that could not run remains incomplete. These rules govern every model-tier recommendation and dispatch reference below.
+
 **Outcome:** a plan for carrying out and checking the agreed work while preserving its outcome and constraints. Resolve technical choices from evidence; leave adequate instructions unchanged. `ce-brainstorm` defines **WHAT**, `ce-plan` plans **HOW**, and `ce-work` executes. A prior brainstorm is optional.
 
 **An explicit invocation always produces a plan.** Never classify a direct invocation as "not a planning task" and route out. It may select any output contract below, and the smallest valid plan is a few sentences in chat.

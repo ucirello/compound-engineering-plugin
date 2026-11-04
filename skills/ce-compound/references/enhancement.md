@@ -8,7 +8,7 @@ This phase is interactive-only: a non-interactive caller has no human-in-the-loo
 
 <parallel_tasks>
 
-Based on problem type, optionally dispatch generic subagents seeded with local prompt assets from `references/agents/` to review the documentation. Do not dispatch standalone agents by type/name.
+Based on problem type, optionally dispatch native generic subagents seeded with local prompt assets from `references/agents/` to review the documentation. Do not dispatch standalone agents by type/name. Apply `modes.md`'s distinct delegation-permission, model-selection, and nesting-depth rules: this explicit skill request satisfies user-or-skill delegation policy, but not an unconditional prohibition; forbidden model overrides use a suitable inherited model without the optional argument; actual depth failures are not permission denials. Preserve independent coverage and report unavailable required passes as incomplete, never bypassing through another harness.
 
 - **performance_issue** → `references/agents/performance-oracle.md`
 - **security_issue** → `references/agents/security-sentinel.md`

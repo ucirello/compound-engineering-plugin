@@ -7,6 +7,13 @@
 
 set -e
 
+workspace_root=$(jj workspace root 2>/dev/null || true)
+if [ -n "$workspace_root" ]; then
+    cd "$workspace_root"
+    GIT_DIR=$(jj git root)
+    export GIT_DIR
+fi
+
 if [ $# -lt 2 ]; then
     echo "Usage: reply-to-pr-thread PR_NUMBER ROOT_COMMENT_ID [OWNER/REPO] < reply-body.md"
     echo "Example: reply-to-pr-thread 123 456789 EveryInc/cora < reply-body.md"

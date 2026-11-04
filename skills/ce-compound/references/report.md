@@ -2,6 +2,8 @@
 
 ## Success Output
 
+**Delegated Full reporting.** Return the report and absolute doc path, identify the exported source session and any degraded evidence or independent coverage, and list interactive-only actions not applied: discoverability instruction-file proposal and any applicable writable pack destination. The parent relays these and offers them with usual consent, without another Full pass or re-editing the doc. This specific handoff is an exception to the ordinary no-next-menu rule below. If delegation was unavailable and Lightweight ran, report the actual missing-tool, permission, or nesting-depth reason and retry from this same source session once available.
+
 **User-runnable refresh rendering.** The reports below print a refresh invocation for the user to copy. Default to `/ce-compound refresh <scope>`; use `$ce-compound refresh <scope>` only when the active host is Codex or explicitly documents dollar-prefixed skill invocation. Render only the invocation as inline code and output one form only.
 
 ### Non-interactive mode

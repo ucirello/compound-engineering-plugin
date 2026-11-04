@@ -17,10 +17,12 @@ It works **with or without Spiral**: with nothing installed it drafts directly f
 
 A free-form description in the arguments is the source of truth. Otherwise derive it from context, using what is available and never waiting on any single source:
 
-- **Merged/active PR** — `gh pr view --json title,body,url` (the title and body usually state the user-facing value)
-- **The diff** — `git diff main...HEAD --stat`, skimming notable changes so the claim is grounded in what actually changed
+- **Merged/active PR** — `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh pr view --json title,body,url)` (the title and body usually state the user-facing value)
+- **The diff** — resolve the actual feature head and verified integration base from the task/PR, then `(cd "$workspace_root" && jj diff --from "<verified-base>" --to "<verified-head>" --stat)`, skimming notable changes so the claim is grounded in what actually changed. For an unmerged feature, use its verified common ancestor with the target as the base; for a merged PR, use its recorded base/head rather than guessing from the current tip.
 - **Changelog** — the top or `[Unreleased]` entry in `docs/changelog.md`, `CHANGELOG.md`, or similar
-- **Recent commits** — `git log --oneline -15` for the arc of the change
+- **Recent changes** — `(cd "$workspace_root" && jj log --no-graph -r '::<verified-feature-head>' -n 15)` for the arc of the change
+
+Resolve `workspace_root` to the absolute root with `jj workspace root` before repository commands and run them there. Do not invoke Git directly. JJ revision and diff guidance: https://docs.jj-vcs.dev/latest/git-command-table/ and https://docs.jj-vcs.dev/latest/cli-reference/ . Without a JJ repository, use the supplied description and available changelog rather than blocking on repository context.
 
 Then write a 1-3 sentence summary of the **user-facing value**: what a user can now do that they couldn't before, and why they'd care. Outcome, not implementation — "You can now export any report to CSV in one click", not "Added a CsvSerializer and an export endpoint." If you can't confidently tell what shipped, ask one short question rather than guessing.
 

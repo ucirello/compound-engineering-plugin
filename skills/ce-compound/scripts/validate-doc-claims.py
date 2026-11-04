@@ -47,7 +47,7 @@ decides per flag: fix, annotate as historical, or confirm intentional.
 Only the summary exit code distinguishes "clean" from "needs a look".
 
 The script never touches the network (no fetch); classification uses
-whatever refs exist locally. Run a best-effort `git fetch --quiet` first
+whatever refs exist locally. Run a best-effort `jj git fetch` first
 when freshness matters. Pure stdlib (no third-party deps).
 """
 import os
@@ -102,15 +102,49 @@ def usage_fail(msg: str) -> "NoReturn":
 
 
 def git(args: list[str], cwd: str) -> tuple[int, str]:
+    """Translate the validator's object queries to native JJ; never launch Git."""
+    def rev(value: str) -> str:
+        if value == "HEAD":
+            return "@"
+        if value.startswith("origin/"):
+            return value[7:] + "@origin"
+        return value
+    if args[:2] == ["rev-parse", "--show-toplevel"]:
+        command = ["workspace", "root"]
+    elif args[:2] == ["rev-parse", "--abbrev-ref"]:
+        command = ["log", "--no-graph", "-r", "trunk()", "-T", "commit_id"]
+    elif args[0] == "rev-parse":
+        command = ["log", "--no-graph", "-r", rev(args[-1]), "-T", "commit_id"]
+    elif args[0] == "rev-list":
+        left, right = args[-1].split("..", 1)
+        command = ["log", "--no-graph", "-r", f"{rev(left)}..{rev(right)}", "-T", 'commit_id ++ "\\n"']
+    elif args[0] == "cat-file":
+        target = args[-1]
+        if ":" in target:
+            revision, path = target.split(":", 1)
+            command = ["file", "list", "-r", rev(revision), "--", path]
+        else:
+            command = ["log", "--no-graph", "-r", target.removesuffix("^{commit}"), "-T", "commit_id"]
+    elif args[0] == "merge-base":
+        command = ["log", "--no-graph", "-r", f"present({rev(args[2])}) & ::{rev(args[3])}", "-T", "commit_id"]
+    else:
+        return 1, ""
     try:
         result = subprocess.run(
-            ["git", *args],
+            ["jj", *command],
             cwd=cwd,
             capture_output=True,
             text=True,
             timeout=30,
         )
-        return result.returncode, result.stdout.strip()
+        output = result.stdout.strip()
+        if args[:2] == ["rev-parse", "--abbrev-ref"]:
+            return (0, "trunk()") if result.returncode == 0 and output else (1, "")
+        if args[0] == "rev-list" and result.returncode == 0:
+            return 0, str(len(output.splitlines())) if output else "0"
+        if args[0] in ("cat-file", "merge-base") and not output:
+            return 1, ""
+        return result.returncode, output
     except (OSError, subprocess.TimeoutExpired):
         return 1, ""
 
@@ -192,7 +226,7 @@ def cites_a_commit(prefix: str) -> bool:
     ("the git history shows session 7e6861b4") describes the surroundings,
     not the token. Digits are word characters so a hash named after its
     algorithm ("SHA256") stays one non-cue word, and command flags drop out
-    first so `git show --format=%H <sha>` reads like `git show <sha>`.
+    first so a flagged native JJ history command retains its citation cue.
     """
     if REPO_PIN_RE.search(prefix):
         return True  # owner/repo@<sha> pins a commit
@@ -270,14 +304,6 @@ def main(argv: list[str]) -> int:
         code, ref = git(["rev-parse", "--abbrev-ref", "origin/HEAD"], repo_root)
         if code == 0 and ref:
             upstream = ref
-        else:
-            for candidate in ("origin/main", "origin/master"):
-                code, _ = git(
-                    ["rev-parse", "--verify", "--quiet", candidate], repo_root
-                )
-                if code == 0:
-                    upstream = candidate
-                    break
         if upstream:
             code, behind = git(
                 ["rev-list", "--count", f"HEAD..{upstream}"], repo_root

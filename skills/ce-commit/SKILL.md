@@ -1,60 +1,84 @@
 ---
 name: ce-commit
-description: Create a git commit with a clear, value-communicating message. Use when the user asks to commit/save staged or unstaged changes with a repo-appropriate message.
+description: Create a local Jujutsu commit with a clear, value-communicating message. Use when the user asks to commit/save selected changes with a repo-appropriate message.
 ---
 
-# Git Commit
+# Local Commit
 
 Create well-crafted local commit(s) from the current working tree. No push, no PR — use `ce-commit-push-pr` for the full ship flow.
 
-**Done when:** each logical change is committed with an explicit file list and a message that states the outcome, and `git status` is clean of those changes. **Stop when:** the tree is clean (nothing to commit).
+**Done when:** each logical change is committed with an explicit file list and a message that states the outcome, and `jj status` shows none of those changes remaining in the working-copy change. **Stop when:** there are no selected changes to commit.
 
 ## Context
 
-Gather context with each command as its **own** shell tool call (program + args only). Do **not** join with `;`, `&&`, `||`, pipes, `$(...)`, or redirects — that syntax fails under Windows PowerShell. A non-zero exit is a normal state to interpret, not a failure to suppress.
+Resolve the absolute target workspace root with `jj workspace root` from the target directory. Run every subsequent JJ command with the shell tool's working directory set to that absolute root (or Python `subprocess.run([...], cwd=workspace_root)`). Gather each command as its own tool call; interpret empty or non-zero results rather than hiding failures. Never invoke the Git executable. JJ has no staging index; inspect the working-copy change and explicitly select paths instead.
 
 | Command | Purpose | Non-zero / empty means |
 | --- | --- | --- |
-| `git status` | Working-tree state | Not a git repo — stop |
-| `git diff HEAD` | Uncommitted changes | Unborn repo / no commits yet |
-| `git branch --show-current` | Current branch | Empty = detached HEAD |
-| `git log --oneline -10` | Recent message style | Unborn repo — no history |
-| `git rev-parse --abbrev-ref origin/HEAD` | Remote default branch | No `origin/HEAD` / bare `HEAD` — try `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'`, else `main` |
+| `jj status` | Changes, conflicts, and untracked-file notices | Not a JJ workspace — stop |
+| `jj diff --summary` | Working-copy file changes | No tracked changes; still inspect untracked/ignored content |
+| `jj log --no-graph -r '@'` | Current change and associated bookmarks | Resolve errors before proceeding |
+| `jj bookmark list` | Local/remote bookmark context | No bookmark is normal in JJ |
 
-Treat this as a snapshot. Re-read branch and staged set immediately before committing if anything may have changed.
+Resolve the default branch from verified repository configuration or remote-bookmark context; do not guess `main`. If GitHub is needed, run `GIT_DIR=$(jj git root) gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'` from the absolute target root. That environment is required for repository-scoped `gh`; it does not authorize direct Git commands. If the default cannot be resolved, report uncertainty before changing bookmarks.
 
-**Default branch name:** strip a leading `origin/` from `origin/HEAD` (so `origin/trunk` → `trunk`). Use that bare name for all “on the default branch?” checks — never compare against `origin/<name>`.
+Treat this as a snapshot. Re-read the working-copy revision, bookmarks, selected paths, and exclusions immediately before committing if anything may have changed. JJ guidance: https://docs.jj-vcs.dev/latest/git-experts/ and https://docs.jj-vcs.dev/latest/git-command-table/ .
 
 ## Workflow
 
-0. **Gather** — run every Context command above (own shell call each), then continue.
+0. **Gather** — run the Context commands, inspect the actual diff, and resolve the task's history anchor before composing a message. Use the verified current change when it contains relevant existing history, or its verified parent/head when `@` is an empty tip; for task-specific work use the verified task head. Do not substitute an unrelated default branch or replace a reviewed base/head range with a style sample.
 
-1. **Nothing to commit** — if `git status` shows no staged, modified, or untracked files, report that and stop. Do not use `git diff HEAD` alone as cleanliness (it misses untracked files).
+1. **Nothing to commit** — inspect `jj status`, the diff, and untracked-file notices. If no selected changes exist, report that and stop. Ignored or untracked files are not proven safe by an empty diff. Do not start tracking unrelated content.
 
-2. **Branch first** — if detached HEAD, or on the default branch (`main` / `master` / the bare default name above), create a feature branch from the change content (`git checkout -b <name>`), then re-read `git branch --show-current`. Do not ask — commit-only still must not leave work only on a detached HEAD or the default branch. If the derived name exists, pick a non-conflicting suffix.
+2. **Bookmark first** — JJ does not require a branch or have a detached-HEAD problem. Still preserve this workflow's feature-reference safeguard: if the work lacks a task bookmark or is associated only with the default bookmark, create a non-conflicting feature bookmark derived from the change content using `jj bookmark create <name> -r @`. Do not move the default or existing unrelated bookmarks. Re-read the bookmark state. Stop on ambiguous ownership rather than rewriting another person's reference.
 
-3. **Convention** — match project commit conventions already in context; else match the recent log pattern; else conventional commits (`type(scope): description`). When using conventional commits and `fix`/`feat` both fit, default to `fix:` (remedying broken or missing behavior); reserve `feat:` for new capabilities. User override wins.
+3. **Convention and source guidance** — before composing, read the full https://go.dev/wiki/CommitMessage guide and inspect several recent subjects **and bodies**, not just one-line summaries, from the verified history head:
 
-4. **Logical commits** — if changed files clearly split into distinct concerns, make separate commits (file level only, 2–3 max, no `git add -p`). If ambiguous, one commit.
+   `jj log --no-graph -r '::<verified-history-head>' -n 10 -T 'description ++ "\n"'`
 
-5. **Message** — subject is imperative and names the outcome (what is now possible or fixed), not the file list. Body only when motivation or trade-offs are not obvious from the subject. When a plan Implementation Unit ID is already in hand for this commit (conversation, caller, or the files belong to one unit), append that unit's U-ID in parentheses — `(U3)` means unit 3. Do not hunt for a plan. Omit when the commit spans units, the unit is unclear, or no plan is in hand. When the commit carries someone else's work that will not otherwise land under their name (ported from their branch or PR, or applied from their patch), end the message with a `Co-authored-by: Name <email>` trailer for each person that work credits: its commit authors and anyone their `Co-authored-by` trailers name. Copy each identity exactly from those commits or the patch. Never guess an email: when none is recorded, name them in the message body instead.
+   Run this from the absolute target workspace root. Compare several messages for prefixes/package names, casing, verb tense, subject/body separation, wrapping, and issue-reference placement. Repository-local instructions and the observed repository syntax always win over Go guidance. Apply compatible Go guidance to clarity, outcome, motivation, and structure without imposing Go or Conventional Commit syntax. If there is no history, use explicit project/user instructions and Go guidance without inventing a repository precedent.
 
-   - Bad: `Update checkout.rb` / `Add tests and fix stuff`
-   - Good: `Fix double-submit on checkout`
-   - Good: `Add per-subscription mute (U3)`
+   **Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards.**
 
-6. **Stage and commit** — stage **named files only** (never `git add -A` or `git add .`). Honor `exclude:<paths>` when the invocation carries it: those files stay uncommitted no matter what else changed; say in the report that they were left out. Write the full message — subject line, blank line, optional body — to a file outside the repo with your file-write tool, then stage and commit as two calls per commit group:
+   The following are verbatim source excerpts. The Go example is illustrative source guidance, **not a mandatory repository template**:
 
-```bash
-git add file1 file2 file3
-```
+   > Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
 
-```bash
-git commit -F <message-file> -- file1 file2 file3
-```
+   ```text
+   net/http: handle foo when bar
 
-No shell parses the message with `-F`: a `$`, quotes, backticks, or a multi-line body pass through literally under any shell, with no quoting rules to satisfy. Git's normal whitespace cleanup still applies (trailing spaces trimmed, blank-line runs collapsed), which is fine for a commit message.
+   [longer description here in the body]
 
-The trailing path list on `git commit` is required: a bare `git commit` takes the whole index, so anything already staged before this run (a caller's `exclude:` paths, or work the user staged and did not name) would ride into the commit. Naming the paths commits exactly the group and leaves other index entries alone.
+   Fixes #12345
+   ```
 
-7. **Confirm** — `git status`; report hash(es) and subject(s).
+   > Notably, for the subject (the first line of description):
+   > - the name of the package affected by the change goes before the colon
+   > - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+   > - the verb after the colon is lowercase
+   > - there is no trailing period
+   > - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+
+   > For the body (the rest of the description):
+   > - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+   > - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+   > - there is no Markdown in the commit message.
+   > - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
+
+4. **Logical commits** — if selected files clearly split into distinct concerns, make separate commits (file level only, 2–3 max, no interactive hunk selection). If ambiguous, one commit.
+
+5. **Message** — communicate the outcome, not merely a file list; explain motivation or trade-offs when needed. When a plan Implementation Unit ID is already in hand and the files belong to that unit, include that unit's ID in the repository-appropriate form determined above. Do not hunt for a plan; omit the ID for mixed or unclear units. Preserve human authorship credit when carrying someone else's work: copy recorded identities exactly and never guess an email. Follow explicit repository attribution policy where it differs from the Go guidance; otherwise record necessary human credit in the body rather than adding prohibited trailers. Do not add model, harness, or skill authorship attribution.
+
+6. **Commit named paths** — never commit the entire working-copy change implicitly. Honor `exclude:<paths>`: those files stay outside these commits, and the report must say they were left out. Check that each selected path belongs to this logical group, and that there are no unresolved conflicts. Explicitly track only authorized untracked files if needed with `jj file track <named-paths>`; do not override ignore rules without authorization.
+
+   Write the full dynamically composed message with the file-write tool to a unique file under `<absolute-workspace-root>/.tmp/`; ensure `.tmp/` is ignored in `.gitignore`. Use argument-based process execution to avoid shell interpolation of quotes, dollar signs, backticks, or multiline text. For example, a shell-launched Python process can read the message file and call:
+
+   ```python
+   message = Path(message_file).read_text()
+   subprocess.run(["jj", "commit", "-m", message, "--", *selected_paths],
+                  cwd=workspace_root, check=True)
+   ```
+
+   Here `workspace_root` and `message_file` are verified absolute paths, `selected_paths` contains explicit repository-relative file paths, and the message is composed from the standards above. Supply paths as literal filesets when filenames contain fileset syntax. Latest JJ's path-scoped `commit` keeps selected changes in the committed revision and moves the remaining changes to a new working-copy change. It does not move bookmarks forward: after each group, verify the resulting committed revision and feature bookmark; advance only the owned feature bookmark when needed, never the default or unrelated references. Reinspect remaining changes before the next group. This preserves excluded and unrelated work without a staging index.
+
+7. **Confirm** — run `jj status` and inspect each created revision's full description and file diff. Verify only the selected paths landed and excluded/unrelated changes remain intact. Report commit IDs and subjects, remaining work, and exclusions. No push or PR.

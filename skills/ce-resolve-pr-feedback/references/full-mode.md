@@ -76,7 +76,7 @@ This is where validity is decided. Judge every **new** item here, in your own co
 Working over the full set lets you do what a per-thread subagent can't:
 - **Dedup reads by file** — read a file once and judge all its threads together.
 - **Cross-item reasoning** — cluster findings by root assumption; a source (often a bot) that's wrong in one place is suspect across its siblings; converging requests from independent reviewers are a strong fix signal.
-- **Selective depth** — clear nits need only the comment plus the diff line; deep-read (callers, invariants, `git blame`/PR rationale for author intent) only where a finding is contestable or the code looks deliberate. That deep read on the contestable minority is what catches a confidently-wrong reviewer.
+- **Selective depth** — clear nits need only the comment plus the diff line; deep-read (callers, invariants, `jj file annotate`/PR rationale for author intent) only where a finding is contestable or the code looks deliberate. That deep read on the contestable minority is what catches a confidently-wrong reviewer.
 
 Produce a verdict per item and sort into three lists:
 
@@ -149,26 +149,26 @@ Each fix runs only targeted tests on its own change. This step runs the project'
 
 3. **Red, failures touch files in the change set** -> one inline diagnose-and-fix pass. Re-run validation. If still red, escalate with a `needs-human` item containing the test output; do **not** commit.
 
-4. **Red, failures touch only files outside the change set** -> treat as pre-existing. Proceed to step 6, but add a footer to the commit message: `Note: pre-existing failure in <test> not addressed by this PR.`
+4. **Red, failures touch only files outside the change set** -> treat as pre-existing. Proceed to step 6, but include the pre-existing failure and its test in the dynamically composed message using the repository's observed body style.
 
 Record the validation outcome (command run, pass/fail counts, any pre-existing failures noted) for the step 9 summary.
 
 ## 6. Commit and Publication
 
-Commit only the change set, preserving unrelated work in the tree and index, with a message referencing the PR:
+Commit only the change set, preserving unrelated working-copy work, with a message referencing the PR and describing the per-item changes. Read [commit-message.md](commit-message.md) in full before composing it. Capture the exact pre-fix head and verified base for subsequent range checks.
 
 ```bash
-git add [files in the change set]
-git commit -m "Address PR review feedback (#PR_NUMBER)
-
-- [list changes from per-item results]" -- [files in the change set]
+jj commit -m "<message composed from the standards above>" -- <fix-owned paths>
 ```
 
 In `mode:return-to-caller`, capture the combined fix commit SHA and follow [references/return-to-caller.md](return-to-caller.md) to save every judged action and intended checklist tick. Return after saving; do not push or enter steps 7-8 for any part of this batch. A failed commit or save reports the actual local state and incomplete handoff, never completion.
 
 Ordinary and pipeline execution publish the commit before the remote tail:
+
+Capture the full immutable fix SHA with `jj log --no-graph -r @- -T 'commit_id'` immediately after the owned-path commit. Verify the PR's exact head repository, remote and bookmark and that its prior target is the expected ancestor; advance only that verified bookmark to the fix commit with `jj bookmark set <verified-PR-head-bookmark> -r <captured-fix-SHA>`. Do not guess a bookmark from empty `@`, move an unrelated bookmark, or overwrite unexpected remote progress. Unknown push authority or an uncertain mapping becomes a `needs-human` residual. Return-to-caller captures this SHA but does not advance a publication bookmark or push.
+
 ```bash
-git push
+jj git push --remote <verified-PR-head-remote> --bookmark <verified-PR-head-bookmark>
 ```
 
 Read the PR's state immediately before pushing. If it is no longer open, a merge or close happened while this batch ran: do not push, and report the fix as an unpublished local commit along with the items left unaddressed.
@@ -276,7 +276,7 @@ The `review_threads` array should be empty (except `needs-human` items).
 
 In resume, verify only the saved actions and report new feedback through its caller result; return to [references/resume.md](resume.md) without entering another fix cycle.
 
-**For fresh-feedback modes, if new threads remain**, check the iteration count -- counting rounds **for this PR**, not just this invocation. An orchestrator such as `ce-babysit-pr` re-invokes this skill fresh each round, so a per-invocation counter never trips; count instead the earlier review-fix commits already on the branch (`git log <base>..HEAD` subjects that address review feedback) plus this run's own cycles.
+**For fresh-feedback modes, if new threads remain**, check the iteration count -- counting rounds **for this PR**, not just this invocation. An orchestrator such as `ce-babysit-pr` re-invokes this skill fresh each round, so a per-invocation counter never trips; count instead the earlier review-fix commits already on the branch (`jj log --no-graph -r '<verified-base>..<verified-PR-head>' -T 'description ++ "\n"'` entries that address review feedback) plus this run's own cycles. Run JJ from the absolute target workspace root, retaining the exact verified range.
 
 - **First or second fix-verify cycle**: Repeat from step 2 for the remaining threads.
 
@@ -302,7 +302,7 @@ Not addressing (count): [what was skipped and the evidence]
 Declined (count): [what was declined and the harm or scope reason cited; name out-of-scope items separately so the user can carry them forward]
 
 Validation: [one line -- e.g., "bun test passed (893/893)" or "bun test passed with pre-existing failure in X noted"; omit when no code changes were committed]
-Diff change: [`git diff --shortstat` from the head before this run's first fix commit to the head after its last, e.g., "+42 / -7 across 3 files"; omit when no code changes were committed]
+Diff change: [`jj diff --from <captured-pre-fix-head> --to <captured-post-fix-head> --stat` from the absolute workspace root; report its actual range counts and any binary/uncounted files; omit when no code changes were committed]
 ```
 
 If any item is `needs-human`, append a decisions section. These are rare but high-signal. Each carries the `needs-human` object composed in step 3: quoted feedback, investigation, the reason autonomous action is unsafe or ambiguous, concrete options with tradeoffs, a recommendation if any, and links to every still-open thread it covers.

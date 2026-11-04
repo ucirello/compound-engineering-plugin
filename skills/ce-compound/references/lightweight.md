@@ -5,7 +5,7 @@
 <critical_requirement>
 **Single-pass alternative — same artifact type, reduced research and validation.**
 
-This mode skips parallel subagents entirely. The orchestrator performs all work in a single pass and chooses the form the same way, but omits cross-referencing, duplicate detection, session-history research, and semantic grounding validation.
+This mode skips parallel subagents entirely. In an interactive context-pressure run, enter it only after delegated Full is unavailable under `modes.md`, and report the actual blocker. The orchestrator performs all work in a single pass and chooses the form the same way, but omits cross-referencing, duplicate detection, session-history research, and semantic grounding validation.
 
 Non-interactive mode enters Lightweight only when explicitly invoked with `depth:lightweight`; otherwise it defaults to Full for backward compatibility.
 </critical_requirement>
@@ -52,7 +52,7 @@ a one-line mention helps agents find the shared vocabulary.
 
 Note: This was created in lightweight mode. For richer documentation
 (cross-references, detailed prevention strategies, specialized reviews,
-semantic grounding validation), re-run <rendered invocation> in a fresh session.
+semantic grounding validation), re-run <rendered invocation> from this same source session once native delegation is available. State the missing-tool, permission, or nesting-depth blocker that prevented delegated Full; context pressure alone does not select Lightweight (see `modes.md`).
 ```
 
 **No subagents are launched. No parallel tasks. The chosen form, plus at most one learning, is the deliverable** (Phase 2.4's update-only vocabulary capture may also change an existing `CONCEPTS.md`).

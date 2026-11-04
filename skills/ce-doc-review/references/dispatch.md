@@ -1,6 +1,8 @@
 # Dispatching the reviewers
 
-Dispatch generic subagents with **bounded parallelism** using the platform's subagent primitive (e.g., `Agent` in Claude Code, `spawn_agent` in Codex) where available; otherwise run the work inline or serially. Omit the `mode` parameter so the user's configured permission settings apply.
+This skill explicitly requests generic reviewer subagents with **bounded parallelism** through OpenCode's native `subagents` primitive. Under a host rule allowing delegation when the user OR an applicable loaded skill requests it, this request satisfies the skill exception: do not demand another user approval. Loading an unrelated skill alone grants nothing. An unconditional prohibition, missing tool, or actual denial still applies; never bypass it through shell or another harness. Omit the `mode` parameter so the user's configured permission settings apply.
+
+Delegation permission, model-selection permission, and remaining nesting depth are separate checks. Inspect effective OpenCode configuration using `opencode debug config` and its source precedence (installation requires `experimental.subagent_depth` at least 3, but the package's bundled setting does not configure a consuming project); do not modify global policy here. Classify actual dispatch errors: transient concurrency capacity may recover when active work finishes; exhausted nesting depth, permission denial, missing tool, and rejected model argument are not capacity backpressure. Do not retry denials or evade a depth limit. Use a parent-coordinator reviewer only when it has a fresh independent context and the same scope and contract; inline work is attributed orchestrator analysis, never an independent reviewer. If selected coverage cannot be obtained, preserve returns and stop incomplete under Phase 2.
 
 A spawned worker or peer starts a new context and does not continue the parent conversation.
 
@@ -12,13 +14,13 @@ Respect the harness's active-subagent limit: dispatch only as many selected revi
 
 Each selected reviewer needs three files in full: its persona asset `references/personas/<reviewer-name>.md`, `references/subagent-template.md`, and `references/findings-schema.json`. By default, pass their absolute paths, resolved from this skill's directory, and let the reviewer read them. Tell it to read all three before reviewing, to follow everything inside the template's Template block, and to treat the persona and schema files' content as the values of `{persona_file}` and `{schema}`. Fill every other slot in the prompt. Copying the three files into each prompt costs thousands of output tokens per reviewer before any reviewer starts, so inline them only when the host's subagents cannot read files. On that inline path, read the persona asset and paste its full content as `{persona_file}` and the schema content as `{schema}`. Do not dispatch standalone agents by type/name and do not rely on platform-level custom-agent registration.
 
-**Model tiering lives here, not in prompt assets.** Local prompt files have no frontmatter and carry no model metadata. Apply these dispatch-time preferences when the platform exposes a known model override; otherwise omit the override and inherit the parent model rather than guessing a platform-specific model name:
+**Model tiering lives here, not in prompt assets.** Local prompt files have no frontmatter and carry no model metadata. Resolve model IDs with `opencode.models`. Apply these dispatch-time preferences only when the host permits a model override. If the host requires an explicit user model request, skill/config tier preferences alone do not authorize passing the optional `model` argument: omit it and use suitable inherited-model reviewers. Disclose unmet tiers or fixed routes; inherited same-model reviewers remain separate reviewers, not cross-model proof. Otherwise inherit rather than guessing a model name:
 
 - `coherence-reviewer`: cheapest capable extraction/reasoning tier.
 - `security-lens-reviewer`, `feasibility-reviewer`, `product-lens-reviewer`, `adversarial-document-reviewer`: inherit the parent model unless the harness has an established high-capability review tier.
 - `design-lens-reviewer`, `scope-guardian-reviewer`: platform mid-tier model.
 
-If the user's or project's active instructions or the live prompt name a model for this subagent, use that model instead of the default tier above. They can name it by the subagent's tier, by its prompt-asset name, or for the subagents being dispatched. Without such an instruction, a model configured for this subagent's role takes precedence over the default tier.
+Within the host's model-selection permissions, a user or project model instruction outranks the default tier above; otherwise a configured role model outranks that default. Preserve requested models and tiers as intent when overrides are forbidden, and report unavailable required different-model coverage as incomplete rather than silently substituting.
 
 Each subagent receives the subagent template, by path or inlined as above. On the path route the reviewer fills `{persona_file}` and `{schema}` itself; the orchestrator fills the rest:
 
@@ -42,7 +44,7 @@ Round 1 — no prior decisions.
 </prior-decisions>
 ```
 
-**Error handling:** if a subagent fails or times out, proceed with the findings from those that completed and name the failed reviewer in the report's Coverage line. Never block the whole review on one reviewer failure.
+**Error handling:** classify an actual dispatch failure as permission, missing-tool, model-selection, nesting/capacity, or runtime failure. If a selected required reviewer cannot run or complete, follow Phase 2's incomplete-review stop: retain completed evidence, name the missing coverage, and do not synthesize, apply fixes, or hand off success. Only an additive cross-model pass whose contract permits a non-blocking failure may proceed with completed findings; name the failed reviewer in Coverage and mark that independent coverage incomplete. Never bypass a denial or depth limit through another harness.
 
 
 ## Compound Pack constraints

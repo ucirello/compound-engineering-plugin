@@ -8,3 +8,4 @@ The summary lets a user who skimmed the run see what they gained and what to do 
 - Name missing optional tools as optional, not as failures, and say to install them only for the workflows the user runs.
 - Name the files left uncommitted. The closing question offers to commit them, so leave committing out of the to-do list.
 - List what the user still has to do, most important first. Put first any step without which a new file has no effect, such as a reviewer that does not read it yet.
+- Report the discovered global OpenCode configuration path and whether effective `experimental.subagent_depth` is verified at least `3`, preserved higher, declined, or still unverified. A plugin's package-local default alone is not an installed global prerequisite; identify any higher-precedence setting that lowers depth and the remaining action without overwriting unrelated configuration.

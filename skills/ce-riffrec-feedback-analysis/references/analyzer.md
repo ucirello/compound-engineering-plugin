@@ -2,7 +2,7 @@
 
 All non-setup paths use the bundled analyzer through this one invocation shape. The path reference supplies a concrete `INPUT_PATH`. Set `OUTPUT_DIR` only when that path owns an override; otherwise leave it empty so the script owns its default.
 
-Set `SKILL_DIR` to the absolute directory containing the loaded `ce-riffrec-feedback-analysis` `SKILL.md`. Resolve Python by executing each candidate so a Windows Store stub is not mistaken for a working interpreter:
+Run from the target workspace's absolute root and ensure `.tmp/` is ignored; temporary snapshots use that workspace's `.tmp/` (or local `.tmp/` outside JJ). Keep the output on the same filesystem so atomic snapshot promotion remains available; report a cross-filesystem failure rather than substituting a partial artifact set. Set `SKILL_DIR` to the absolute directory containing the loaded `ce-riffrec-feedback-analysis` `SKILL.md`. Resolve Python by executing each candidate so a Windows Store stub is not mistaken for a working interpreter:
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing this SKILL.md>";

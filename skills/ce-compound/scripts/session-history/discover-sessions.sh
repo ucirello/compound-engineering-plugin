@@ -135,7 +135,8 @@ encode_omp_raw_cwd() {
             printf -- '-%s' "$rel"
             ;;
         *)
-            canon_tmp="$(cd "${TMPDIR:-/tmp}" 2>/dev/null && pwd -P)" || canon_tmp=""
+            # Legacy source-session bucket encoding only; no scratch is created here.
+            canon_tmp="$(cd /tmp 2>/dev/null && pwd -P)" || canon_tmp=""
             case "$cwd" in
                 "$canon_tmp")
                     printf -- '-tmp'

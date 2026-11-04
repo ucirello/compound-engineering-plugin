@@ -99,9 +99,34 @@ Local apply does not authorize reversing a settled decision. When a retained def
 - If a reviewer item is useful information with no defect, code contract change, or test gap, report it as advisory only after it passes the same admission rule. Do not patch it or describe it as a missed defect; omit information without a present benefit.
 If this self-review changes files, rerun the affected tests or lint for those follow-up edits before committing or reporting; the earlier validation only covers the original autofix diff.
 
-**Commit when the pre-review tree was clean.** Before applying, note whether the working tree already had uncommitted changes (`git status --porcelain`). The step that makes a change permanent is the **push**, not the commit; a local commit is private and reversible (`git reset --soft HEAD~1`).
+**Commit when the pre-review tree was clean.** Before applying, inspect `jj status` and `jj diff` from the absolute target workspace root and record the current change ID and unrelated tracked/ignored work. A local JJ change is private until pushed; retain recovery references and do not reset/discard user work.
 
-- **Clean before the review:** after applying and verifying, commit the fixes as one isolated, review-labeled fix commit: `fix(review): <summary>`, or the repo's nearest convention if `review` isn't an allowed scope. Labeled and reversible, returning the tree to a known state.
+- **Clean before the review:** after applying and verifying, record only the owned fixes in one isolated JJ change. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards. Before composing, read the full Go guide and compare several recent full subjects AND bodies using `jj log --no-graph -r '::<verified-history-head>' -n 10 -T 'description ++ "\n"'` from the absolute target root. Resolve the history head from this review's actual captured head, not a hardcoded default branch. Establish local prefixes, casing, tense, subject/body separation, wrapping, and issue references; repository instructions and observed syntax win over incompatible Go conventions. Apply compatible clarity/structure guidance only. With no history use explicit project/user instructions plus Go guidance without inventing precedent. Describe the review fixes and relevant issues, without attribution. Use `jj describe -m "<message composed from the standards above>"`, then `jj new` only when consistent with the owned-change boundary.
+
+Source guidance from https://go.dev/wiki/CommitMessage (the example is illustrative, not a mandatory repository template):
+
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+
+```text
+net/http: handle foo when bar
+
+[longer description here in the body]
+
+Fixes #12345
+```
+
+> Notably, for the subject (the first line of description):
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+
+> For the body (the rest of the description):
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
 - **Dirty before the review:** apply but do **not** commit. The fixes interleave with the user's in-flight work and ride along with the commit they were already going to make. The Applied section lists what changed.
 - **Never push, open a PR, or file tickets.** That is the outward-facing step the user decides on.
 

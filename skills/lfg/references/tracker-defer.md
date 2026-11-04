@@ -29,6 +29,10 @@ The caller decides how to show the result to the user. The non-interactive mode 
 
 ---
 
+## Repository context
+
+Before repository-scoped `gh` probes or issue operations, set the shell working directory to the target workspace's absolute root and export `GIT_DIR=$(jj git root)` there. Run all JJ inspection from that same root. Store any temporary request bodies or fallback files beneath its local `.tmp/`, never OS-global temporary storage.
+
 ## Detection
 
 The agent determines the project's tracker from whatever documentation is obvious. Primary source: the project's active instructions and conventions already in its context — no need to open or name specific instruction files. Read a file directly only when the relevant instructions aren't already in context: a subdirectory-scoped instruction file governing the area you're working in, or when you're a fresh subagent that wasn't given the project's instructions. Supplementary signals (when primary documentation is ambiguous): `CONTRIBUTING.md`, `README.md`, PR templates under `.github/`, visible tracker URLs in the repo.

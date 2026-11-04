@@ -110,23 +110,21 @@ The Phase 3 blocks below each set `SKILL_DIR` inline as well (the loaded `ce-opt
 1. **Isolate.** For `worktree` and `codex`, create the experiment worktree on the optimization branch:
    ```bash
    SKILL_DIR="<absolute path of the directory containing this SKILL.md>";
-   WORKTREE_PATH=$(bash "$SKILL_DIR/scripts/experiment-worktree.sh" create "<spec_name>" <exp_index> "optimize/<spec_name>" <shared_files...>)  # creates optimize-exp/<spec_name>/exp-<NNN>
+   # Follow native-execution.md for dated identity, verified base, --colocate creation,
+   # colocation verification, shared resources and harness adoption.
+   WORKTREE_PATH="<verified absolute experiment workspace root>"
    ```
-   Apply port parameterization if configured (set env vars for the measurement script). For `remote`, isolation is the worker's own checkout: record `base_sha` (`git rev-parse optimize/<spec_name>`) and make sure that commit is pushed to the remote the worker will fetch from.
+   Apply port parameterization if configured (set env vars for the measurement script). For `remote`, isolation is the worker's own checkout: resolve the exact optimization bookmark to its JJ commit ID as `base_sha` from the absolute source root, and ensure that exact commit is pushed with `jj git push` to the verified worker remote.
 2. **Brief.** Fill the experiment prompt template (`references/experiment-prompt-template.md`): iteration number and spec name; hypothesis description and category; current best and baseline metrics; mutable and immutable scope; constraints and approved dependencies; the rolling window of the last 10 experiments as concise summaries; the source digest; and the current best's relevant `worst_cases`, from its kept entry or the baseline before any keep. For `remote`, append the template's measure-and-report delta with `base_sha`, the result ref `optimize-exp/<spec_name>/exp-<NNN>`, the measurement command, and the paired sample count the current ladder step needs.
 3. **Dispatch** by `execution.backend`, then record the return shape.
 
 | Backend | Dispatch | What returns |
 |---|---|---|
 | `worktree` | A subagent with the filled prompt, working in the experiment worktree | The subagent's completion, with its edits in the worktree |
-| `codex` | Write the filled prompt to a temp file and run `cat /tmp/optimize-exp-XXXXX.txt \| codex exec --skip-git-repo-check - 2>&1`, with the security posture from `execution.codex_security` (ask once per session when unset) | The process exit, with its edits in the worktree |
+| `codex` | Preserve configured route and security intent through permitted OpenCode-native subagents and model discovery; disclose an unmet fixed route rather than launching another harness | Native completion with isolated edits, or a persisted receipt |
 | `remote` | The detached-worker dispatch the body's Execution Surface names, with the filled prompt; when no such capability is in the tool list, use the `worktree` row for the whole run and log the fallback | A receipt naming the launch. The result is the pushed result ref (`result.yaml` at its root) or, when the host delivers results as a store file or terminal message, that file or message |
 
-**Codex delegation condition.** Delegate to `codex exec` only when this session is not itself running inside a Codex sandbox and `.git` is writable; otherwise use the `worktree` row for that experiment and log the fallback. A set sandbox marker in your environment is proof you are inside one; an unset marker proves nothing on its own, which is why the writable-`.git` check stays in the test:
-```bash
-# any true branch means: do not delegate this experiment to codex
-test -n "${CODEX_SANDBOX:-}" || test -n "${CODEX_SESSION_ID:-}" || test ! -w .git
-```
+**Delegation condition.** Apply `native-execution.md`'s separate permission, model-selection and depth checks. Preserve `execution.codex_security` intent and ask once per session when unset. Use a permitted native worktree fallback only where the route contract allows it and log the fallback; do not bypass constraints through another harness.
 
 **Return shape.** A dispatch returns either a **result** (the work is done and its edits are where the table says) or a **receipt** (a handle for work that will finish after this call returns). A result goes straight to 3.3. A receipt is a pending wait: record it in `run_state.pending_waits` as `references/persistence.md` specifies, including the observable that will carry the result and the action to take (collect it through 3.3), and verify the write before dispatching the next experiment. Collect a receipt's result when that observable arrives, never by polling in a foreground loop.
 
@@ -208,7 +206,7 @@ After all experiments in the batch have been measured:
    - Commit the experiment branch first so the winning diff exists as a real commit before any merge or cherry-pick (a `remote` winner is already a commit at `head_sha`; merge `head_sha`, not the result ref's tip, which only adds `result.yaml`)
    - Include only mutable-scope changes in that commit; if no eligible diff remains, treat the experiment as non-improving and revert it
    - Merge the committed experiment branch into the optimization branch
-   - Use the message `optimize(<spec-name>): <hypothesis description>` for the experiment commit
+    - Compose the experiment description through the runtime history and Go-guide procedure in `native-execution.md`, retaining spec and hypothesis semantics without a fixed syntax
    - After the merge succeeds, clean up the winner's experiment worktree and branch; the integrated commit on the optimization branch is the durable artifact
    - This is now the new baseline for subsequent batches
 
@@ -277,7 +275,7 @@ If none is met, cross the tick boundary.
 
 ### 3.7 Cross-Cutting Concerns
 
-**Codex failure cascade**: Track consecutive Codex delegation failures. After 3 consecutive failures, auto-disable Codex for remaining experiments and fall back to subagent dispatch. Log the switch.
+**Configured-route failure cascade**: Track failures of the native implementation of the configured Codex route. After 3 consecutive non-permission, non-depth failures, disable that route for remaining experiments and use the permitted native worktree fallback. Log the switch and unmet route requirements. Never retry a denial or evade a depth limit.
 
 **Error handling**: Classify a failed measurement from what `measure.sh` actually signaled. The censored stderr marker (with exit 125) is `censored`. Exit 124 is `timeout`. Any other non-zero exit (including 125 without that marker) is `error`. Log that outcome with the error message, revert the experiment, and continue the batch.
 

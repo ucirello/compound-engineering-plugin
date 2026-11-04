@@ -13,9 +13,9 @@ Help the caller deliver a correct change within the agreed scope. Find defects a
 ## Artifact Root
 
 <!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only (`<repo-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
 - **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
@@ -35,7 +35,9 @@ Follow these steps in order; the references supply the detail but never change t
 ## Operating principles
 
 - **Report-only by default; never push.** A bare `ce-code-review` invocation produces findings and does not apply them. Entering the apply stage requires `apply:local`, or an explicit user request in the invoking prompt to apply or fix this review's findings; a deprecated `mode:autofix` token is neither. `mode:agent` never mutates the tree, even when nested inside a workflow that later applies findings. Never push, open PRs, or file tickets in any mode.
-- **No blocking prompts.** Never use `AskUserQuestion`, `request_user_input`, `ask_user`, or other blocking question tools. Infer intent, plan, and scope from explicit tokens, git state, PR metadata, and conversation. Note uncertainty in Coverage or the verdict — do not stop to ask.
+- **No blocking prompts.** Never use `AskUserQuestion`, `request_user_input`, `ask_user`, or other blocking question tools. Infer intent, plan, and scope from explicit tokens, JJ state, PR metadata, and conversation. Note uncertainty in Coverage or the verdict — do not stop to ask.
 - **A spawned worker or peer starts a new context and does not continue the parent conversation.**
-- **Explicit mutations only.** Never run `gh pr checkout`, `git checkout`, `git switch`, or similar branch-switch commands. Passing a PR number, URL, or branch name selects **review scope**, not permission to mutate the working tree. Uncommitted work can only be reviewed from the checkout that holds it, so to review it on a feature branch, stay on that branch (or check it out yourself) and pass `base:` or no target.
+- **Explicit mutations only.** Never switch the working-copy revision or run `gh pr checkout` to select scope. Passing a PR number, URL, or bookmark selects **review scope**, not permission to mutate the tree. Review tracked edits from the workspace that holds them and pass `base:` or no target. Run JJ from the target workspace's absolute root and repository-scoped `gh` with `GIT_DIR=$(jj git root)`. Never invoke Git directly.
+
+This skill explicitly requests native reviewer delegation. A host's user-or-skill exception therefore permits it without a second user request, but unconditional prohibitions and actual denials remain binding. Model-override permission and remaining nesting depth are separate checks: omit forbidden model arguments and use suitable inherited reviewers; report any unmet fixed-route or cross-model requirement as incomplete. Classify missing tools, permission, model-selection rejection, and depth/capacity errors accurately. Do not evade restrictions through shell or another harness. See `references/cross-model-review.md` for native route, receipt, recovery, and coverage rules.
 - **Report outcomes, not machinery.** What you show the user is about the review: what is being examined, which coverage is included and the one-line reason for each conditional lens, the independent cross-model pass, and the findings. Name what the user would recognize, such as a PR number, a reviewer's concern, or a peer model. This skill's internal labels, dispatch bookkeeping, and setup narration stay out of user-facing text. Never claim more about the peer than its receipt attests. This governs *what* you surface and suppress, not the wording; use your own voice.

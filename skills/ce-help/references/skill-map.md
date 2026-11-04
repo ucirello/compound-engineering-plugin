@@ -30,7 +30,7 @@ Recommend one skill. Bring in a second when the situation falls between two skil
 | Commit, push, and open a PR, or write a PR description | `ce-commit-push-pr` |
 | Address feedback already left on a PR | `ce-resolve-pr-feedback` |
 | Watch a PR, fix comments and CI, and judge whether an old PR still belongs | `ce-babysit-pr` |
-| Work in an isolated git worktree | `ce-worktree` |
+| Work in an isolated colocated JJ workspace | `ce-worktree` |
 | Run browser tests for the current change | `ce-test-browser` |
 | Test an iOS app on the simulator | `ce-test-xcode` (manual) |
 | Refine the UX of a working feature with live feedback | `ce-polish` (manual) |
@@ -43,9 +43,13 @@ Recommend one skill. Bring in a second when the situation falls between two skil
 | Turn a Riffrec recording, video, or notes into feedback | `ce-riffrec-feedback-analysis` |
 | Check tools and repo config, or scaffold a pack or review docs | `ce-setup` (manual) |
 | Retune a skill collection for a new model | `ce-retune` (manual) |
-| Get oriented in CE | `ce-help` (manual) |
+| Get oriented in RocketClaw | `ce-help` (manual) |
 
 ## Skills that sound alike
+
+When recommending `ce-worktree`, preserve its isolation and lifecycle contract rather than inventing a setup shortcut. Detect and reuse existing isolation under its verified name; do not rename or recreate it to enforce new naming or colocation. Newly created workspaces use `jj workspace add --colocate` from the source workspace's absolute root, with a verified base revision and an absolute owned destination under local `.tmp/`. Verify `jj git colocation status` from the created workspace's absolute root. Capture the local date once and use one `YYYYMMDD-<meaningful-kebab-case-slug>` identity for the registration and destination basename: task, PR, and revision examples are `20261008-fix-email-validation`, `20261008-pr-214`, and `20261008-review-efcb657`. Normalize caller names without double-prefixing, check both registrations and paths, suffix collisions with `-2`, `-3`, and preserve the selection across retries, resumes, and midnight. Keep PR/source bookmarks unchanged. Adopt harness-native isolation only through its supported ownership contract; unsupported required naming/colocation is a compatibility blocker, not permission to bypass it.
+
+Completion alone does not authorize cleanup. For authorized removal of a disposable run-owned workspace, stop workers, leave it, and move any active harness session to a surviving workspace first. Verify its exact registered name, absolute path, and ownership; inspect tracked changes, conflicts, ignored and untracked files; prove integration where required and copy/read back required evidence outside it while preserving recovery references. Ignored and untracked content is not protected by the removal snapshot. From the surviving workspace's absolute root use `jj workspace remove <verified-workspace-name>`, then verify both deregistration and directory disappearance. Retain state and report any blocker; never force-delete or fall back to Git. Keep bookmark deletion separate and preserve needed recovery/archive references. `jj workspace forget` is only for unregistering while retaining files. See https://docs.jj-vcs.dev/latest/cli-reference/#jj-workspace .
 
 - `ce-ideate` finds what to work on. `ce-brainstorm` shapes an idea the user already has. `ce-plan` works out how to build what is already decided.
 - `ce-work` takes a plan or scoped request through to a PR. `lfg` hands off everything from the current point without waiting for approval. Which to use is a preference; `references/workflow.md` covers it.

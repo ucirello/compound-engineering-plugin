@@ -6,6 +6,8 @@ argument-hint: "[optional: brief context, or refresh and a scope] [mode:refresh]
 
 # /ce-compound
 
+**Context-pressure Full handoff:** follow `references/modes.md`: delegate one `mode:non-interactive depth:full` run with the shell-read `$OPENCODE_SESSION_ID`, known title, absolute `jj workspace root`, existing learning-doc path, and one-sentence topic, without summarizing the conversation. The child exports that source session via OpenCode's supported interface per `references/session-history.md`; it is primary evidence, not an excluded prior session. The parent relays the report and doc path and keeps consented interactive-only follow-ups; it does not repeat Full or re-edit the doc. Lightweight is only the classified unavailable-delegation fallback. Explicit non-interactive `depth:` routing remains unchanged.
+
 ## Choosing the job
 
 This skill does one of two jobs. **Capture** holds the lesson of one solved problem. **Refresh** audits the existing learnings against the current codebase and can delete docs and open a PR.
@@ -54,9 +56,9 @@ Enter non-interactive mode when **either** holds: the arguments you were invoked
 Resolve `<root>` when you first compose a `<root>/solutions/` path, and pass a subagent the resolved path rather than the config.
 
 <!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only (`<repo-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before. Run JJ with cwd set to the target workspace's absolute root; repository-scoped `gh` uses `GIT_DIR=$(jj git root)` there. Never invoke Git directly. JJ reference: https://docs.jj-vcs.dev/latest/cli-reference/ . All scratch and fallback files stay under the workspace's ignored `.tmp/`.
 - **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
@@ -65,7 +67,7 @@ Resolve `<root>` when you first compose a `<root>/solutions/` path, and pass a s
 
 **Only the orchestrator writes product files.** Phase 1 subagents write to per-run scratch only, and never touch `<root>/`, project instruction files, or any other tracked path.
 
-The orchestrator writes what `references/form.md` chooses, in every mode and without asking: at most one added test, added or tightened lint rule with any baseline entries it needs, or condition in an existing `CODING_STANDARDS.md`, and at most one learning under `<root>/solutions/`. It never changes product code. It also writes two maintenance side effects that their own step describes: `CONCEPTS.md` during vocabulary capture, and — **only in interactive Full mode after consent** — a small discoverability line in a project instruction file. Two further writes exist **only in interactive Full mode when the user selects them at the assembly destination step**: a rule file inside a writable declared Compound Pack, and the `packs:` entry appended to `.compound-engineering/config.yaml`. An instruction file is only ever edited, never created. Nothing else in the tree is written. Edits to *other* docs belong to a refresh, which a capture recommends or runs with a narrow scope.
+The orchestrator writes what `references/form.md` chooses, in every mode and without asking: at most one added test, added or tightened lint rule with any baseline entries it needs, or condition in an existing `CODING_STANDARDS.md`, and at most one learning under `<root>/solutions/`. It never changes product code. It also writes two maintenance side effects that their own step describes: `CONCEPTS.md` during vocabulary capture, and — **only in interactive Full mode after consent** — a small discoverability line in a project instruction file. Two further writes exist **only in interactive Full mode when the user selects them at the assembly destination step**: a rule file inside a writable declared Compound Pack, and the `packs:` entry appended to `.rocketclaw/config.yaml`. An instruction file is only ever edited, never created. Nothing else in the tree is written. Edits to *other* docs belong to a refresh, which a capture recommends or runs with a narrow scope.
 
 ## Choosing the path
 

@@ -7,7 +7,7 @@ Your scope is **synthesis only**. The caller handles discovery, branch/keyword f
 The dispatch prompt provides:
 
 - **`problem_topic`** — one sentence naming the concrete question or problem to synthesize against.
-- **`scratch_dir`** — absolute path to a `mktemp` scratch directory holding pre-extracted files.
+- **`scratch_dir`** — absolute path under the workspace's `.tmp/` run directory holding pre-extracted files.
 - **`sessions`** — an array of objects (5 max), one per pre-extracted session, each with:
   - `path` — absolute path to a skeleton text file inside `scratch_dir`
   - `errors_path` *(optional)* — absolute path to an errors text file when the orchestrator extracted errors-mode for this session
@@ -31,9 +31,9 @@ These rules apply at all times during synthesis.
 - **Never invoke the Skill tool.** This agent runs in subagent context where Skill calls deadlock. The orchestrator has already done all extraction; you only synthesize.
 - **Never extract or reproduce tool call inputs/outputs verbatim.** Summarize what was attempted and what happened.
 - **Never include thinking or reasoning block content.** Claude Code thinking blocks are internal reasoning; Codex reasoning blocks are encrypted. Neither is actionable. The skeleton extractor already strips these. Do not report them if any survived.
-- **Never analyze the current session.** Its conversation history is already available to the caller; the orchestrator already excluded it from the dispatch payload.
+- **Exclude only the executing run's own session.** In delegated Full, the passed source session is primary evidence and must be analyzed from its supplied reduced OpenCode export artifact; it is not this run's current session. Platform `opencode` is valid in the input contract. The orchestrator exports via the supported CLI/API, never internal storage.
 - **Never make claims about team dynamics or other people's work.** This is one person's session data.
-- **Never write any files.** Return text findings only.
+- **Write only a caller-requested findings artifact under the supplied workspace-local run directory.** Return that confirmed artifact path; if no artifact was requested or writing fails, return findings inline. Never edit source, learning docs, or source-session exports.
 - **Report technical content, not personal content.** Sessions contain everything: credentials, frustration, half-formed opinions. Use judgment about what belongs in a technical summary and what does not.
 
 ## Time budget

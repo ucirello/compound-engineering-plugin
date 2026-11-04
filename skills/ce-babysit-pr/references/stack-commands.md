@@ -1,49 +1,25 @@
-# Managed-stack CLI recipes
+# Managed-stack operations for JJ-owned layers
 
-Load this file when the active run uses a confirmed managed stack (`manager_status == "confirmed"`) and needs `gh stack` command recipes. Soft-depend on the CLI: if `gh stack` is missing or exits unavailable (e.g. code 9), surface a clear residual — do not invent managed membership from topology.
+Read alongside `references/stack.md` and `../../ce-commit-push-pr/references/stack-submit.md` / `gh-stack-cli.md`. Run commands from the absolute target workspace root with `GIT_DIR=$(jj git root)` exported. JJ owns local topology and working-copy state; never use Git-checkout manager operations behind JJ.
 
-Always non-interactive. Prefer JSON/view probes and explicit branch names; never rely on interactive prompts. Substitute `<tracking-remote>` with the stack branches' actual tracking remote (often `origin`, but may be `upstream` or a fork remote) — never hard-code `origin` when SKILL.md already resolved a different tracking remote.
+## Establish the supported route
 
-## After an owned push on the active layer (dependents exist)
+Inspect installed `gh stack --help` and `gh stack link --help`. `gh stack link` is the external-JJ route. Its verified interface accepts ordered existing PR URLs: `gh stack link <bottom-PR-URL> <next-PR-URL> ... --base <verified-bottom-base>`. Use URLs, not branch arguments (which auto-push and may create PRs); omit `--open` to preserve drafts. Link metadata does not establish the local tracking expected by `view`, `checkout`, `rebase`, `push` or `sync`. Do not invent flags or import a local stack. Read-only local metadata may corroborate existing membership, but linked-only order must come from supported remote metadata plus exact PR base/head identities. `merge` has a separate documented remote numeric-PR route below; do not confuse it with checkout-based sync. Distinguish missing command, unsupported schema, absent membership, auth/transport failures and ambiguous topology. Unavailable required coverage is a precise stack residual, never permission for a single-PR substitute or an ordinary base update.
 
-```bash
-gh stack rebase "<first-open-dependent-branch>" --upstack --no-trunk --remote <tracking-remote>
-gh stack push --remote <tracking-remote>
-```
+## Align an active layer
 
-Starting at the first dependent excludes the active target from the cascading rebase. Quote the branch name — git branch names may contain shell metacharacters. On conflict: `gh stack rebase --abort`, then surface a needs-human / stack-sync residual.
+Resolve its PR number, head repository, remote, bookmark and exact head OID. Fetch with `jj git fetch --remote <verified-remote> --branch <exact-head-bookmark>`, verify the resulting remote commit and follow `setup.md`'s clean-workspace alignment gate with `jj new <verified-head>`. An empty `@` directly above it is aligned. Never use `gh stack checkout` or `gh pr checkout`; preserve dirty/conflicted and ignored work. Revalidate ordered membership before continuing the same invocation budget on another layer.
 
-## Check out a layer on a fresh checkout
+## Propagate an authorized target push
 
-```bash
-gh stack checkout <PR_NUMBER>
-```
+The capability is native JJ rebase and explicit bookmark publication, followed by supported external-manager metadata refresh, not a Git-worktree manager cascade. Before allowing a target delegate to push, prove exact ordered parent edges, ownership, head remote/bookmark/OID for every affected open dependent, and that the installed external route can refresh and verify that topology. Preserve recovery bookmarks for the target and each dependent. Missing proof blocks the target mutation, rather than leaving knowingly unmaintainable dependents.
 
-Use the PR number, which pulls the stack from GitHub. A branch name only resolves stacks already known locally, and `gh pr checkout` leaves the manager unaware of the branch.
+After the push, verify target local and remote heads equal the delegate's pushed OID. Starting at the first open dependent, use `jj rebase -s <verified-dependent-root> -d <verified-new-parent>` for the verified layer-only range, excluding the active target, trunk and unrelated descendants. Inspect the selected range before acting; if it cannot be isolated without changing unrelated work, return a residual. Keep the layer bookmark on its expected rewritten tip, validate its complete change set and parent edge, and publish only it with `jj git push --remote <verified-layer-remote> --bookmark <verified-layer-bookmark>`. Require each tracked remote target still equal its pre-push OID before publication; never fetch a new value and overwrite it. Continue bottom-to-top, retaining every old/new OID and publication receipt. No raw force, alternate ref or rewritten target is allowed.
 
-## Discover order / next open layer
+On conflict, do not decide another layer's semantics. Leave recoverable revisions/bookmarks intact, preserve evidence and report a needs-human/stack-sync residual; restore only this run's unpublished topology from its verified recovery references when provably safe, never reset/discard unrelated content or undo a published layer. Re-probe all affected remotes after success or rejection: partial publication is real progress, not atomic success. Report the first rejected/divergent layer and resume from that exact state after its cause is resolved. Refresh linked metadata through the proven external route and re-prove order, ancestry, review and CI before claiming readiness. Do not blindly relink or recreate after partial failure.
 
-```bash
-gh stack view --json
-```
+## Land a prefix only under `posture:stack-land`
 
-## Land one prefix (only under `posture:stack-land`)
+Authorization alone does not supply a compatible landing implementation. Inspect `gh stack merge --help`: the verified installed interface explicitly supports a numeric PR endpoint without checking out its stack, so `gh stack merge <verified-bottom-most-open-settled-PR-number> --yes --squash` is the compatible remote prefix operation when remote metadata proves the exact endpoint and topology. Do not use its no-argument current-stack route or assume a different installed contract. Before landing, also prove the native JJ post-merge refresh path below. If either capability is unavailable, return a precise residual with the settled PR and topology. Never fall back to `gh pr merge` on a managed member. Under `target`/`stack-ready`, report the verified explicit remote-prefix command without running it.
 
-Merge the **bottom-most open settled** PR — `gh stack merge <PR>` merges the full stack prefix through that PR atomically. Never merge an upstack active PR while downstack PRs remain open when single-prefix landing is intended.
-
-```bash
-gh stack merge <BOTTOM_MOST_OPEN_SETTLED_PR> --yes --squash
-gh stack sync --remote <tracking-remote>
-```
-
-Run the sync only after the merge succeeded. A sync after a failed merge rebases and pushes every layer, which restarts their CI and review. If the merge says another process is editing the stack, retry it shortly: that lock is temporary, and all worktrees of one clone share it.
-
-Re-probe the landed PR before advancing: on merge-queue bases the CLI may succeed after enqueue while the PR stays OPEN — keep watching or return a queued residual until `pr_state` is `MERGED`. Only then treat the just-merged PR as a **layer transition** (stop watcher, re-probe, continue next open non-draft needing work with posture restated) — not a run-level Terminal stop for this babysit invocation.
-
-## Forbidden on managed stack members
-
-```bash
-gh pr merge …
-```
-
-Use `gh stack merge` only. Under `posture:target` and `posture:stack-ready`, print the exact merge command when reporting ready-as-next; do not execute it.
+With a supported route, land only the bottom-most open settled prefix, never an upstack active PR while lower PRs remain open. Re-probe the PR: enqueue success with `OPEN` is not `MERGED`; continue watching or return a queued pipeline residual. Only actual `MERGED` authorizes refresh and a layer transition. Never run `gh stack sync`: its installed help fetches, checks out/imports branches, rebases and pushes a local Git stack. Instead fetch the exact verified new base with JJ, preserve each surviving layer's old head/recovery bookmark, and apply the native isolated-range propagation/publication protocol above to the surviving bottom layer onto that base and its verified dependents bottom-to-top. Preserve the merged prefix and unrelated work; do not rebase or republish it. Recheck PR bases and remote stack order, refreshing existing linked PR metadata only with the proven URL route when needed. A partial or unsupported refresh is a recoverable residual, not a completed stack-land result. Preserve the fixed invocation budget, drafts, one-writer rule and all existing settle/downstack safeguards.

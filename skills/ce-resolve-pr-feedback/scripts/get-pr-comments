@@ -2,6 +2,16 @@
 
 set -e
 
+# Preserve explicit OWNER/REPO operation outside a workspace; scope discovery in JJ.
+workspace_root=$(jj workspace root 2>/dev/null || true)
+if [ -n "$workspace_root" ]; then
+    cd "$workspace_root"
+    GIT_DIR=$(jj git root)
+    export GIT_DIR
+fi
+temporary_root="${workspace_root:-$PWD}/.tmp"
+mkdir -p "$temporary_root"
+
 if [ $# -lt 1 ]; then
     echo "Usage: get-pr-comments PR_NUMBER [OWNER/REPO]"
     echo "Example: get-pr-comments 123"
@@ -65,9 +75,9 @@ fi
 # resolver can weigh identity as evidence, including recognizing its own prior
 # replies as already-handled.
 
-tmp_threads=$(mktemp "${TMPDIR:-/tmp}/ce-pr-threads.XXXXXX")
-tmp_comments=$(mktemp "${TMPDIR:-/tmp}/ce-pr-comments.XXXXXX")
-tmp_reviews=$(mktemp "${TMPDIR:-/tmp}/ce-pr-reviews.XXXXXX")
+tmp_threads=$(mktemp "$temporary_root/pr-threads.XXXXXX")
+tmp_comments=$(mktemp "$temporary_root/pr-comments.XXXXXX")
+tmp_reviews=$(mktemp "$temporary_root/pr-reviews.XXXXXX")
 trap 'rm -f "$tmp_threads" "$tmp_comments" "$tmp_reviews"' EXIT
 
 gh api graphql --paginate --slurp \

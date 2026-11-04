@@ -30,3 +30,5 @@ Also stop with the missing prerequisite when Xcode, its command-line tools, a va
 Any failure before the app is visibly launched with log capture running is a setup blocker: preserve its evidence, report it, and stop later stages.
 
 At handoff, retain the project/workspace, scheme, simulator identity, app identity, and log-capture handle needed by `test-and-report.md`.
+
+Store temporary screenshots, exported logs, and other run evidence under the target repository's absolute `jj workspace root` in `.tmp/`, not OS-global temporary storage. Run that JJ command from the target workspace's absolute root. If there is no JJ repository, use a local `.tmp/` directory. Ensure `.tmp/` is ignored in the repository's `.gitignore` and preserve evidence needed for the final report.

@@ -1,83 +1,11 @@
-# `gh stack` semantics this skill relies on
+# GitHub stack semantics for JJ-managed layers
 
-Verified against `gh stack version 0.1.0`. `gh stack <command> --help` is authoritative — if it
-disagrees with anything here, follow `--help` and say so in your report. (`gh stack help <command>`
-does not work; it prints top-level help.)
+Use `gh stack <command> --help` as the authoritative installed contract. Run repository-scoped calls from the absolute target workspace with `GIT_DIR=$(jj git root)` exported. JJ owns commits, bookmarks and working-copy state; do not use checkout/init/add/submit commands that mutate a Git working tree behind JJ.
 
-Only the behavior that changes a decision in stack mode is listed. This file is self-contained on
-purpose: do not depend on the user having a separate `gh-stack` skill installed.
+`gh stack link` is the external-manager route for JJ-managed branches. Inspect its actual help, provide explicit noninteractive PR URL arguments for the verified ordered PRs, and verify resulting topology through supported read-only stack metadata and PR bases. Do not invent flags or assume local tracking: this route is GitHub-only and does not create the local tracking expected by checkout-based `gh stack submit` or `sync`. Verify the installed remote read-only `view` route separately. The numeric-PR `gh stack merge <verified-prefix-PR> --yes --squash` route can land a verified remote stack without a local checkout when its installed help confirms that contract; follow `ce-babysit-pr`'s landing authority and survivor-propagation safeguards, never a checkout-based sync. If the installed interface cannot supply required stack functionality, report the precise residual under `stack-submit.md`'s required/soft-intent rules.
 
-## Classifying a parent
+Resolve parent PRs using exact head repository, `headRefName` and `headRefOid`, never name alone. A local same-named bookmark can be stale or unrelated. Fetch the exact named branch with JJ and verify the OID before using it. If inaccessible, preserve state and report, never choose another ref.
 
-```bash
-gh stack checkout "<parent-pr-number>"
-```
+For an already-managed stack, preserve its established ownership and topology. `base` in stack metadata is the recorded parent SHA, not necessarily the parent's current tip; no undocumented branch ordering may be assumed. Confirm actual parent relationships. A non-top requested parent is a decision, not permission to move to another parent. Do not mark existing drafts ready without explicit authorization.
 
-Resolve a parent by **PR number** whenever one exists — that is what pulls a stack down from
-GitHub. A bare branch name resolves against **local** stacks only, so a branch-only parent can be
-classified locally and no further.
-
-Branch on the exit code; status text goes to stderr and must not be parsed.
-
-| Exit | Meaning | What it means here |
-|---|---|---|
-| 0 | Success | Parent is in a stack, and `HEAD` has moved to it |
-| 2 | Not in a stack | Parent is standalone; nothing was checked out or fetched |
-| 5 | Invalid arguments | Fix the invocation; see `--help` |
-| 6 | Disambiguation required | Branch is in several stacks — check out a non-shared branch |
-| 9 | Stacked PRs unavailable | Not enabled on this repository; tell the user and stop |
-
-```bash
-gh stack view --json    # JSON on stdout: trunk, currentBranch,
-                        # branches[] { name, head, base, isCurrent, isMerged, needsRebase,
-                        #              pr { number, url, state } }
-```
-
-`base` is the parent SHA the branch was last known to contain, not the parent's current tip;
-`needsRebase` is true when that tip is no longer an ancestor. There is no field naming the top of
-the stack and no documented branch ordering, so do not derive position from this payload — use
-`add`'s exit 5 instead.
-
-## Resolving a PR head
-
-`gh pr view "<n>" --json headRefName,headRefOid,author` identifies the head; `headRefName` alone
-does not, because a same-repo name can be absent or stale locally and can collide with an unrelated
-branch. Create a local branch at `headRefOid`, fetching `refs/pull/<n>/head` when that commit is not
-reachable — reachability leaves the commit with no branch to name.
-
-## Building
-
-```bash
-gh stack init [--base "<trunk>"] "<branch>"...
-```
-
-Processes branches bottom to top and checks out the **last** one. **Existing branches are adopted;
-missing ones are created** — the first from the trunk, each later one from the branch before it.
-There is no separate adopt mode: existence decides. `--base` selects a non-default trunk, so a
-parent branch can serve as the trunk without joining the stack.
-
-```bash
-gh stack add "<branch>"
-```
-
-Must run from the **top** branch of the stack (or the trunk while it is still empty); anywhere else
-exits **5**. Exit 5 here means "you are not on the top", and moving there with `gh stack top` is a
-decision, not a fix: it changes which layer the new branch is parented to. Whether that is correct
-belongs to the caller — when a specific parent was named, it is not. Without `-Am`, `add` does not
-touch the working tree, so staged and unstaged changes follow onto the new branch.
-
-```bash
-gh stack submit --auto [--open]
-```
-
-`--auto` avoids a title prompt per new PR. `--open` creates PRs ready for review instead of drafts,
-and also marks pre-existing drafts ready.
-
-## Never
-
-- **`gh stack link`** — GitHub-only by design, creates no local tracking, so a later
-  `gh stack submit`, `gh stack view`, or `gh stack merge` will not see the layer. It exists for
-  branches managed by external tools (jj, Sapling, git-town).
-- **`gh pr merge`** on a stack member — it cannot merge a stack. Landing uses `gh stack merge`.
-- **Bare `view` / `submit` / `init` / `add` / `checkout`** — each prompts or opens a TUI that
-  blocks under a PTY. Always pass the arguments and flags shown above.
+No bare interactive commands or TUIs. Respect actual status codes and diagnostics; distinguish missing CLI, unsupported stacks, ambiguous membership, authentication failure and incomplete topology. Native JJ construction and explicit per-layer PR creation preserve the stack when supported, not a silent single-PR substitute. Landing requires verified manager-aware support; never merge an individual managed member as if independent.

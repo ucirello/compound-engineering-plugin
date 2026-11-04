@@ -1,4 +1,5 @@
 .DS_Store
+.tmp/
 .env
 *.log
 node_modules/
@@ -11,6 +12,7 @@ __pycache__/
 *.pyc
 
 .compound-engineering/*.local.yaml
+.rocketclaw/*.local.yaml
 
 # Docs site build output (site/ is the Jekyll source)
 site/_site/

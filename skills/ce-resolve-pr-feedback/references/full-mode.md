@@ -1,5 +1,4 @@
 # Full Mode
-
 Read this reference when Mode Detection (in SKILL.md) routes to **Full Mode** — no argument given, a PR number was provided, or a whole-PR URL (`.../pull/N` with no comment fragment) was provided. Full mode processes all unresolved threads on the PR. When the argument is a PR URL, parse the host, `OWNER/REPO`, and number from it — the host feeds the `GH_HOST` prefix below, and `OWNER/REPO` targets the correct repo for a fork→upstream PR.
 
 The shape: **fetch once, judge centrally, dispatch subagents only for the fixes.** You, the orchestrator, hold every thread from a single fetch, so you judge validity in your own context, where you can read each file once, spot a reviewer who is wrong across several threads, and weigh the author's design intent. Subagents are dispatched only to *implement* fixes you have already approved. Do not delegate the judgment: a subagent per thread pays per-agent overhead, re-reads the same files, and loses the cross-thread view, and you would pay that even for threads that turn out to be skips.
@@ -76,7 +75,7 @@ This is where validity is decided. Judge every **new** item here, in your own co
 Working over the full set lets you do what a per-thread subagent can't:
 - **Dedup reads by file** — read a file once and judge all its threads together.
 - **Cross-item reasoning** — cluster findings by root assumption; a source (often a bot) that's wrong in one place is suspect across its siblings; converging requests from independent reviewers are a strong fix signal.
-- **Selective depth** — clear nits need only the comment plus the diff line; deep-read (callers, invariants, `git blame`/PR rationale for author intent) only where a finding is contestable or the code looks deliberate. That deep read on the contestable minority is what catches a confidently-wrong reviewer.
+- **Selective depth** — clear nits need only the comment plus the diff line; deep-read (callers, invariants, `jj file annotate`/PR rationale for author intent) only where a finding is contestable or the code looks deliberate. That deep read on the contestable minority is what catches a confidently-wrong reviewer.
 
 Produce a verdict per item and sort into three lists:
 
@@ -149,29 +148,28 @@ Each fix runs only targeted tests on its own change. This step runs the project'
 
 3. **Red, failures touch files in the change set** -> one inline diagnose-and-fix pass. Re-run validation. If still red, escalate with a `needs-human` item containing the test output; do **not** commit.
 
-4. **Red, failures touch only files outside the change set** -> treat as pre-existing. Proceed to step 6, but add a footer to the commit message: `Note: pre-existing failure in <test> not addressed by this PR.`
+4. **Red, failures touch only files outside the change set** -> treat as pre-existing. Proceed to step 6, but record the pre-existing test failure and its exclusion from this PR in the message using the runtime repository's message conventions.
 
 Record the validation outcome (command run, pass/fail counts, any pre-existing failures noted) for the step 9 summary.
 
 ## 6. Commit and Publication
 
-Commit only the change set, preserving unrelated work in the tree and index, with a message referencing the PR:
+Commit only the change set, preserving unrelated work, with a message referencing the PR and describing the per-item fixes. Read [message standards](message-standards.md) before composing. From the absolute target workspace root, inspect `jj status` and the owned-path diff; preserve unrelated changes in their existing change and stop if ownership overlaps cannot be safely separated. Commit only verified owned paths:
 
 ```bash
-git add [files in the change set]
-git commit -m "Address PR review feedback (#PR_NUMBER)
-
-- [list changes from per-item results]" -- [files in the change set]
+(cd "$workspace_root" && jj commit -m "<message composed from the standards above>" -- <owned-paths>)
 ```
 
 In `mode:return-to-caller`, capture the combined fix commit SHA and follow [references/return-to-caller.md](return-to-caller.md) to save every judged action and intended checklist tick. Return after saving; do not push or enter steps 7-8 for any part of this batch. A failed commit or save reports the actual local state and incomplete handoff, never completion.
 
 Ordinary and pipeline execution publish the commit before the remote tail:
 ```bash
-git push
+(cd "$workspace_root" && jj bookmark set "$verified_pr_bookmark" -r "$verified_fix_commit" && jj git push --remote "$verified_head_remote" --bookmark "$verified_pr_bookmark")
 ```
 
 Read the PR's state immediately before pushing. If it is no longer open, a merge or close happened while this batch ran: do not push, and report the fix as an unpublished local commit along with the items left unaddressed.
+
+Verify the exact head repository, remote, bookmark and fix commit before setting or publishing the bookmark; never guess a target or force an update. Capture the full immutable commit ID with `jj log --no-graph -r '<verified-fix-revision>' -T 'commit_id'`. Do not confuse an empty working-copy tip with the committed fix. Verify fresh remote publication before the remote tail.
 
 ## 7. Reply and Resolve
 
@@ -200,10 +198,10 @@ GH_HOST=<derived-host> bash "$SKILL_DIR/scripts/get-thread-for-comment" PR_NUMBE
 The returned `id` is the authoritative thread ID for resolution, and `root_comment_id` is the numeric ID of the thread's first comment for the REST reply. If the thread ID differs from what `get-pr-comments` returned, use the one from this script.
 
 1. **Reply directly to the root comment over REST** using [scripts/reply-to-pr-thread](../scripts/reply-to-pr-thread). If the bundled script is missing, use the same `POST repos/{owner}/{repo}/pulls/PR_NUMBER/comments/ROOT_COMMENT_ID/replies` endpoint. Do not substitute `addPullRequestReviewThreadReply`, `gh pr review`, or a `/reviews` POST: those operations go through review-submission state, so the reply can sit unsubmitted, while a successful reply must be immediately submitted and visible.
-Feed the body from a private OS scratch file. For a fresh reply, the quoted heredoc below writes multiline Markdown without shell expansion; never use `echo "..."` or `printf` to interpret escape sequences. For a saved reply, write its exact decoded `reply_body` bytes to that file with a tool instead of running the illustrative heredoc, which would add a terminal newline. Preserve all existing line breaks, including terminal ones:
+Feed the body from a private file under the target workspace's `.tmp/`. For a fresh reply, the quoted heredoc below writes multiline Markdown without shell expansion; never use `echo "..."` or `printf` to interpret escape sequences. For a saved reply, write its exact decoded `reply_body` bytes to that file with a tool instead of running the illustrative heredoc, which would add a terminal newline. Preserve all existing line breaks, including terminal ones:
 ```bash
 SKILL_DIR="<absolute path of the directory containing the ce-resolve-pr-feedback SKILL.md>";
-REPLY_BODY_FILE="<absolute private OS scratch reply file>";
+REPLY_BODY_FILE="<absolute workspace root>/.tmp/<private run directory>/reply.md";
 cat > "$REPLY_BODY_FILE" <<'EOF'
 > the specific sentence being addressed from the reviewer's comment
 
@@ -250,7 +248,7 @@ GH_HOST=<derived-host> bash "$SKILL_DIR/scripts/resolve-pr-thread" THREAD_ID
 These cannot be resolved via GitHub's API. Reply with a top-level PR comment referencing the original (pass `-R OWNER/REPO` — the parsed base repo — so a fork→upstream reply posts on the watched upstream PR, not the fork namespace):
 
 ```bash
-REPLY_BODY_FILE="<absolute private OS scratch reply file>";
+REPLY_BODY_FILE="<absolute workspace root>/.tmp/<private run directory>/reply.md";
 cat > "$REPLY_BODY_FILE" <<'EOF'
 > the specific sentence being addressed from the reviewer's comment
 
@@ -276,7 +274,7 @@ The `review_threads` array should be empty (except `needs-human` items).
 
 In resume, verify only the saved actions and report new feedback through its caller result; return to [references/resume.md](resume.md) without entering another fix cycle.
 
-**For fresh-feedback modes, if new threads remain**, check the iteration count -- counting rounds **for this PR**, not just this invocation. An orchestrator such as `ce-babysit-pr` re-invokes this skill fresh each round, so a per-invocation counter never trips; count instead the earlier review-fix commits already on the branch (`git log <base>..HEAD` subjects that address review feedback) plus this run's own cycles.
+**For fresh-feedback modes, if new threads remain**, check the iteration count -- counting rounds **for this PR**, not just this invocation. An orchestrator such as `ce-babysit-pr` re-invokes this skill fresh each round, so a per-invocation counter never trips; count instead the earlier review-fix commits already on the branch (`jj log --no-graph -r '<verified-base>..<verified-head>' -T 'description ++ "\n"'` descriptions that address review feedback) plus this run's own cycles.
 
 - **First or second fix-verify cycle**: Repeat from step 2 for the remaining threads.
 
@@ -302,7 +300,7 @@ Not addressing (count): [what was skipped and the evidence]
 Declined (count): [what was declined and the harm or scope reason cited; name out-of-scope items separately so the user can carry them forward]
 
 Validation: [one line -- e.g., "bun test passed (893/893)" or "bun test passed with pre-existing failure in X noted"; omit when no code changes were committed]
-Diff change: [`git diff --shortstat` from the head before this run's first fix commit to the head after its last, e.g., "+42 / -7 across 3 files"; omit when no code changes were committed]
+Diff change: [`jj diff --from <captured-before-head> --to <captured-after-head> --stat` from the head before this run's first fix commit to the head after its last, e.g., "+42 / -7 across 3 files"; omit when no code changes were committed]
 ```
 
 If any item is `needs-human`, append a decisions section. These are rare but high-signal. Each carries the `needs-human` object composed in step 3: quoted feedback, investigation, the reason autonomous action is unsafe or ambiguous, concrete options with tradeoffs, a recommendation if any, and links to every still-open thread it covers.

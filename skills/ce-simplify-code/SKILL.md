@@ -18,10 +18,12 @@ Strip a `mode:pipeline` token, a `size-cutoff:<N>` token, and every `proof-test:
 Resolve the scope in this order:
 
 1. **User-named scope** is authoritative; do not widen it. In standalone mode it may be the whole repo, an area, or a path.
-2. **Otherwise, in git**, use the current branch versus its base. Without a usable base, use staged and unstaged changes (`git diff HEAD`).
-3. **Outside git or without a diff**, use files the user named or that were edited earlier in the conversation.
+2. **Otherwise, in JJ**, resolve and verify the current task's head and base, then use `jj diff --from <verified-base> --to <verified-head>`. Include current working-copy edits when they belong to the task. Without a usable base, use `jj diff -r @` for the working-copy change; JJ has no staging area. Run every JJ command from the target workspace's absolute root, not merely with a repository selector. Preserve the captured range throughout review; do not guess a default branch or silently substitute a different revision.
+3. **Outside JJ or without a diff**, use files the user named or that were edited earlier in the conversation.
 
-In pipeline mode the scope is what the caller passed, else the branch diff. Within it, prune only tests and comments the current work added or changed.
+Use native JJ operations, never the Git executable. See the [JJ command reference](https://docs.jj-vcs.dev/latest/cli-reference/) and [Git command table](https://docs.jj-vcs.dev/latest/git-command-table/). Any temporary review material belongs under the workspace's local `.tmp/` (or local `.tmp/` outside a repository).
+
+In pipeline mode the scope is what the caller passed, else the verified task diff. Within it, prune only tests and comments the current work added or changed.
 
 If none of the above produces a non-empty scope, pipeline mode reports "nothing to simplify" and returns. Standalone mode asks the user what to simplify, as `references/standalone-report.md` describes.
 
@@ -31,7 +33,7 @@ When the platform's task-tracking capability is available, show the review, appl
 
 ## Step 2: Launch review agents in parallel
 
-Dispatch generic subagents via the platform's subagent primitive (`Agent`/`Task` in Claude Code, `spawn_agent` in Codex) where available; otherwise run the reviews inline or serially. For each reviewer, read its prompt asset from this skill's directory and pass the **full file content** as the subagent's prompt, together with the resolved scope (the full diff or file set), the mode, any proof test, the user's constraints, and the project standards governing the scope (or their file paths):
+This skill explicitly requests generic reviewers through OpenCode's native subagent tool, in parallel where available; otherwise use the disclosed inline or serial fallback under `references/reviewer-dispatch.md`. Do not dispatch through another harness or a bridge script. For each reviewer, read its prompt asset from this skill's directory and pass the **full file content** as the subagent's prompt, together with the resolved scope (the full diff or file set), the mode, any proof test, the user's constraints, and the project standards governing the scope (or their file paths):
 
 - `references/personas/code-reuse-reviewer.md`
 - `references/personas/code-quality-reviewer.md`

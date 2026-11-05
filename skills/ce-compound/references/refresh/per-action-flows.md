@@ -37,7 +37,7 @@ Relocate only when the misfiling is unambiguous: the doc's directory and its fro
 In non-interactive mode, apply the relocation only when all four conditions hold, mirroring the auto-delete pattern: (1) frontmatter and directory disagree per the category mapping, (2) content evidence clearly resolves the direction as directory-wrong, (3) the target category directory already exists, (4) every inbound citation is in-repo and mechanically rewritable. If any condition fails — including content that plausibly fits either category — record the relocation (doc, proposed target, which condition failed) under Recommended instead of moving.
 
 1. Confirm the target category directory exists.
-2. Move the file with `git mv` so history follows the rename.
+2. Move the file with the native file tool or `mv`; JJ records the rename from content without staging.
 3. Reconcile frontmatter category metadata with the new location.
 4. Rewrite inbound links across the repo's markdown, including catalog rows in README files.
 5. Re-check the moved doc's **outgoing** relative links — the move changed their resolution base, so a `../category/doc.md` that resolved before now dangles. Run the bundled claims validator (`scripts/validate-doc-claims.py`, invoked as in the Replace flow) on the moved doc, or inspect its relative links manually, and rewrite any that no longer resolve before completing the relocation.
@@ -116,14 +116,14 @@ Do not let replacement subagents invent frontmatter fields, enum values, or sect
    SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
    if [ -f "$SKILL_DIR/scripts/validate-doc-claims.py" ]; then
      PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c '' >/dev/null 2>&1 && { echo "$c"; break; }; done)"; [ -n "$PY" ] || { echo "no working Python 3 interpreter on PATH" >&2; exit 1; };
-     "$PY" "$SKILL_DIR/scripts/validate-doc-claims.py" <new-learning-path>;
+     "$PY" "$SKILL_DIR/scripts/validate-doc-claims.py" <new-learning-path> --history-head "<captured-verified-committed-history-id>";
    else
      echo "Bundled validate-doc-claims.py not resolvable on this platform; applying the claims checklist manually.";
    fi
    ```
 
-   Exit 1 flags are **adjudication input, not failures** — a successor doc describing removed code legitimately cites paths that no longer exist. Resolve each flag by fixing the citation, annotating it as historical, or confirming it intentional; always fix scaffold flags. If the script is not resolvable on this platform, scan the body for those same patterns manually and say so in the report.
-5. After the subagent completes, the orchestrator deletes the old learning file and updates any catalog README row that lists the old filename to point at the successor. The new learning's frontmatter may include `supersedes: [old learning filename]` for traceability, but this is optional — the git history and commit message provide the same information.
+   Before invoking, read `references/grounding-validation.md`'s history-input capture procedure and resolve the actual task/repository committed head, preserving its exact ID across reruns; never blindly use `@` or `@-`. Supply `--upstream-head` only for a verified actual remote-default head when recorded metadata is absent. Unknown inputs must be reported and adjudicated, not guessed or used to skip the mechanical validator. Exit 1 flags are **adjudication input, not failures** — a successor doc describing removed code legitimately cites paths that no longer exist. Resolve each flag by fixing the citation, annotating it as historical, or confirming it intentional; always fix scaffold flags. If the script is not resolvable on this platform, scan the body for those same patterns manually and say so in the report.
+5. After the subagent completes, the orchestrator deletes the old learning file and updates any catalog README row that lists the old filename to point at the successor. The new learning's frontmatter may include `supersedes: [old learning filename]` for traceability, but this is optional — JJ history and the change description provide the same information.
 
 **When evidence is insufficient:**
 

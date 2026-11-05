@@ -16,11 +16,16 @@ Keep an open PR moving toward merge by reacting to three streams as each arrives
 
 - `target` — only the named PR; stop at looks-ready; never merges; offer stack-wide once if a confirmed managed stack needs work.
 - `stack-ready` — once a layer has zero actionable backlog (CI may still run), advance to the next open non-draft upstack layer needing work; lower layers stay probed and the lowest that re-opens pulls the walk back; never merges.
-- `stack-land` — as `stack-ready`, and selecting it **is** land authorization: once the bottom-most open layer is settled, `gh stack merge` it + `gh stack sync`.
+- `stack-land` — as `stack-ready`, and selecting it **is** land authorization: once the bottom-most open layer is settled, `gh stack merge` it, then perform the verified native JJ propagation in `references/stack-commands.md`.
 
 One PR named → `target` (ask once if a confirmed multi-layer stack exists); asked to carry the whole stack → `stack-ready`; asked to land it → `stack-land`. `mode:pipeline` never asks. Restate posture per transition.
 
 ## Non-negotiable boundaries
+
+- Run every repository command from the target workspace's absolute root. Before repository-scoped `gh`, export `GIT_DIR=$(jj git root)` there; never invoke Git directly. Use native JJ ([command reference](https://docs.jj-vcs.dev/latest/cli-reference/)).
+- **Empty working-copy tip:** `@` may be an empty change above the pushed PR commit. Before concluding there is no PR or work, inspect `@-`, its bookmarks, exact remote branch and associated PR. Continue when eligible; empty `@` directly above the verified PR head is already aligned.
+- **Authorized maintenance:** apply factual stale-description refreshes from verified run results without another preview/yes-no approval, preserving unrelated user text and issue links; do not use the standalone rewrite approval flow. Clean-head alignment and starting/re-arming authorized monitoring also need no extra approval. Respect opt-outs, watch boundaries and actual permissions. Optional rewrites outside this maintenance still require approval, description-only requests stay draft-only, and declining an optional rewrite never blocks monitoring.
+- **Native delegation:** these explicit delegate instructions satisfy a host's user-or-skill delegation exception, not an unconditional prohibition. Use OpenCode native subagents; consult `opencode.models` for permitted model selection, with configured routes/tiers authoritative. Delegation permission does not permit model overrides: when forbidden, omit the model argument and inherit a suitable model. Check effective nesting capacity separately; classify actual depth, permission, model-argument and missing-tool failures without retrying denials or bypassing limits through shell/another harness. Inline/parent fallback only when the review contract allows it; same-model reviewers do not establish cross-model independence, and unavailable required coverage remains incomplete.
 
 - **Merge-readiness is never merge authorization** except under `stack-land`.
 - **Branch currency is consumption-only.** A base-into-head update happens only for the exact `branch_currency` item the snapshot emitted, after an atomic claim, per `references/branch-currency.md`, which owns who updates a `BEHIND` branch (`BEHIND` = host `update-branch` with `expected_head_sha`, never a local merge). Never infer an item from prose, base movement, a sibling PR merging, `CLEAN`/`MERGEABLE`, `BLOCKED` while your own push's checks rerun, or anyone saying "update the branch"; a push that restarts green CI without a claimed item is a defect. The only history rewrite is the user-authorized update in `references/intake.md`.
@@ -36,10 +41,12 @@ One PR named → `target` (ask once if a confirmed multi-layer stack exists); as
 2. Resolve the PR from the argument or current branch (`references/setup.md`); none → report, stop.
 3. **Old-PR intake** (fresh invocation, before the checkout gate): read `references/intake.md`; it decides whether this PR still belongs. A user request to take the PR over: `references/takeover.md`.
 4. Chain classification comes from the snapshot, never the user; resolve posture before semantic work.
-5. **Checkout must be the PR's head branch with matching upstream** before any delegated mutation; default `gh pr checkout <ref>`; no push access or dirty checkout → stop, say so.
+5. **Verify the exact PR head repository, bookmark, remote and commit** before delegated mutation; follow `references/setup.md` for safe JJ alignment. No push access, uncertain target, dirty/conflicted workspace → stop without discarding work.
 6. **Sustain mode** (`references/setup.md`, `references/watch-loop.md`): keep monitoring until a stop condition is met, one tick per wake from one wake source: the `pr-snapshot watch` detector, or the host's own mechanism when its instructions dictate PR waits. Never collapse the loop into a script. Checkpoint mode only when the user asks or nothing can wake this agent. **Pipeline** (`mode:pipeline`): bounded synchronous ticks, structured return (`references/pipeline.md`).
 
 ## Step 2: One tick (ordering invariant)
+
+Before composing, editing or validating any JJ change description (including currency repair), read `references/change-messages.md`; delegates must follow the same runtime standards through `ce-commit`. No fixed prefix or message template is prescribed by babysitting.
 
 Snapshot first, then in this order:
 

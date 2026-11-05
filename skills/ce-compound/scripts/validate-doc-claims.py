@@ -1,8 +1,17 @@
 #!/usr/bin/env python3
-"""Validate cited claims in a solution doc against the git tree.
+"""Validate cited claims against the JJ working tree and explicit history anchors.
 
 Usage:
-    python3 validate-doc-claims.py <doc-path>
+    python3 validate-doc-claims.py <doc-path> --history-head <verified-commit-id>
+        [--upstream-head <verified-remote-default-id>]
+
+HEAD in reports means the exact committed-history anchor supplied by the
+caller, not JJ's snapshotting @. Resolve it from task/repository evidence,
+not an unconditional @ or @- rule. Capture and preserve its ID before edits.
+Absent anchors leave ancestry coverage unknown; working-tree paths, commit
+resolution, links and scaffold are still checked. Missing/ambiguous recorded
+remote HEAD metadata remains unknown; no trunk()/root() or named-branch guess
+is substituted. The caller adjudicates coverage before claiming completion.
 
 Exit codes:
     0 — nothing flagged
@@ -47,7 +56,7 @@ decides per flag: fix, annotate as historical, or confirm intentional.
 Only the summary exit code distinguishes "clean" from "needs a look".
 
 The script never touches the network (no fetch); classification uses
-whatever refs exist locally. Run a best-effort `git fetch --quiet` first
+whatever refs exist locally. Run a best-effort `jj git fetch` first
 when freshness matters. Pure stdlib (no third-party deps).
 """
 import os
@@ -101,18 +110,112 @@ def usage_fail(msg: str) -> "NoReturn":
     sys.exit(2)
 
 
-def git(args: list[str], cwd: str) -> tuple[int, str]:
+def git(args: list[str], cwd: str, history_head: str | None = None) -> tuple[int, str]:
+    """Translate internal history queries to native JJ; never execute Git."""
+    nonempty = False
+    if args == ["rev-parse", "--show-toplevel"]:
+        args = ["workspace", "root"]
+    elif args == ["rev-parse", "--abbrev-ref", "origin/HEAD"]:
+        default = remote_default(cwd)
+        return (0, default) if default else (1, "")
+    elif args[:3] == ["rev-parse", "--verify", "--quiet"]:
+        return 1, ""
+    elif args[:2] == ["rev-list", "--count"]:
+        if not history_head:
+            return 1, ""
+        args = ["log", "--no-graph", "-r", args[2].replace("HEAD", history_head), "-T", 'commit_id ++ "\\n"']
+        nonempty = "count"
+    elif args[:2] == ["cat-file", "-e"]:
+        value = args[2]
+        if value.endswith("^{commit}"):
+            args = ["log", "--no-graph", "-r", value[:-9], "-T", "commit_id"]
+        else:
+            rev, path = value.split(":", 1)
+            if rev == "HEAD":
+                if not history_head:
+                    return 1, ""
+                rev = history_head
+            args = ["file", "list", "-r", rev, "--", path]
+        nonempty = True
+    elif args[:2] == ["merge-base", "--is-ancestor"]:
+        head = history_head if args[3] == "HEAD" else args[3]
+        if not head:
+            return 1, ""
+        args = ["log", "--no-graph", "-r", f"{args[2]} & ::{head}", "-T", "commit_id"]
+        nonempty = True
+    else:
+        return 1, ""
     try:
         result = subprocess.run(
-            ["git", *args],
+            ["jj", *args],
             cwd=cwd,
             capture_output=True,
             text=True,
             timeout=30,
         )
-        return result.returncode, result.stdout.strip()
+        output = result.stdout.strip()
+        if nonempty == "count" and result.returncode == 0:
+            output = str(len(output.splitlines())) if output else "0"
+        return (1 if nonempty is True and not output else result.returncode), output
     except (OSError, subprocess.TimeoutExpired):
         return 1, ""
+
+
+def jj(args: list[str], cwd: str) -> tuple[int, str]:
+    try:
+        proc = subprocess.run(["jj", "--no-pager", *args], cwd=cwd,
+                              capture_output=True, text=True, timeout=30)
+        return proc.returncode, proc.stdout.strip()
+    except (OSError, subprocess.TimeoutExpired):
+        return 1, ""
+
+
+def verified_revision(revision: str | None, cwd: str) -> str | None:
+    """Capture exactly one real commit; root() is not a history/remote anchor."""
+    if not revision:
+        return None
+    code, output = jj(["log", "--no-graph", "-r", revision, "-T", 'commit_id ++ "\\n"'], cwd)
+    ids = output.splitlines()
+    if code == 0 and len(ids) == 1 and re.fullmatch(r"[0-9a-f]{40,64}", ids[0]) and set(ids[0]) != {"0"}:
+        return ids[0]
+    return None
+
+
+def remote_default(cwd: str) -> str | None:
+    """Use a recorded remote HEAD, never trunk()'s synthetic root fallback.
+
+    Local Git-format symbolic-ref data is read as data, without executing Git.
+    Missing or ambiguous remote-default metadata remains unknown. A caller can
+    instead supply --upstream-head after verifying the remote default via gh.
+    """
+    code, remotes = jj(["git", "remote", "list"], cwd)
+    root_code, git_root = jj(["git", "root"], cwd)
+    if code or root_code:
+        return None
+    candidates = set()
+    for line in remotes.splitlines():
+        parts = line.split()
+        if not parts:
+            continue
+        remote = parts[0]
+        prefix = f"refs/remotes/{remote}/"
+        try:
+            with open(os.path.join(git_root, prefix, "HEAD")) as stream:
+                target = stream.read().strip()
+        except OSError:
+            continue
+        if not target.startswith("ref: " + prefix):
+            continue
+        branch = target[len("ref: " + prefix):]
+        if not branch or branch == "HEAD":
+            continue
+        # Quote each ref component to prevent revset expression injection.
+        import json
+        revision = json.dumps(branch) + "@" + json.dumps(remote)
+        resolved = verified_revision(revision, cwd)
+        if resolved:
+            candidates.add(resolved)
+    return next(iter(candidates)) if len(candidates) == 1 else None
 
 
 def split_body(text: str) -> tuple[str, int]:
@@ -238,10 +341,13 @@ def strip_repo_prefix(token: str, base: str) -> str:
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) != 2:
-        usage_fail(f"usage: {os.path.basename(argv[0])} <doc-path>")
-
-    doc_path = argv[1]
+    import argparse
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("doc_path")
+    parser.add_argument("--history-head", help="exact task/repository committed-history anchor, captured before working-copy edits")
+    parser.add_argument("--upstream-head", help="verified actual remote-default head; omit when unknown")
+    options = parser.parse_args(argv[1:])
+    doc_path = options.doc_path
     if not os.path.isfile(doc_path):
         usage_fail(f"file not found: {doc_path}")
 
@@ -266,21 +372,19 @@ def main(argv: list[str]) -> int:
     code, repo_root = git(["rev-parse", "--show-toplevel"], doc_dir)
     in_git = code == 0 and bool(repo_root)
     upstream: str | None = None
+    history_head: str | None = None
     if in_git:
-        code, ref = git(["rev-parse", "--abbrev-ref", "origin/HEAD"], repo_root)
-        if code == 0 and ref:
-            upstream = ref
-        else:
-            for candidate in ("origin/main", "origin/master"):
-                code, _ = git(
-                    ["rev-parse", "--verify", "--quiet", candidate], repo_root
-                )
-                if code == 0:
-                    upstream = candidate
-                    break
-        if upstream:
+        history_head = verified_revision(options.history_head, repo_root)
+        if options.history_head and not history_head:
+            usage_fail("--history-head must resolve to exactly one non-root commit")
+        if not history_head:
+            infos.append("INFO: committed-history anchor unknown — working-tree/path/link/scaffold and SHA resolution checks still run; historical deletion and ancestry classification require --history-head")
+        upstream = verified_revision(options.upstream_head, repo_root) if options.upstream_head else remote_default(repo_root)
+        if options.upstream_head and not upstream:
+            usage_fail("--upstream-head must resolve to exactly one non-root verified remote-default commit")
+        if upstream and history_head:
             code, behind = git(
-                ["rev-list", "--count", f"HEAD..{upstream}"], repo_root
+                ["rev-list", "--count", f"HEAD..{upstream}"], repo_root, history_head
             )
             if code == 0 and behind.isdigit() and int(behind) > 0:
                 infos.append(
@@ -288,10 +392,10 @@ def main(argv: list[str]) -> int:
                     "verify merge-state claims against remote truth (gh pr view), "
                     "not this checkout"
                 )
-        else:
+        if not upstream:
             infos.append(
-                "INFO: no upstream default branch found — "
-                "path/SHA classification limited to HEAD"
+                "INFO: upstream default unknown — no verified remote-default head; "
+                "do not infer local-only or merged status from missing remote coverage"
             )
     else:
         infos.append(
@@ -308,7 +412,7 @@ def main(argv: list[str]) -> int:
     def head_has_path(path: str) -> bool:
         if not in_git:
             return False
-        code, _ = git(["cat-file", "-e", f"HEAD:{path}"], repo_root)
+        code, _ = git(["cat-file", "-e", f"HEAD:{path}"], repo_root, history_head)
         return code == 0
 
     # --- 1. Cited repo paths ----------------------------------------------
@@ -414,14 +518,18 @@ def main(argv: list[str]) -> int:
                 )
                 continue
             checked_shas += 1
-            in_head = (
-                git(["merge-base", "--is-ancestor", sha, "HEAD"], repo_root)[0] == 0
-            )
-            in_up = (
-                upstream is not None
-                and git(["merge-base", "--is-ancestor", sha, upstream], repo_root)[0]
-                == 0
-            )
+            if not history_head:
+                notes.append(f"NOTE sha {sha}{loc} — resolves, but committed-history anchor unknown; ancestry classification requires --history-head")
+                continue
+            head_code, head_match = jj(["log", "--no-graph", "-r", f"{sha} & ::{history_head}", "-T", "commit_id"], repo_root)
+            up_code, up_match = jj(["log", "--no-graph", "-r", f"{sha} & ::{upstream}", "-T", "commit_id"], repo_root) if upstream else (0, "")
+            if head_code or up_code:
+                notes.append(f"NOTE sha {sha}{loc} — ancestry query failed; verification degraded, not evidence of local-only or unreachable status")
+                continue
+            in_head, in_up = bool(head_match), bool(up_match)
+            if upstream is None and not in_head:
+                notes.append(f"NOTE sha {sha}{loc} — not reachable from the captured history head; upstream default unknown, so remote reachability and rebased-away status are unverified")
+                continue
             if in_head and (in_up or upstream is None):
                 continue
             if in_head and not in_up:

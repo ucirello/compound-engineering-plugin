@@ -87,20 +87,21 @@ AGENT_SURFACE_PATTERN = re.compile(
 )
 
 
-def git(*args: str) -> subprocess.CompletedProcess[str]:
+def jj(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["git", *args], capture_output=True, text=True, check=False
+        ["jj", "--color=never", "--no-pager", *args], cwd=repo_root(), capture_output=True, text=True, check=False
     )
 
 
 def valid_commit(ref: str | None) -> bool:
     if not ref:
         return False
-    return git("rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}").returncode == 0
+    result = jj("log", "--no-graph", "-r", ref, "-T", 'commit_id ++ "\n"')
+    return result.returncode == 0 and len(result.stdout.splitlines()) == 1
 
 
 def unique_merge_base(base: str, head: str) -> str | None:
-    result = git("merge-base", "--all", base, head)
+    result = jj("log", "--no-graph", "-r", f"heads(::({base}) & ::({head}))", "-T", 'commit_id ++ "\n"')
     candidates = [line for line in result.stdout.splitlines() if line]
     if result.returncode != 0 or len(candidates) != 1:
         return None
@@ -127,15 +128,11 @@ def normalize_docs_root(docs_root: str | None) -> str:
 
 @functools.lru_cache(maxsize=None)
 def repo_root() -> Path:
-    """The repository root, matching how docs_root is resolved everywhere else.
+    """Absolute JJ workspace root, including when invoked in a subdirectory.
 
-    docs_root is repo-relative (``<repo-root>/<docs_root>``), so the corpus
-    check must resolve against the git toplevel, not the current working
-    directory. ce-code-review can run from a subdirectory (``git diff`` still
-    works there), where ``Path.cwd()`` would join docs_root under the subdir and
-    wrongly report the corpus absent. Fall back to cwd when git can't answer.
+    Fall back to the absolute local directory only outside a JJ workspace.
     """
-    result = git("rev-parse", "--show-toplevel")
+    result = subprocess.run(["jj", "workspace", "root"], cwd=Path.cwd().resolve(), capture_output=True, text=True, check=False)
     if result.returncode == 0 and result.stdout.strip():
         return Path(result.stdout.strip()).resolve()
     return Path.cwd().resolve()
@@ -166,10 +163,10 @@ PACKS_RESOLVER_TIMEOUT = 30.0
 
 
 def declared_packs() -> tuple[bool | None, int]:
-    """Whether the local CE config declares Compound Packs, from the config alone.
+    """Whether the local configuration declares Compound Packs, from the config alone.
 
     Runs the sibling resolver in `--declared-only` mode, which parses the
-    `packs:` list from both CE config layers and shape-checks each entry with no
+    `packs:` list from both configuration layers and shape-checks each entry with no
     git or cache work. Its `declared` is true when any entry parsed or the block
     is malformed -- a broken declaration is still one the learnings pass must
     surface in Coverage. ``None`` means the helper could not tell (resolver
@@ -275,7 +272,7 @@ def matching_classes(
 
 
 def numstat_path(name: str) -> str:
-    """Return the destination path from a `git diff --numstat` rename display name."""
+    """Normalize a legacy numstat rename display name."""
     if " => " not in name:
         return name
     if "{" in name and "}" in name:
@@ -293,12 +290,13 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base", required=True)
     parser.add_argument("--head")
+    parser.add_argument("--local-scope", action="store_true", help="read local config with an explicitly captured head")
     parser.add_argument("--docs-root", default="docs")
     args = parser.parse_args()
 
     # Remote scope (pr-remote / branch-remote) always passes --head, even when a
     # best-effort fetch left it empty; the local config is not that tree's config.
-    repo = repo_signals(args.docs_root, local_scope=args.head is None)
+    repo = repo_signals(args.docs_root, local_scope=args.head is None or args.local_scope)
 
     if not valid_commit(args.base):
         print(json.dumps(fail_closed("invalid base endpoint", repo), sort_keys=True))
@@ -307,38 +305,61 @@ def main() -> int:
         print(json.dumps(fail_closed("invalid head endpoint", repo), sort_keys=True))
         return 0
 
-    diff_args = [args.base]
-    if args.head:
-        merge_base = unique_merge_base(args.base, args.head)
-        if merge_base is None:
-            print(json.dumps(fail_closed("merge base unavailable or ambiguous", repo), sort_keys=True))
-            return 0
-        diff_args = [merge_base, args.head]
-
-    # Unquoted non-ASCII paths keep extension checks and manifest paths usable.
-    numstat = git("-c", "core.quotePath=false", "diff", "--numstat", *diff_args)
-    raw = git("-c", "core.quotePath=false", "diff", "--raw", *diff_args)
-    if numstat.returncode != 0 or raw.returncode != 0:
-        print(json.dumps(fail_closed("git diff failed", repo), sort_keys=True))
+    # Count the exact captured endpoints, never parent-relative commit stats or
+    # a recomputed merge base. Git-format data is parsed locally, not by Git.
+    patch = jj("diff", "--git", "--context=0", "--from", args.base, "--to", args.head or "@")
+    inventory = jj("diff", "--from", args.base, "--to", args.head or "@", "-T", r'path ++ "\0"')
+    if patch.returncode != 0 or inventory.returncode != 0:
+        print(json.dumps(fail_closed("jj diff failed", repo), sort_keys=True))
         return 0
-
+    records = []
+    record = None
+    in_hunk = False
+    for line in patch.stdout.splitlines():
+        if line.startswith("diff --git "):
+            # JJ leaves spaces unquoted. The +++/rename metadata below is the
+            # authoritative destination when present (including spaced paths).
+            path = line[len("diff --git "):].rsplit(" b/", 1)[-1]
+            record = {"path": path, "added": 0, "deleted": 0, "binary": False, "removed": False, "exec": False}
+            records.append(record)
+            in_hunk = False
+        elif record is not None:
+            if line.startswith("@@ "):
+                in_hunk = True
+                continue
+            if in_hunk:
+                if line.startswith("+"):
+                    record["added"] += 1
+                elif line.startswith("-"):
+                    record["deleted"] += 1
+                continue
+            if line.startswith("+++ b/"):
+                record["path"] = line[len("+++ b/"):]
+            elif line.startswith("--- a/") and record["removed"]:
+                record["path"] = line[len("--- a/"):]
+            if line.startswith("rename to "):
+                record["path"] = line[len("rename to "):]
+            elif line.startswith("deleted file mode "):
+                record["removed"] = True
+            if re.search(r"\b100755\b", line) and not line.startswith(("+", "-", "@@")):
+                record["exec"] = True
+            if line.startswith(("Binary files ", "GIT binary patch")):
+                record["binary"] = True
+    native_paths = inventory.stdout.rstrip("\0").split("\0") if inventory.stdout else []
+    if len(native_paths) != len(records) or any("\n" in path or "\r" in path for path in native_paths):
+        print(json.dumps(fail_closed("JJ patch inventory is uncountable", repo), sort_keys=True))
+        return 0
+    # Both formats traverse the same native TreeDiff entries. Use native paths
+    # rather than parsing quoted/spaced rename or mode-only patch headers.
+    for record, path in zip(records, native_paths):
+        record["path"] = path
     executable_mode_paths: set[str] = set()
     deleted_paths: set[str] = set()
-    for line in raw.stdout.splitlines():
-        if "\t" not in line:
-            continue
-        meta, path_field = line.split("\t", 1)
-        fields = meta.lstrip(":").split(" ")
-        if len(fields) < 2:
-            continue
-        if fields[-1] == "D":
-            deleted_paths.add(path_field)
-        old_mode, new_mode = fields[0], fields[1]
-        mode = old_mode if new_mode == "000000" else new_mode
-        if not mode.endswith("755"):
-            continue
-        for path in path_field.split("\t"):
-            executable_mode_paths.add(path)
+    for record in records:
+        if record["removed"]:
+            deleted_paths.add(record["path"])
+        if record["exec"]:
+            executable_mode_paths.add(record["path"])
 
     files: list[str] = []
     executable_lines = 0
@@ -348,16 +369,17 @@ def main() -> int:
     uncounted = 0
     deleted_files: list[str] = []
     deleted_exec_nontest_lines = 0
-    for line in numstat.stdout.splitlines():
-        parts = line.split("\t")
-        if len(parts) < 3:
-            continue
-        added, deleted, name = parts[0], parts[1], parts[2]
-        resolved_name = numstat_path(name)
+    for record in records:
+        added = "-" if record["binary"] else str(record["added"])
+        deleted = "-" if record["binary"] else str(record["deleted"])
+        name = record["path"]
+        resolved_name = name
         files.append(resolved_name)
         ext = Path(resolved_name).suffix.lower()
         is_exec = ext in CODE_EXTENSIONS or resolved_name in executable_mode_paths
         is_test = bool(TEST_PATTERN.search(resolved_name))
+        if record["binary"]:
+            uncounted += 1
         if resolved_name in deleted_paths:
             deleted_files.append(resolved_name)
             if deleted.isdigit():
@@ -366,7 +388,6 @@ def main() -> int:
                     deleted_exec_nontest_lines += int(deleted)
             continue
         if added == "-" or deleted == "-":
-            uncounted += 1
             continue
         try:
             total = int(added) + int(deleted)

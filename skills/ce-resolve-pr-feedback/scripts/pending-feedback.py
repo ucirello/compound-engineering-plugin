@@ -14,6 +14,24 @@ from urllib.parse import urlsplit
 
 
 SCHEMA_VERSION = 1
+
+
+def workspace_context() -> tuple[Path, dict]:
+    current = Path.cwd().resolve()
+    result = subprocess.run(["jj", "workspace", "root"], cwd=current, capture_output=True, text=True, check=False)
+    root = Path(result.stdout.strip()).resolve() if result.returncode == 0 else current
+    environment = os.environ.copy()
+    if result.returncode == 0:
+        backend = subprocess.run(["jj", "git", "root"], cwd=root, capture_output=True, text=True, check=True)
+        environment["GIT_DIR"] = backend.stdout.strip()
+    return root, environment
+
+
+def temporary_directory() -> Path:
+    root, _ = workspace_context()
+    directory = root / ".tmp"
+    directory.mkdir(exist_ok=True)
+    return directory
 VERDICTS = {"fixed", "fixed-differently", "replied", "not-addressing", "declined", "needs-human"}
 KINDS = {"thread", "comment", "review"}
 
@@ -186,7 +204,7 @@ def write_record(path: Path, raw: bytes, *, checkpoint: bool) -> None:
     if checkpoint:
         temporary = None
         try:
-            with tempfile.NamedTemporaryFile(dir=path.parent, prefix=".pending-feedback-", delete=False) as temp:
+            with tempfile.NamedTemporaryFile(dir=temporary_directory(), prefix=".pending-feedback-", delete=False) as temp:
                 temporary = Path(temp.name)
                 temp.write(raw)
                 temp.flush()
@@ -205,9 +223,10 @@ def write_record(path: Path, raw: bytes, *, checkpoint: bool) -> None:
 
 
 def github_json(host: str, endpoint: str) -> dict:
+    root, environment = workspace_context()
     result = subprocess.run(
         ["gh", "api", "--hostname", host, "--method", "GET", endpoint],
-        capture_output=True, text=True, check=False,
+        capture_output=True, text=True, check=False, cwd=root, env=environment,
     )
     require(result.returncode == 0, result.stderr.strip() or f"GitHub GET failed: {endpoint}")
     return object_value(json.loads(result.stdout), "GitHub response")
@@ -257,11 +276,15 @@ def main() -> None:
             command_parser.add_argument("--input", required=True)
     args = parser.parse_args()
     if args.command == "preflight":
-        path = Path(args.path).absolute() if args.path else Path(tempfile.mkdtemp(prefix="ce-pending-feedback-")) / "pending.json"
+        temporary_root = temporary_directory()
+        path = Path(args.path).absolute() if args.path else Path(tempfile.mkdtemp(dir=temporary_root, prefix="pending-feedback-")) / "pending.json"
         require(not os.path.lexists(path), "handoff destination already exists")
         require(path.parent.is_dir(), "handoff parent directory does not exist")
-        with tempfile.TemporaryFile(dir=path.parent):
+        with tempfile.TemporaryFile(dir=temporary_root):
             pass
+        require(os.access(path.parent, os.W_OK), "handoff parent directory is not writable")
+        require(path.parent.stat().st_dev == temporary_root.stat().st_dev,
+                "handoff destination must share the local .tmp filesystem for atomic checkpoints")
         print(json.dumps({"handoff": str(path)}))
         return
     path = Path(args.path).absolute()

@@ -1,81 +1,39 @@
-# Opt-in stack construction and submit recipes
+# Opt-in stack construction and submission with native JJ
 
-Load this file only when commit-push-pr stack mode is active (the user asked for a PR stack, or a standing preference wants one). Use the `gh stack` CLI when it is present; never require a separate gh-stack skill package.
-
-This reference has two phases. Before ordinary Step 3 (commit and push), run Probe, Topology, and, when needed, Retrospective construction only; do not run Submit. Step 5 (apply and report) is the only phase that runs Submit and applies titles and bodies to PRs created in this run.
-
-A **residual** below means an unresolved item you report back to the user or the calling pipeline instead of guessing.
+Load only for explicit stack intent or a standing stack preference. Before ordinary Step 3, perform Probe, Topology and Construction only; Step 5 exclusively owns Submit and newly-created PR descriptions. Run commands from the absolute target workspace root; export `GIT_DIR=$(jj git root)` before repository-scoped gh. No direct Git or Git-mutating gh stack helpers. Read `gh-stack-cli.md` for GitHub-only integration limits.
 
 ## Probe
 
-```bash
-command -v gh
-gh stack view --json
-```
-
-If `gh` or `gh stack` is missing, or the stack command reports that stacks are unavailable for this repo (rather than merely reporting that the current branch is not part of a stack), stop with a clear residual. Stack intent is **required** when the user explicitly demanded a multi-PR stack or a standing preference forces stacks → hard-stop. Otherwise intent is **soft** → report the residual and fall back to the ordinary single-PR create.
+Verify gh authentication, repository stack support and an available GitHub-only stack linking interface from actual command help/API documentation. Do not install tools. If unavailable, explicit stack intent or forced standing preference is a hard residual; soft intent may fall back to one PR with the reason reported. Do not claim independent PRs are a registered stack.
 
 ## Topology
 
-**When the user named a parent PR or branch to stack on, classify it and root the layers there.** Classify by **PR number** wherever one exists — that is what pulls a stack down from GitHub; a bare branch name resolves local stacks only. `references/gh-stack-cli.md` lists the exit codes and what each command does.
+Record the original working revision, feature bookmark, complete change set and recovery bookmark before changing topology. Resolve a named parent by PR number where available; verify head repository, author, bookmark and exact head ID. Fetch using JJ from the verified remote and verify that exact revision. A missing/stale/colliding local bookmark is not permission to reset it. A branch-only parent can serve as a verified trunk, not proof of remote stack membership.
 
-Classification moves `HEAD`, so record your work branch and its tip **before** classifying and return to them before construction. Construction reads the checked-out branch as the original; if you classify in place, it takes the parent as the original and drops your commits from the layers.
+Verify any existing stack's actual bottom-to-top topology through GitHub. Preserve it. A named parent must be the immediate parent of the requested new layer; if it is not the top where the remote stack contract requires top-only addition, report a residual rather than silently changing parents. Standalone parent may remain an untouched trunk, or be adopted as the bottom layer only when owned by the current user and authorized. Ambiguous membership, unavailable stack support or uncertain head is a residual.
 
-- **In a stack** (exit 0 — parent now checked out) — plan the layers from your restored work branch, then check the parent out again and run `gh stack add` from there, so the layer sits above the parent the user named. Exit **5** means that parent is not the top: residual. Never clear it with `gh stack top`, which succeeds only by parenting the new layer onto a different layer.
-- **Standalone** (exit 2 — nothing checked out) — resolve `<parent-branch>` first: run `gh pr view "<n>" --json headRefName,headRefOid,author`, then make sure a local branch sits **at `headRefOid`**. Create it when absent. When that name already exists, verify it is at that commit and stop with a residual otherwise: the name may belong to an unrelated or stale branch, and resetting it can drop unpushed commits. From a branch with no PR, fetch and verify that ref directly; there is no PR author to check there, so the branch can only serve as a trunk. Then run `gh stack init --base "<parent-branch>" …` to keep the parent as an untouched trunk, or list the parent's branch first to adopt it as the bottom layer — the latter only when `author` is the current user.
-- **Unproven** — a residual, not a guess: a wrong "standalone" is what creates the second stack, as are exit 6 and exit 9.
+Use the authoritative parent tip: fetched remote tip when current, otherwise the verified local parent tip if its latest work is still unpublished. Never hardcode origin or default-base a requested upstack layer. Validate caller-supplied names and pass them as literal argv values, never interpolated shell code.
 
-Use the `init` form chosen here in place of the generic one shown in construction, whose `--base` would leave an adopted parent unmanaged. In construction, `<base>` is the parent's tip. `references/branch-creation.md` branches from the repo default and must not be followed when a parent was named. Require a branch name taken from a PR to match `[A-Za-z0-9._/-]+` before it reaches a command — git permits `$(...)` in branch names and double quotes do not stop expansion — and stop with a residual on a name that fails.
+If no explicit stack request and the complete work is one logical change or only artificial slices are possible, use one PR. Explicit requests are not refusable on those grounds.
 
-When `gh stack view --json` confirms the current branch belongs to a managed stack, preserve that topology. If no topology exists, use retrospective construction below. When the user did not ask for a stack in this request — a standing preference alone is not asking — and the complete work is one logical change or only artificial slices are possible, refuse the stack and use the single-PR path. An explicit request is not refusable on those grounds. (Probe's soft/required split governs what to do when the CLI is missing, not whether a stack may be refused.)
+## Construction
 
-Any explicit new upstack branch the user already directed must base from the **authoritative parent tip** after fetch: prefer `<tracking-remote>/<parent>` when that remote tip is current for the confirmed stack layer; if the parent’s latest work is only local (not yet on the tracking remote — common before the first `gh stack submit`), base from the local parent branch instead. Create with `git checkout --no-overwrite-ignore -b "<branch-name>" "<parent-tip>"`. If checkout fails because uncommitted or ignored files would be overwritten, stop and ask the user to handle the colliding paths; in `mode:pipeline`, report the blocker without asking. Do not stash or remove the colliding paths. For an **upstack** layer, do **not** follow `references/branch-creation.md` — that reference’s `origin/<base>` flow would detach the layer from its parent. Do not hard-code `origin/<parent>` when the tracking remote differs or the remote tip lags the local parent.
+Inspect the complete range plus tracked and untracked working changes, excluding `exclude:<paths>`. Plan the smallest useful linear independently reviewable layers, foundation first, using whole-file groups or existing change boundaries, never forced hunk splitting. One safe topology may proceed under stack authorization. Multiple material alternatives require a bottom-to-top proposal; pipeline mode returns that proposal as a residual. Hunk partitioning or published-history rewrites require explicit approval; pipeline stops rather than rewriting.
 
-## Retrospective construction
+On the default bookmark without a named parent, use `branch-creation.md`, including its local-only commit decision. Existing feature work uses the verified fetched base or verified local parent, not the entire original feature tip as the bottom parent. Preserve recovery bookmarks and original work until the top is verified complete.
 
-Before ordinary Step 3 (commit and push), inspect the **complete change set** against the resolved base: existing commits plus tracked, staged, and untracked working changes. Derive the **smallest useful set of linear, independently reviewable layers** in dependency order, foundation first. Each layer must be coherent against its parent and must not depend on an upstack layer. Use whole-file groups or existing commit boundaries; never use `git add -p` to force a split.
+For committed work already matching the plan, `jj bookmark create <layer-name> -r <verified-layer-tip>` for each layer. Reuse an existing name only if it already names exactly the intended tip. For uncommitted file groups, use JJ's path-scoped commit operations from `commit-and-push.md`, starting from the verified bottom parent, creating each next owned change on its immediate parent. Explicitly name owned paths in each commit; excluded files belong to no layer and must remain unchanged. Stop if a rebase/working-copy transition could overwrite or absorb them or ignored/untracked content. No stash, reset or discard workaround.
 
-When one safe topology is clear, proceed without asking: explicit stack intent authorizes the necessary local branches and commits. When multiple reasonable topologies would materially change review boundaries, ask the user with a concise bottom-to-top proposal. In `mode:pipeline`, stop with that proposal as a residual instead of guessing. If the split requires hunk-level partitioning or rewriting published history, ask the user before proceeding in interactive mode. In `mode:pipeline`, do not split or rewrite; stop with a residual that describes the required partition or rewrite and the explicit confirmation needed to proceed. Never rewrite published history without explicit confirmation.
+Before each layer description, read the full Go guide, compare several complete subjects/bodies at the actual verified history head, and apply `context.md` runtime message standards and source guidance. Compose dynamically; record a known unit ID as semantic content only when applicable, without fixed subject syntax. Preserve human authorship and do not rewrite other people's commits into yours.
 
-Choose the bottom-layer path from the branch checked out when retrospective construction began. If construction starts on the resolved default branch and no parent was named, follow `references/branch-creation.md` to fetch and resolve its safe base, including the unpushed-local-commit decision. If construction starts on an existing feature branch, do not follow `references/branch-creation.md`: fetch the resolved base `<base>` from Topology — the repo default branch unless a parent was named — from its base remote, verify the fetched remote-tracking tip, and use that exact tip as the bottom parent. When Topology already resolved the parent to a verified local branch, use that instead: a fork head materialized from `refs/pull/<n>/head` has no remote-tracking branch to fetch or verify. Record the original branch and tip, preserve the original tip with a recovery ref or branch before any operation that could move it, and do not treat the feature commits between the bottom parent and original tip as unpushed commits on the local default or carry the whole feature tip into the bottom layer. Every upstack layer starts from its immediate parent through `gh stack add`.
+Verify every parent edge using JJ, confirm layer coherence and that the top contains the complete original intended change set minus exclusions. Check conflicts and unrelated work before publishing.
 
-For uncommitted whole-file groups on an existing feature branch, save all tracked and untracked working changes before switching branches, then restore them only on the planned layer whose parent contains their prerequisites. Keep the saved work until the constructed top is verified complete. Initialize or adopt the bottom layer at the resolved `<base>` tip or its planned commit tip, commit only its files, then add and commit each next layer in order. Files named by an `exclude:<paths>` token on the invocation belong to no layer. Never save, move, or restore them — they stay in the working tree exactly as found. Name the paths on every layer commit so a pre-staged excluded file cannot get in, and treat the "complete original change set" as the change set minus those files. If a branch switch during construction would overwrite an excluded file, stop with a residual rather than proceeding. Compose `<bottom-message>` and `<next-message>` with the same subject rule as Step 3: when a plan Implementation Unit ID is already in hand for that layer's commit, append that unit's U-ID in parentheses — `(U3)` means unit 3. Do not hunt for a plan. Omit when the commit spans units, the unit is unclear, or no plan is in hand.
+## Submit (Step 5 only)
 
-```bash
-gh stack init --base "<base>" "<bottom-branch>"
-git add <bottom-files> && git commit -m "<bottom-message>" -- <bottom-files>
-gh stack add "<next-branch>"
-git add <next-files> && git commit -m "<next-message>" -- <next-files>
-```
+Apply the Project publishing gate to every outgoing layer. If explainer archival is on, stop before submission with the existing residual: no safe stack-aware archival path is defined; do not silently disable it or create post-submit explainer commits.
 
-For committed work whose existing commit boundaries already match the plan, create or reuse one branch at each planned commit tip and adopt them bottom-to-top with `gh stack init --base "<base>" "<bottom-branch>" "<next-branch>" ...`. Reuse the original feature branch only when its unchanged tip is one of those planned tips. If unpublished commits need rearrangement, keep a recovery branch at the original tip before rewriting. After construction, run `gh stack view --json`; verify the reported order matches the plan and the top layer contains the complete original change set before submit.
+Re-verify exact repositories, remotes, bookmarks and heads. Push each verified layer bookmark via `jj git push --remote <verified-remote> --bookmark <layer>`; new remote bookmarks require authorized `--allow-new`. Create or reuse each matching PR by explicit owner/head matching, with its immediate parent as base. Do not duplicate a PR on an unknown/nonzero query. Register the intended stack using the verified GitHub-only interface and read back membership/order. Partial failure retains recovery state and reports precisely what published and what did not; never blindly retry create.
 
-## Submit (ready / non-draft)
+Do not mark existing drafts ready unless explicitly authorized. New PRs are ready unless the user/project requests draft. Remaining draft layers are a hard residual before default babysit, never a successfully shipped ready stack.
 
-Apply the **Project publishing gate** before submitting the stack.
-
-Before submit, resolve the ordinary `pr_teaching_archive` / `archive:on|off` gate. If archival is on, stop with a residual before `gh stack submit`; do not create an explainer commit after submission or silently disable requested archival. The user can rerun with `archive:off` to use the safe post-submit description path until stack archival has a manager-aware route.
-
-Before submit, inspect the stack's open PRs (`gh stack view --json` / `gh pr view`) for any **existing draft** layers. If any draft already exists that the author did not explicitly ask to open this run, do **not** pass `--open` (GitHub documents `--open` as also marking existing PRs ready for review). In that case, submit with `gh stack submit --auto` only, then treat the remaining drafts as a hard residual before babysit when babysit is on. Never mark someone's work-in-progress drafts ready.
-
-When no existing drafts are present (or the user explicitly authorized opening every layer):
-
-```bash
-gh stack submit --auto --open
-```
-
-`--auto` alone creates drafts, and babysit skips drafts by default. When babysit is on, a draft-only outcome is a hard residual (or a step to mark the PRs ready) before the babysit handoff. Never treat drafts as a successfully shipped stack.
-
-After submit, map every PR created in this run back to its head branch and explicit PR URL. For each new PR, pass that URL to ordinary PR-description composition so PR mode derives the immediate parent and exact head, then apply the result with `gh pr edit "<pr-url>"`. Never rely on the restored current branch to select the PR. Existing stack PRs retain their titles and bodies unless the current invocation explicitly requested a rewrite; `mode:pipeline` keeps the documented conservative no-rewrite default. Do not invent stack-specific title improvements in this skill.
-
-## Forbidden on managed members
-
-```bash
-gh pr merge …
-```
-
-Landing uses `gh stack merge` only, run by `ce-babysit-pr` under `posture:stack-land` or by the user.
-
-## Ownership
-
-Step 5 exclusively owns stack submission and the post-submit description steps above, for PRs created in this run. No earlier step submits.
+Map every new PR to explicit URL, head bookmark and immediate parent. Compose its description in PR mode using that URL and apply via `gh pr edit`; never infer it from current `@`. Existing PR bodies remain unchanged except explicitly authorized rewrites or already-authorized factual babysitting refresh. A declined optional rewrite does not block monitoring. Report the bottom open non-draft PR and hand off with `posture:stack-ready`, or `posture:stack-land` only on explicit land intent; pipeline carries stack-wide scope. Do not merge members independently.

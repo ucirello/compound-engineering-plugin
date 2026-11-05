@@ -1,8 +1,8 @@
 # Warm the npm cache for cross-model peers
 
-Cross-model peers resolve acpx within tested version bounds, preserving npm's release-age and date-cutoff policies. Warming downloads an eligible transport and the adapters associated with the newest validated release. An older policy-selected transport may fetch different adapter packages on its first run.
+This is optional legacy transport cache maintenance for an explicit user request, not a native peer route or installation prerequisite. Native peers use `opencode.models` and permitted subagents under SKILL.md's permission, model, depth and coverage rules. Never dispatch through acpx or another harness. Preserve version bounds and npm's release-age/date-cutoff policies: warming downloads an eligible transport and its adapters without starting their CLIs.
 
-Ask once. Say first what it gets the user: skills that consult another model, such as Codex or Claude, usually start without a download on first use. Then say in plain words what it does: it downloads now, into the user's npm cache, the npm packages those skills use to reach the other model, instead of on first use. Say too that npm runs any install scripts those packages declare, as it would on that first use. Name a package such as acpx only alongside that description. Run it only after the user approves; if they decline, fetch nothing.
+For an explicit legacy-cache request, confirm once. Explain that this downloads legacy transport and adapter packages into the user's npm cache; it does not enable or verify native model routes. Say too that npm runs any install scripts those packages declare. Name a package such as acpx only alongside that description. Run it only after the user approves; if they decline, fetch nothing.
 
 On approval, run the health script with `--warm-acpx` in place of `--version VERSION`, using the same `SKILL_DIR` as Step 2:
 

@@ -8,11 +8,11 @@ Before generating ideas, gather grounding. The dispatch set depends on the mode 
 
 **Surprise-me grounding depth.** In surprise-me mode, grounding goes deeper than specified mode — apply the 0.2 table's `1 grounding` row, and pass issue themes as first-class input rather than a footnote when issue intelligence runs. Specified mode keeps the shallower scan: the user's named subject anchors what is relevant.
 
-**Pre-resolve the scratch directory.** Generate a `<run-id>` once (8 hex chars) and reuse it for the web-research cache and the Phase 2/4 checkpoints so they share one per-run directory. Scratch lives beneath the effective user's private CE root — `/tmp/compound-engineering-<uid>` when it is usable, else the validated `$TMPDIR` fallback the block below selects — never `.context/`. Run this to validate the owner-private root, create the run directory, and capture its absolute path:
+**Pre-resolve the scratch directory.** Generate a `<run-id>` once (8 hex chars) and reuse it for the web-research cache and the Phase 2/4 checkpoints so they share one per-run directory. Scratch lives beneath the workspace's local `.tmp/rocketclaw/` (local to the current directory outside a JJ repository), never OS-global temp or `.context/`. Ensure `.tmp/` is ignored. Run this to validate the owner-private root, create the run directory, and capture its absolute path:
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+workspace_root=$(jj workspace root 2>/dev/null) || workspace_root=$(pwd -P);
+SCRATCH_ROOT="$workspace_root/.tmp/rocketclaw";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
@@ -117,7 +117,11 @@ Consolidate all dispatched results into a short grounding summary using these se
 
 ## Model tiers (applies to every dispatch in this skill)
 
-Sub-agent dispatch is tiered by task shape, never hardcoded to a model name:
+Use OpenCode-native subagents for these explicitly requested dispatches and `opencode.models` to resolve permitted model choices; never dispatch through another harness. Run JJ commands with the absolute target workspace root as their working directory. JJ reference: https://docs.jj-vcs.dev/latest/cli-reference/ . For repository-scoped `gh`, obtain and export `GIT_DIR=$(jj git root)` from that root first; never invoke Git directly.
+
+Delegation permission, model-selection permission, and nesting capacity are separate. Under a user-or-loaded-skill delegation rule, this skill's explicit dispatch instructions satisfy the skill-requested exception without another approval. Respect unconditional prohibitions and actual denials. A tier or configured model is intent, not authorization to pass a model override: when the host requires an explicit user model request, omit `model` and use suitable inherited-model agents, disclosing unmet tier requirements. Same-model agents are separate contexts, not cross-model independence. Verify effective nesting depth independently (the installation prerequisite is at least 3; package-local configuration alone does not configure consumers). Classify actual depth/capacity errors separately from permission denial, model-argument rejection, and missing tools; never evade them through another harness. Use only the phase's permitted degraded path and report missing coverage.
+
+Sub-agent dispatch is tiered by task shape, never hardcoded to a model name. Every model-selection directive here and in this skill's references is conditional on the permission rule above, not merely on an override being technically exposed:
 
 - **Extraction tier** — retrieval and quoting work, such as the quick context scan and research distillers. Use the platform's cheapest capable model when the harness exposes a known override; escalate to the generation tier when the repo is large or the stack obscure.
 - **Generation tier** — evidence-driven ideation frames and basis verification. Use the platform's mid-tier model when the harness exposes a known override.
@@ -125,11 +129,11 @@ Sub-agent dispatch is tiered by task shape, never hardcoded to a model name:
 
 If model names are unknown, omit the override and inherit rather than guessing.
 
-If the user's or project's active instructions or the live prompt name a model for this subagent, use that model instead of the default tier above. They can name it by the subagent's tier, by its prompt-asset name, or for the subagents being dispatched. Without such an instruction, a model configured for this subagent's role takes precedence over the default tier.
+Subject to the model-selection permission rule above, if the user's or project's active instructions or the live prompt name a model for this subagent, use that model instead of the default tier above. They can name it by the subagent's tier, by its prompt-asset name, or for the subagents being dispatched. Without such an instruction, a model configured for this subagent's role takes precedence over the default tier.
 
 **Degradation rule.** When the platform's subagent primitive does not support per-agent model selection, dispatch everything on the inherited model and keep the read budgets and dossier caps — cost control then comes from structure, not tiering.
 
-For every native dispatch in this skill, classify rejection by whether an agent launched: correct a pre-launch argument rejection once, leave capacity-limited work queued, and send any other failure to that phase's stated degraded path.
+For every native dispatch in this skill, classify rejection by whether an agent launched: correct a malformed pre-launch argument once only when permitted (never retry a denied operation), leave transient capacity-limited work queued, and send exhausted nesting depth or other failures to that phase's stated degraded path with the actual cause disclosed.
 
 Two overrides raise the whole ideation fleet to the ceiling tier: surprise-me mode and the `go deep` depth override (Phase 0.5).
 

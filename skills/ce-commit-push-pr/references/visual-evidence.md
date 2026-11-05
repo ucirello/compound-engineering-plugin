@@ -38,7 +38,7 @@ Net-new UI has no before image. Do not build the base revision in a second workt
 - Take the few images that prove the claim, not a tour of the app.
 - Take still screenshots only. Include video or GIFs only when the user supplied them.
 - Use dev or seed data. Look at every image before publishing. If one shows credentials, tokens, personal data, or a URL carrying a secret, retake it without them or drop it. Never blur or crop instead.
-- Save the images in one new temporary directory outside the repository, with file names that contain no spaces. Copy any supplied before images into the same directory, because the body references every image by a path relative to it. Never commit them.
+- Save the images in one new directory under the absolute target workspace's ignored `.tmp/`, with file names that contain no spaces. Copy supplied before images there because the body references every image relative to it. Never commit them.
 
 ## In the body
 

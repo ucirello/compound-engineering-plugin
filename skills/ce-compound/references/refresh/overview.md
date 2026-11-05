@@ -57,7 +57,7 @@ Edits apply silently in every mode. The report's `CONCEPTS.md` line records what
 
 ## Commit
 
-Skip if nothing changed. Otherwise stage **only** the files this refresh modified, and commit in the repo's convention. **Read `references/refresh/commit.md`** for the per-mode branch decision and the git-failure fallback.
+Skip if nothing changed. Otherwise commit **only** the files this refresh modified with native JJ, preserving unrelated work. **Read `references/refresh/commit.md`** for mandatory runtime Go/full-history message composition, per-mode bookmark decisions and the JJ-failure fallback.
 
 ## Discoverability Check
 

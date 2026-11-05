@@ -2,6 +2,8 @@
 
 ### Lightweight Mode
 
+Interactive context pressure first delegates Full under `references/modes.md`; enter this fallback only for a missing native subagent tool, actual permission denial or exhausted nesting depth, and report which. Explicit non-interactive `depth:lightweight` remains unchanged.
+
 <critical_requirement>
 **Single-pass alternative — same artifact type, reduced research and validation.**
 
@@ -52,7 +54,8 @@ a one-line mention helps agents find the shared vocabulary.
 
 Note: This was created in lightweight mode. For richer documentation
 (cross-references, detailed prevention strategies, specialized reviews,
-semantic grounding validation), re-run <rendered invocation> in a fresh session.
+semantic grounding validation), re-run <rendered invocation> from this same session
+once native delegation is available. A fresh session cannot see this evidence.
 ```
 
 **No subagents are launched. No parallel tasks. The chosen form, plus at most one learning, is the deliverable** (Phase 2.4's update-only vocabulary capture may also change an existing `CONCEPTS.md`).

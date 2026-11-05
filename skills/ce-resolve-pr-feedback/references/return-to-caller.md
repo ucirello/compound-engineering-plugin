@@ -6,7 +6,7 @@ Full and targeted feedback scopes keep their existing judgment and fix flow. A c
 
 ## Prepare the destination before editing
 
-Run the bundled helper from the absolute directory containing this skill's `SKILL.md`; set the anchor in each shell call because shell state does not persist. Preflight happens before edits, not after the commit:
+Run the bundled helper by absolute path with the command's working directory set to the target workspace's absolute root; set the anchor in each shell call because shell state does not persist. Preflight happens before edits, not after the commit:
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the ce-resolve-pr-feedback SKILL.md>";
@@ -14,7 +14,7 @@ PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c 
 "$PY" "$SKILL_DIR/scripts/pending-feedback.py" preflight
 ```
 
-When the invocation supplies `handoff:<path>`, append `--path '<caller path>'` to that command, preserving the actual argument. Preflight refuses an existing destination, including a dangling symlink, and probes exclusive temporary-file creation in its parent directory. Without a supplied path it allocates a private OS scratch directory and returns an unused `pending.json` path. Retain the returned absolute `handoff` path. Do not clean it up at skill completion; the caller owns retention.
+When the invocation supplies `handoff:<path>`, append `--path '<caller path>'` to that command, preserving the actual argument. Preflight refuses an existing destination, including a dangling symlink, verifies parent write access and probes local `.tmp/` temporary-file creation. The destination must share that filesystem for atomic checkpoints; report a cross-filesystem blocker without substituting a path. Without a supplied path it allocates a private workspace-local `.tmp/` directory and returns an unused `pending.json` path. Retain the returned absolute `handoff` path. Do not clean it up at skill completion; the caller owns retention.
 
 If preflight fails, stop before editing and return the blocker. Do not substitute another destination for a rejected caller path. Creation also refuses overwrite, so a destination that appears during preparation cannot be replaced.
 

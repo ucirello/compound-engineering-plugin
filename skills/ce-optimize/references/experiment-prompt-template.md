@@ -69,7 +69,7 @@ Recent experiments and their outcomes (for context -- avoid re-trying approaches
 4. Do NOT run the measurement harness (the orchestrator handles this)
 5. Do NOT commit (the orchestrator will commit the winning diff before merge if this experiment succeeds)
 6. Do NOT modify files outside the mutable scope
-7. When done, run `git diff --stat` so the orchestrator can see your changes
+7. When done, run `jj diff --stat` from the experiment's absolute workspace root so the orchestrator can see your changes
 8. If you discover you need an unapproved dependency, note it and stop
 
 Focus on implementing the hypothesis well. The orchestrator will measure and evaluate the results.
@@ -84,14 +84,14 @@ A remote worker has its own checkout on its own machine, so the orchestrator can
 <remote-worker>
 You are running detached, on your own checkout. The orchestrator will not see your tree; it sees only the branch you push and the result you report.
 
-Base: commit {base_sha} on branch {optimization_branch}. Before changing anything, verify your HEAD is exactly {base_sha}. If it is not, check it out; if you cannot, stop and report that.
+Base: commit {base_sha} on bookmark {optimization_branch}. Read `references/native-execution.md`. Before changing anything, verify the workspace's exact starting tree/base with JJ from its absolute root. An empty working-copy change above {base_sha} is valid. On mismatch stop and report rather than reset or discard existing work.
 
 After implementing the hypothesis, measure PAIRED on this machine, using the immutable harness as-is:
-1. Baseline: check out {base_sha} (stash or branch your change), run `{measurement_command}` {sample_count} time(s), record every sample.
+1. Baseline: preserve the candidate in its own JJ change and use a separate verified baseline workspace under `references/native-execution.md` at {base_sha}. Run `{measurement_command}` {sample_count} time(s), recording every sample; never discard the candidate to switch revisions.
 2. Candidate: restore your change, run the same command the same number of times, record every sample.
 Alternate baseline and candidate runs when {sample_count} > 1. Never edit the measurement command, its working directory, or any file in the immutable scope; a changed harness makes your result unusable.
 
-Commit your mutable-scope changes, and nothing else, with the message `optimize({spec_name}): exp-{iteration} <hypothesis, short>`. That commit is the candidate; its SHA is `head_sha`.
+Read `references/change-descriptions.md` in full before composing any description. Commit only mutable-scope changes with a runtime-composed message recording the spec, iteration and hypothesis. That candidate's exact JJ commit ID is `head_sha`.
 
 Then write `result.yaml` at the repo root of your checkout with exactly this shape:
   experiment: {iteration}
@@ -103,7 +103,7 @@ Then write `result.yaml` at the repo root of your checkout with exactly this sha
   candidate: { gates: {...}, metrics: { <name>: { aggregate: <n>, samples: [...] } }, diagnostics: {...} }
   correctness: <checks you ran and their results, or "none">
 Include the harness's per-case `cases` object and any cost, tokens, or latency fields in each snapshot only when the harness emits them; do not compute them yourself.
-Commit `result.yaml` alone on top of the candidate commit, so the pushed tip's parent is `head_sha`, and push to `{result_ref}`. Do not push to {optimization_branch} or any other branch.
+Commit `result.yaml` alone on top of the candidate using `references/change-descriptions.md`, so the pushed tip's parent is `head_sha`. Push only the verified `{result_ref}` bookmark with `jj git push` from the absolute target root. Do not push to {optimization_branch} or another bookmark.
 
 Your final message is the structured result: the pushed ref, head_sha, machine, and the two aggregates. Report an unapproved dependency, a base mismatch, or a harness you could not run as a blocker instead of a result.
 </remote-worker>
@@ -128,7 +128,7 @@ The worker's numbers are its own claim. The orchestrator runs `decide.mjs` on th
 | `{source_digest}` | `source-digest.md` in the run's scratch directory | What workers need to know about the target's material and current approach |
 | `{failure_cases}` | `worst_cases` on the current best (kept experiment entry, or baseline) | The cases relevant to this hypothesis, with reasons; "none recorded" when absent |
 | `{recent_experiment_summaries}` | Rolling window (last 10) from experiment log | Compact summaries: hypothesis, outcome, learnings |
-| `{base_sha}` (remote only) | `git rev-parse optimize/<spec-name>` at dispatch | The commit the worker must start from and measure as baseline |
+| `{base_sha}` (remote only) | Exact optimization bookmark commit ID resolved with `jj log` from the absolute source root at dispatch | The commit the worker must start from and measure as baseline |
 | `{optimization_branch}` (remote only) | `optimize/<spec-name>` | Named so the worker knows what not to push to |
 | `{result_ref}` (remote only) | `optimize-exp/<spec-name>/exp-<NNN>` | The branch the worker pushes; the orchestrator fetches it to collect |
 | `{measurement_command}` (remote only) | Spec `measurement.command` (+ `working_directory`) | Run verbatim; the harness is immutable |
@@ -137,7 +137,7 @@ The worker's numbers are its own claim. The orchestrator runs `decide.mjs` on th
 ## Notes
 
 - This template works for subagent, Codex, and remote dispatch. No platform-specific assumptions. Only `remote` appends the measure-and-report delta.
-- For Codex dispatch: write the filled template to a temp file and pipe via stdin (`cat /tmp/optimize-exp-XXXXX.txt | codex exec --skip-git-repo-check - 2>&1`).
+- For the legacy Codex route: dispatch natively under `references/native-execution.md`, preserving configured model and security intent; any prompt files belong under local `.tmp/`.
 - For subagent dispatch: pass the filled template as the subagent prompt.
 - Keep `{recent_experiment_summaries}` concise -- 2-3 lines per experiment, last 10 only. Do not include the full experiment log.
 - The worker should NOT read the full experiment log or strategy digest. It receives only what the orchestrator provides.

@@ -1,5 +1,7 @@
 # Tracker Detection and Defer Execution
 
+For every repository-scoped GitHub CLI command below, set cwd to the absolute target workspace root and export `GIT_DIR=$(jj git root)` there before invoking `gh`. Do not invoke Git directly.
+
 This reference covers how residual actionable findings are filed in the project's tracker. Loaded by caller workflows (for example `ce-work` Residual Work Gate, or `lfg` residual handling), not by `ce-code-review`, which stops after the report.
 
 ---

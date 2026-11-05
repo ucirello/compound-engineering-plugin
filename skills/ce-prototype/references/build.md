@@ -16,7 +16,7 @@ On the web path the artifact is whatever a browser can display and you can autho
 
 ## Which run root
 
-Prefer `.context/compound-engineering/ce-prototype/<date>-<slug>/` so the prototype survives alongside the decisions capsule. Fall back to `/tmp/compound-engineering-<uid>/ce-prototype/<date>-<slug>/` when the user declines the `.gitignore` append, when they ask that this run not be left in their repo, when the run is not inside a git repository, or when the path fails the safety checks; survival there is best-effort, so do not promise it a lifetime. Calling the prototype throwaway is not a request to leave the repo — throwaway describes the code, and a kept prototype is never deleted.
+Prefer `.context/ce-prototype/<date>-<slug>/` so the prototype survives alongside the decisions capsule. Fall back to `<absolute workspace root>/.tmp/rocketclaw/ce-prototype/<date>-<slug>/` (local `.tmp/` outside a JJ workspace) when the user declines the `.gitignore` append, requests a non-durable run, the run is outside a JJ workspace, or the path fails the safety checks; survival there is best-effort, so do not promise it a lifetime. If the user requires that no files remain anywhere in their repository, explain that the permitted local fallback is still inside it and stop for a safe destination decision rather than using OS-global storage. Calling the prototype throwaway is not a request to leave the repo — throwaway describes the code, and a kept prototype is never deleted.
 
 ## Recreate, do not rebuild the app
 

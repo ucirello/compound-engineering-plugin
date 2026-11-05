@@ -7,19 +7,20 @@ Always non-interactive. Prefer JSON/view probes and explicit branch names; never
 ## After an owned push on the active layer (dependents exist)
 
 ```bash
-gh stack rebase "<first-open-dependent-branch>" --upstack --no-trunk --remote <tracking-remote>
-gh stack push --remote <tracking-remote>
+jj rebase -s <verified-first-dependent-series-root> -d <verified-pushed-target-head>
+jj git push --remote <tracking-remote> --bookmark <verified-dependent-bookmark>
 ```
 
-Starting at the first dependent excludes the active target from the cascading rebase. Quote the branch name — git branch names may contain shell metacharacters. On conflict: `gh stack rebase --abort`, then surface a needs-human / stack-sync residual.
+Select the exact dependent series from the confirmed manager order and saved pre-push OIDs, excluding the active target and trunk. Preserve each dependent bookmark and push only those verified owned bookmarks, bottom-up. Quote bookmark names. Save recovery bookmarks first. On conflict stop before push; preserve the recoverable operation and surface a needs-human / stack-sync residual, never discard unrelated work. Re-fetch and reconcile partial pushes individually, not as an assumed atomic transaction.
 
 ## Check out a layer on a fresh checkout
 
 ```bash
-gh stack checkout <PR_NUMBER>
+jj git fetch --remote <verified-head-remote> --branch exact:<head-bookmark>
+jj new <verified-pushed-head-oid>
 ```
 
-Use the PR number, which pulls the stack from GitHub. A branch name only resolves stacks already known locally, and `gh pr checkout` leaves the manager unaware of the branch.
+Use the explicit PR number to resolve the exact repository/bookmark/OID first and follow the clean alignment gate in `setup.md`; an empty tip above that head needs no new change. Discover manager membership read-only; never infer or import it by checkout.
 
 ## Discover order / next open layer
 
@@ -33,10 +34,9 @@ Merge the **bottom-most open settled** PR — `gh stack merge <PR>` merges the f
 
 ```bash
 gh stack merge <BOTTOM_MOST_OPEN_SETTLED_PR> --yes --squash
-gh stack sync --remote <tracking-remote>
 ```
 
-Run the sync only after the merge succeeded. A sync after a failed merge rebases and pushes every layer, which restarts their CI and review. If the merge says another process is editing the stack, retry it shortly: that lock is temporary, and all worktrees of one clone share it.
+Only after confirmed merge, fetch the exact new base and propagate the remaining confirmed layers using the native JJ series recipe above, preserving manager order and recovery evidence. Never sync after a failed merge: it would restart CI/review unnecessarily. If the merge reports a concurrent manager edit, retry shortly within budget; never bypass its ownership lock.
 
 Re-probe the landed PR before advancing: on merge-queue bases the CLI may succeed after enqueue while the PR stays OPEN — keep watching or return a queued residual until `pr_state` is `MERGED`. Only then treat the just-merged PR as a **layer transition** (stop watcher, re-probe, continue next open non-draft needing work with posture restated) — not a run-level Terminal stop for this babysit invocation.
 

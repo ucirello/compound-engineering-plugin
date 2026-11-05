@@ -2,6 +2,8 @@
 
 Read this when the plan's execution profile says the work ships as several PRs and this run is standalone, before building the task list. A `mode:return-to-caller` run does not use this file: it builds every unit on one branch and returns, and its caller owns how the work splits into PRs.
 
+In this JJ workflow, a branch identity means its verified JJ bookmark; use native JJ operations, never the Git executable. Run JJ from each workspace's absolute root and repository-scoped `gh` with exported `GIT_DIR=$(jj git root)` from that same root. Detect/reuse existing isolation first without changing its name or lifecycle. For an authorized new per-group `ce-worktree` workspace, capture local YYYYMMDD once and normalize a meaningful plan/group slug into one stable dated workspace name and destination basename under local `.tmp/`; preserve it across retries/resumes, check registrations and destinations, and suffix collisions `-2`, `-3`, etc. Keep source/PR bookmarks unchanged. Require explicit `jj workspace add --colocate` at the verified group base and verify `jj git colocation status` from the resulting absolute root through the harness-supported lifecycle. Unsupported required naming or colocation blocks that isolation route, never authorizes another harness/Git workspace. Apply `cross-model-execution.md`'s ownership, integration, evidence/recovery, session-move, ignored/untracked and post-removal verification safeguards to any authorized `jj workspace remove`; `workspace forget` only unregisters and preserves files.
+
 **Outcome:** every PR group of the plan ends this run merged, in an open PR, built and waiting on a dependency, or not yet built because a start wait is unmet, and the report names each wait. The only things left for a person are confirming a deployment and merging when the user did not grant merging.
 
 A run that a coordinator handed one named group builds and ships only that group, from the branch it was given, and returns that group's state. The rest of this file is how a run decides which groups to build and how they land.
@@ -39,7 +41,7 @@ When the host can wake this session on a change to a PR, keep a watch on each PR
 
 ## Separate sessions
 
-Some hosts can start a separate long-lived session in its own checkout that outlives this turn, such as T3 delegated worktree tasks, Orca worktree children, or Codex cloud tasks. This is not a subagent: a subagent ends with the turn that started it, while a group's PR needs hours of CI, review, and merge.
+Use an exposed OpenCode-native long-lived session capability, if available and permitted, for a group's hours-long CI/review lifecycle; a turn-bound subagent is not a durable session. Do not dispatch through T3, Orca, Codex cloud, or another harness as a bridge. Native model selection follows `opencode.models`, configured routes/tiers, and the separate delegation/model/depth checks in `execution-strategy.md`.
 
 Where the host offers such sessions and its own rules let the agent start them, hand each group to its own session automatically and coordinate from this one.
 

@@ -22,6 +22,12 @@ Writing the file, checking confidence, and running or explicitly skipping `ce-do
 
 Ask one question at a time through the host's blocking question tool already in the current tool list. Match by capability; never probe a user-facing tool to discover it. If none is listed or a real question call errors, render numbered choices in chat; never silently skip a required question. If no feature description was supplied, ask what to plan and wait.
 
+### Native delegation contract
+
+This skill explicitly requests its research and reviewer subagents. When host policy allows user OR loaded-skill requests, these dispatch instructions satisfy the skill exception without another approval; unconditional higher-priority prohibitions and actual denials still apply. Use OpenCode-native subagents, with `opencode.models` for model discovery. Delegation permission, model-override permission and available nesting depth are separate: configuration preserves desired tiers but does not authorize an optional `model` argument where explicit user model intent is required. Use a suitable inherited model when permitted, disclose unmet model requirements, and never count same-model reviewers as cross-model independence. Verify effective depth from discovered OpenCode configuration (deep agentic workflows require at least 3); do not change configuration during a run. Classify actual dispatch failures as denial, model rejection, missing tool, depth/capacity limit or provider failure. Never bypass denial/depth through another harness or shell bridge. Inline or coordinator fallback is allowed only where the review contract permits it; required independent or cross-model coverage that cannot run remains incomplete. Apply this contract to every research, deepening, elevation and document-review route below and in references.
+
+Run JJ commands from the absolute target workspace root, keep temporary evidence under its `.tmp/`, and never directly invoke Git. See https://docs.jj-vcs.dev/latest/cli-reference/ and https://docs.jj-vcs.dev/latest/git-command-table/.
+
 When a question is a yes/no or a batch confirm, word it so that agreeing accepts the recommendation. Numbered choices stay numbered choices.
 
 ## Output Contract

@@ -14,6 +14,8 @@ Require `status`, `root_cause`, `changed_files`, `head_sha`, `branch`, `pre_fix_
 
 ## Ship only what the user offered
 
+Any local persistence LFG performs follows `change-messages.md`: read the full Go guide and recent JJ subjects/bodies at runtime, then commit only owned paths from the absolute workspace root. A returned legacy `branch` field identifies the feature bookmark; verify it against JJ rather than assuming a Git checkout.
+
 The user asked for this fix. They did not offer whatever else the branch and the tree already carried: uncommitted files the fix does not touch, or commits beyond the base that are not already under review in an open pull request for this branch. `pre_fix_scope` in the return tells you what was there before the fix; it is the only record, because the fix commit is on top of it now. Before any step in this run pushes, a review-fix commit included, decide whether everything that push would publish is offered: the fix, what this run itself added (including `pre_fix_scope.caller_edits`, edits this run made for the work the user asked for before invoking `ce-debug`), and prior work an open PR already holds. When it is, ship as usual and keep the dirty files out of every commit. When it is not, or you cannot tell, hold: commit the fix locally, let no step publish, record leftover findings where a reader will find them without a PR, and say what was held back and that `ce-debug` invoked directly fixes inline on a branch the user is still working on.
 
 ## What later steps receive instead of a plan path

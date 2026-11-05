@@ -1,133 +1,94 @@
 # `ce-worktree`
 
-> Put the work in an isolated git worktree without disturbing the current checkout.
+> Put the work in an isolated colocated JJ workspace without disturbing the current checkout.
 
-`ce-worktree` is the **isolation** skill, a git-workflow tool rather than a core-loop step. Most coding harnesses already create a worktree at session start, so the common case is that you are already isolated. The skill checks that first, then prefers the harness's own worktree tool, and only falls back to plain `git worktree add` when neither applies. Nesting a worktree inside another one, or creating one the harness cannot see, is worse than working where you already are.
-
-There is no bundled script. The agent runs inline git from the project directory, so the same instructions work on Claude Code, Codex, Gemini, OpenCode, and Pi.
-
----
+`ce-worktree` is the **isolation** skill rather than a core-loop step. Detect existing isolation first, prefer a supported harness-native JJ workspace capability, and create a workspace with native JJ only when the harness can adopt it. Never nest isolation or create a workspace invisible to its owning harness. There is no bundled script and no direct Git executable fallback. See the [skill](../../skills/ce-worktree/SKILL.md) for its complete decision path.
 
 ## TL;DR
 
 | Question | Answer |
 |----------|--------|
-| What does it do? | Makes sure isolation exists. Detects an existing worktree, prefers the harness tool, else `git worktree add` under `.worktrees/<branch>` |
-| When to use it | Starting work that should stay off the current checkout, or when `ce-work` / `ce-code-review` offers a worktree |
-| What it produces | Either "already isolated, work here" or a new isolated worktree, with path and branch reported |
-| Skip when | Single-task work that fits on a branch in the current checkout |
-
----
+| What does it do? | Verifies existing isolation, or creates a colocated JJ workspace under local `.tmp/` |
+| When to use it | Starting isolated work, or when `ce-work` / `ce-code-review` offers isolation |
+| What it produces | Verified absolute path, registered workspace name, revision, bookmarks and lifecycle owner, or a blocker |
+| Skip when | Work fits in the current checkout, or verified existing isolation already suffices |
 
 ## Example invocations
 
-Empty or a work description means **new work**. `isolate` plus a ref means **attach**. If this checkout is already a linked worktree, every form works in place rather than nesting.
+Empty arguments or a work description mean **new work**. `isolate` plus a ref means **existing ref**. Every form reuses verified existing isolation rather than nesting it.
 
 ```text
-# New work. Detect isolation first. If none, create .worktrees/<named-branch> from trunk.
 /ce-worktree for the account-notifications feature
-
-# Already isolated (common in Orca or Cursor): report path and branch, stay here
 /ce-worktree
-
-# Attach a worktree to an existing branch
 /ce-worktree isolate feature/account-notifications
-
-# Attach a worktree to a PR head on a local pr-1234 branch (so later commits can push back)
 /ce-worktree isolate PR 1234
-
-# Attach a worktree at an existing commit
 /ce-worktree isolate abcdef1
 ```
 
-Git allows a branch in only one worktree at a time. If the named ref is already checked out somewhere, the skill reports that path and stops instead of forcing a second worktree. Work there, or ask for a detached worktree at the same commit if you truly need a separate tree.
-
----
+Resolve an existing bookmark, tag, PR head or revision to its exact commit. Verify PR head repository, remote and bookmark, including fork ownership. Keep source/PR bookmarks and push relationships unchanged. JJ workspaces can share a revision; do not impose Git's one-branch-one-worktree restriction. Preserve the intended review/fix range.
 
 ## The Problem
 
-"Make a worktree" is often the wrong default, because the agent is usually already in one:
-
-- Creating a worktree from inside a linked worktree resolves the new one against the main clone, in a directory tree you are not using
-- A behind-the-back `git worktree add` is invisible to the harness (Orca, Cursor, and similar). It cannot list, open, or clean up that tree
-- If `.worktrees/` is not gitignored, the extra tree shows up in `git status` and can be committed
-- Auto-generated names like `worktree-jolly-beaming-raven` hide what the tree is for
+Creating isolation by default can nest workspaces, bypass harness ownership, expose scratch files to tracking, or hide purpose behind opaque names. Isolation is an ordered decision, not a creation script.
 
 ## The Solution
 
-Isolation is an ordered decision, not a create script.
+**1. Detect existing isolation.** Resolve the absolute workspace root with `jj workspace root`. From that root inspect `jj workspace list`, `jj status` and `jj git colocation status`, together with harness ownership/session information. Multiple registrations or colocation alone do not prove isolation. Reuse verified existing isolation under its current name, even if undated; do not rename, recreate or silently change colocation. Report ambiguous state through the skill's safe decision path. For an existing-ref request verify the target before aligning; an empty `@` immediately above it is already aligned. Preserve unrelated tracked, conflicted, ignored and untracked work.
 
-**1. Detect existing isolation.** The skill compares the resolved absolute git dir against the resolved absolute common git dir. A raw string compare is not enough. From a subdirectory, one side can come back absolute and the other relative, which looks like "already isolated" when it is not. When the two differ, `git rev-parse --show-superproject-working-tree` splits the cases: non-empty means submodule (treat as a normal checkout), empty means linked worktree. Already isolated means report path and branch and work in place. In attach mode, check the named ref out here rather than nesting.
+**2. Select a stable identity for new creation.** Capture the local creation date once. Every newly created workspace, including caller-selected names, uses `YYYYMMDD-<meaningful-kebab-case-slug>`, for example `20261008-fix-email-validation`, `20261008-pr-214`, or `20261008-review-efcb657`. Normalize supplied names without double-prefixing a valid dated identity. Preserve the selected name/date across retries, resumes and midnight boundaries. Use one identity for both JJ workspace name and destination basename. Keep the existing absolute local `.tmp/` parent layout, defaulting to `<absolute-source-root>/.tmp/workspaces/<identity>`. Check registrations and destination paths; append `-2`, `-3`, etc. for collisions without overwriting state. Never substitute timestamps, PIDs or random names. Names do not rename source/PR bookmarks.
 
-**2. Prefer the harness tool.** If the harness has a worktree primitive (`EnterWorktree`, `/worktree`, `--worktree`, or similar), the skill uses it and stops, so the harness still owns the tree.
+**3. Prefer the harness capability.** Request supported colocated JJ creation with the selected dated name, absolute destination and verified base. Verify the actual registration, name, matching basename, revision and colocation. Unsupported naming, colocation or session adoption is a compatibility blocker, not permission to bypass harness ownership or fall back to a Git-only tool.
 
-**3. Git fallback.** Only when neither applies. From the repo root, the skill runs `git check-ignore -q .worktrees/` (trailing slash required), adds the `.gitignore` line if needed, fetches the base (non-fatal if there is no `origin` or the branch is local-only), and creates the tree with a meaningful branch name.
+**4. Native JJ creation with harness adoption.** Only when permitted by the harness lifecycle, verify the actual requested project base/remote and exact commit. Refresh with native JJ where appropriate; disclose a failed refresh and use an existing local base only when acceptable to the workflow. Never substitute another ref. Ensure `.tmp/` is ignored, preserving existing rules. Repository-scoped `gh` runs from the absolute target root with `GIT_DIR=$(jj git root)` exported. Create explicitly:
 
-The two modes share the fallback. **New work** creates `feat/...` or `fix/...` from origin's default branch. **Attach** checks out the named branch, tag, commit, or PR. A PR is fetched to a local `pr-<n>` branch, then that branch is added as the worktree. A detached `FETCH_HEAD` is not used, because later fix commits would not update the PR. When you need fork-safe push tracking, the fallback is a detached add followed by `gh pr checkout`.
+```bash
+(cd "$workspace_root" && jj workspace add --colocate --name "$workspace_name" --revision "$verified_base" "$absolute_destination")
+(cd "$absolute_destination" && jj git colocation status)
+(cd "$absolute_destination" && jj workspace list)
+(cd "$absolute_destination" && jj status)
+```
 
-If `git worktree add` fails on sandbox or permissions, the skill does **not** continue in the current checkout. You chose isolation for a reason. It reports the failure and asks whether to work here anyway or stop.
+Verify exact registered name/path, dated basename and working-copy parent equal to the verified base. Adopt the destination using the harness's supported session-move capability (OpenCode: `opencode.session_move`); shell `cd` alone does not adopt a session. Run later commands from the destination's absolute root so file lists remain repository-relative.
 
----
+On permission, naming, adoption or verification failure preserve state and use the skill's safe decision path. Do not silently continue in the original checkout, reset work or bypass permissions.
 
 ## Quick Example
 
-You are in an Orca-managed worktree created at session start. `ce-work` offers isolation. `/ce-worktree` sees that the absolute git dir and the common dir differ, and the submodule guard is empty. You are already isolated. It reports the path and branch and continues in place.
-
-In a plain terminal checkout with no native tool, the same "new work" prompt confirms `.worktrees/` is ignored, fetches the base, runs `git worktree add -b feat/login .worktrees/feat/login origin/main`, and `cd`s in.
-
----
-
-## When to Reach For It
-
-Use `ce-worktree` when:
-
-- The work should stay off the current checkout
-- `ce-work` or `ce-code-review` offered a worktree
-
-Skip it when:
-
-- The work fits on a branch in the current checkout
-- You are already isolated and do not need a second, parallel workspace (the skill detects this)
-
-Why a skill at all, when the agent already knows `git worktree add`? The skill is the order: detect first, defer to the harness, do not nest or create phantom state. `ce-work` and `ce-code-review` share that order by calling this skill.
-
----
+In harness-managed isolation, `/ce-worktree` reports the existing verified path and name and continues there unchanged. In a normal workspace without supported native creation, it verifies the requested base, selects a stable identity such as `20261008-fix-email-validation`, creates the matching destination under local `.tmp/` with `--colocate`, verifies colocation and registration, and moves the harness session there before work.
 
 ## Chain Position
 
-On-demand isolation. Callers pass a meaningful branch name (`feat/...`, `fix/...`, `refactor/...`), not a random label.
+On-demand isolation. Callers pass task, PR or revision context or a meaningful name normalized by the same dated naming rule.
 
 ```text
-/ce-work         ->  /ce-worktree   (optional isolation before implementation)
-/ce-code-review  ->  /ce-worktree   (review a PR without touching in-progress work)
+/ce-work         -> /ce-worktree (optional isolation before implementation)
+/ce-code-review  -> /ce-worktree (review without touching in-progress work)
 ```
 
----
-
-## Reference
+## Reference and cleanup
 
 | Argument | Effect |
 |----------|--------|
-| _(empty)_ | Detect isolation. If none, new-work fallback needs a name from context. |
-| `<work description>` | New work: create a named branch worktree from trunk |
-| `isolate <branch\|tag\|commit>` | Attach a worktree to that ref |
-| `isolate PR <n>` | Attach a worktree to that PR head on local `pr-<n>` |
+| _(empty)_ | Detect isolation; otherwise derive a new-work identity from context |
+| `<work description>` | Create isolation above the verified project base |
+| `isolate <bookmark\|tag\|commit>` | Resolve the exact ref and preserve review/fix scope |
+| `isolate PR <n>` | Verify and retrieve the exact PR head without renaming its source bookmark |
 
-List, remove, and switch are plain git. The skill does not wrap them:
+List with `jj workspace list` from the absolute workspace root; switch through the harness's session capability. Completion alone does not authorize cleanup. Respect harness-owned lifecycle and existing cleanup authority.
+
+Before retiring a run-owned disposable workspace: stop workers, leave it, and move active harness sessions to a surviving workspace. Verify exact registered name, absolute path and ownership. Prove integration when required; preserve best/archive/recovery bookmarks and other needed references. Inspect tracked changes, conflicts, ignored and untracked content. Removal snapshots working-copy state, **not ignored or left-untracked files**. Copy required evidence outside the target and read it back before removal. Unrelated, ambiguously owned, still-referenced or non-disposable content blocks removal.
 
 ```bash
-git worktree list
-git worktree remove .worktrees/<branch>
-cd .worktrees/<branch>
-cd "$(git rev-parse --show-toplevel)"
+(cd "$surviving_workspace_root" && jj workspace remove "$verified_workspace_name")
+(cd "$surviving_workspace_root" && jj workspace list)
 ```
 
-To clean up when you are done, leave with `cd "$(git rev-parse --show-toplevel)"`, then `git worktree remove .worktrees/<branch>`. If the remote tracking branch is gone, `git fetch --prune` and `git branch -d <branch>` after you confirm it is merged.
+Verify both deregistration and exact directory disappearance: directory-deletion failures may be warnings even with successful exit. On incomplete cleanup retain remaining state and report the blocker; never force-delete or fall back to Git removal. Bookmark deletion is separate and must preserve recovery references. Use `jj workspace forget` only for an explicit unregister-only operation that preserves files, never as deletion preparation.
 
----
+Native reference: https://docs.jj-vcs.dev/latest/cli-reference/#jj-workspace
 
 ## See Also
 
-- [`/ce-work`](./ce-work.md): offers this skill as its isolation option
-- [`/ce-code-review`](./ce-code-review.md): offers worktree isolation for concurrent review
-- [`/ce-commit`](./ce-commit.md): commit in the isolated tree without shipping
+- [`/ce-work`](./ce-work.md): offers isolation before implementation
+- [`/ce-code-review`](./ce-code-review.md): offers isolation for concurrent review
+- [`/ce-commit`](./ce-commit.md): commit in isolation without shipping

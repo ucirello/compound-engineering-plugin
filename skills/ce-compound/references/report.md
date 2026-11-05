@@ -8,6 +8,8 @@
 
 Emit a structured terminal report as the last thing this skill writes. No "What's next?" question, no blocking prompt. The report ends this skill, not the turn. When a caller invoked this skill, its next step follows the report in the same session; otherwise end the turn. End with `Documentation complete` as the terminal signal so callers can detect completion.
 
+For delegated Full, report source session ID, doc path, verification/coverage limits, and interactive-only instruction-file edits and writable pack destination opportunities not applied. The parent relays this report and offers those steps with usual consent, without repeating Full or re-editing the doc. For context-pressure Lightweight fallback, identify the actual missing-tool, permission or nesting-depth error and recommend retry from the same source session once delegation is available.
+
 For `depth:lightweight`, use this lower-overhead report after the Lightweight Mode workflow:
 
 ```

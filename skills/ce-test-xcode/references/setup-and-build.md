@@ -22,6 +22,8 @@ Also stop with the missing prerequisite when Xcode, its command-line tools, a va
 
 ## Discover and launch
 
+Resolve the target workspace's absolute root with `jj workspace root` from that workspace. Keep run-owned temporary files, screenshots, and exported logs in a dedicated directory under `<absolute-workspace-root>/.tmp/`; ensure `.tmp/` is ignored in the workspace's `.gitignore`. If there is no JJ repository, use the project's local `.tmp/` instead. Do not use OS-global temporary storage. Preserve tool-managed build artifacts in their existing locations; copy evidence into the local run directory when the adapter cannot choose its output path.
+
 1. Discover projects and workspaces, then list schemes for the selected project. An empty argument or `current` selects the default or last-used scheme; a named argument selects that scheme. Ask only when no such scheme can be resolved or project discovery itself remains materially ambiguous.
 2. List simulators. Reuse a compatible booted simulator when practical; otherwise prefer an available iPhone 15 Pro and boot it by UUID. Wait until it is ready.
 3. Build the simulator app with the selected project/workspace and scheme. On failure, report the relevant build errors and stop; do not install or launch a missing artifact.

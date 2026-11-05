@@ -7,9 +7,15 @@ Read this when Phase 2.45 runs. The doc just written becomes permanent, trusted 
 Two claim categories verify against different trees:
 
 - **Code-behavior claims** (enum values, status semantics, limits, defaults) verify against the **local working tree**. They describe what this session's work produced and verified here.
-- **Merge-state claims** ("fixed in #1608", "landed", "shipped") verify against **remote truth**. The checkout may predate a merge, so `gh pr view` (or the tracker equivalent) is primary and local git reachability is only the fallback. The script's `INFO: worktree is N commits behind …` line tells you how much to distrust the local tree for this category.
+- **Merge-state claims** ("fixed in #1608", "landed", "shipped") verify against **remote truth**. The checkout may predate a merge, so `gh pr view` (or the tracker equivalent) is primary and native JJ reachability is only the fallback. The script's `INFO: worktree is N commits behind …` line tells you how much to distrust the local tree for this category.
 
-Before running the script, optionally run `git fetch --quiet` (best-effort; skip silently on failure or offline, because the network is never a correctness dependency). When remote state cannot be checked at all, keep the claim, add an as-of qualifier ("as of this writing"), and record degraded verification in the run report.
+Run every JJ command from the target workspace's absolute root. For repository-scoped `gh`, obtain and export `GIT_DIR=$(jj git root)` there before invoking it. Optionally run `jj git fetch` (best-effort; skip silently on failure or offline, because the network is never a correctness dependency). When remote state cannot be checked at all, keep the claim, add an as-of qualifier ("as of this writing"), and record degraded verification in the run report. See https://docs.jj-vcs.dev/latest/cli-reference/ .
+
+## Capture the history inputs before validation
+
+Resolve the intended committed-history anchor from the actual task and repository, and capture its exact commit ID with `jj log --no-graph -r '<verified-history-head>' -T commit_id` from the absolute workspace root. Pass it as `--history-head <captured-id>` on every validator invocation, including refresh, Lightweight and reruns. Prefer the task's verified committed head or the pre-edit committed revision captured before local changes; inspect full subjects AND bodies (`jj log --no-graph -r '::<verified-history-head>' -n 10 -T 'description ++ "\n"'`) and task evidence when choosing. Do not blindly choose `@` (JJ snapshots may already contain a deletion), or blindly `@-` (a nonempty current change can itself be the intended committed head). Preserve the captured ID across validation reruns; a style-history sample is not a replacement for an exact reviewed base/head range. No helper should reselect that range or silently widen it.
+
+For the actual remote default, the helper accepts only resolvable recorded remote-HEAD metadata, not `trunk()` or guessed `main`/`master` bookmarks. If that metadata is absent/ambiguous, use repository-scoped `gh repo view --json defaultBranchRef` for the verified remote repository, then resolve its exact default bookmark head in JJ and pass `--upstream-head <verified-id>`. Do not substitute a different remote or fetch another ref. Without verified remote-default evidence leave it unknown and report degraded merge-state coverage; a synthetic root commit is never a default head. Missing history-anchor evidence likewise must be reported and adjudicated, never guessed: run the mandatory mechanical validator anyway for working-tree paths, commit resolution, links and scaffold, then resolve/manual-check historical claims at the same scope before claiming full coverage. Missing inputs are not permission to skip mandatory validation.
 
 ## Step 1: Adjudicate the mechanical flags
 
@@ -36,14 +42,15 @@ After any body edit from this step or Step 2, re-run the script until it reports
 
 Dispatch **one generic read-only subagent** covering the written solution doc plus any `CONCEPTS.md` entries added or edited this run. Phase 2.4's entries are claims too; a glossary entry written from a session-level summary is exactly how wrong semantics enter the vocabulary. Use the same mid-tier model class as other reviewer subagents when the platform exposes one.
 
-If the user's or project's active instructions or the live prompt name a model for this subagent, use that model instead of the default tier above. They can name it by the subagent's tier, by its prompt-asset name, or for the subagents being dispatched. Without such an instruction, a model configured for this subagent's role takes precedence over the default tier.
+Apply `references/modes.md`'s native dispatch permission/model/depth rules. User-requested models and permitted configured roles take precedence over the default tier as intent, but never pass a model override forbidden by the host. Use suitable inherited-model reviewers when delegation is allowed; required unavailable independence is incomplete coverage. Classify actual dispatch failures and preserve this validator's coverage in any allowed fallback.
 
 Build its prompt from this template:
 
 ```
 You are a grounding validator for documentation about to enter a permanent
 knowledge store. You are read-only: never edit files. Inspect with Read,
-Grep, Glob, git (non-mutating), and gh when available.
+Grep, Glob, non-mutating JJ, and gh when available. Run JJ from the absolute
+workspace root; export GIT_DIR=$(jj git root) there before repository-scoped gh.
 
 Inputs: the doc content below, the CONCEPTS.md entries below (if any), and
 this staleness context: <INFO line from the mechanical script, or "none">.
@@ -59,8 +66,12 @@ Check every factual claim in three categories:
 
 2. MERGE-STATE CLAIMS — assertions that a change landed ("fixed in",
    "merged", "shipped in", "resolved by #N"). Primary check: gh pr view
-   <n> --json state,mergedAt,baseRefName (remote truth). Fallback: git
-   reachability from the upstream default branch. Verdict: verified,
+   <n> --json state,mergedAt,baseRefName (remote truth). Fallback: native JJ
+   reachability from the verified upstream default bookmark: from the absolute
+   workspace root use jj log --no-graph -r '<sha> & ::<verified-upstream-head>'
+   -T commit_id; successful nonempty output establishes ancestry, an empty
+   successful result does not, and command failure is degraded verification.
+   Never substitute a guessed default ref. Verdict: verified,
    contradicted (e.g. PR open, not merged), or unverifiable (offline / no
    gh) — mark unverifiable as "degraded", do not guess.
 

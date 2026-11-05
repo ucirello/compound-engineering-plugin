@@ -8,3 +8,4 @@ The summary lets a user who skimmed the run see what they gained and what to do 
 - Name missing optional tools as optional, not as failures, and say to install them only for the workflows the user runs.
 - Name the files left uncommitted. The closing question offers to commit them, so leave committing out of the to-do list.
 - List what the user still has to do, most important first. Put first any step without which a new file has no effect, such as a reviewer that does not read it yet.
+- Report the required user-global OpenCode depth merge from SKILL.md, including effective higher-precedence values. A declined, missing, or overridden depth prerequisite remains unfinished setup even when package installation and repo-local health succeeded. Distinguish configuration-shape health from verified native model availability, delegation permission, model permission, nesting capacity and independent review coverage.

@@ -71,7 +71,7 @@ Dispatch file-grouped subagent batches when fixes need code you have not read, o
 - Do not re-run `ce-code-review`
 - Shared-directory fallback: do not stage or commit; return which `#` were applied or skipped and which files changed
 
-**After inline fixes and after each wave:** orchestrator reviews diffs (scope = assigned `#` only), runs tests (`requires_verification: true` on any applied finding → at least targeted tests; multi-file → broader suite), commits (`fix(review): apply findings #…`) unless worktree-isolated subagents merge per Phase 1. Repeat until all batches complete.
+**After inline fixes and after each wave:** orchestrator reviews diffs (scope = assigned `#` only), runs tests (`requires_verification: true` on any applied finding → at least targeted tests; multi-file → broader suite), and commits only owned paths using `implementation-loop.md`'s full Go/history runtime standards, describing applied findings without prescribing message syntax. Isolated workers return output for host integration per Phase 1. Repeat until all batches complete.
 
 ### Summary (required)
 

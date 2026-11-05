@@ -18,7 +18,7 @@ Also require the fields that record which route actually ran: `implementation_en
 
 ## The work must be committed
 
-`ce-code-review` leaves out untracked files, so files this run added go unreviewed until they are committed. Before step 3, confirm the return's `changed_files` are committed. If any are not, commit those files and continue. Do not stop for this.
+Before step 3, inspect `jj status` and verify that the return's `changed_files`, including new files, are tracked and committed. If any are not, read `change-messages.md`, compose a description at runtime from its standards, and commit only those owned paths; leave unrelated work untouched and continue. Do not stop merely because this persistence step is needed. Run JJ from the target workspace's absolute root.
 
 ## Verification evidence
 

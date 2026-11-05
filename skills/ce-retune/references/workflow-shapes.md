@@ -7,7 +7,13 @@ Two primitives are assumed, both platform-neutral:
 - **A dispatch primitive** that launches an independent agent with its own context window and returns a result to the orchestrator (in one host it is a subagent-spawning tool; in another a job runner). Only two properties matter: fresh context per agent, and a result the orchestrator can read.
 - **A concurrency cap** the host enforces on how many agents run at once (often around 10). Dispatches above the cap queue rather than fail, so a 31-unit fan-out is three waves, not one. Plan the wave count; do not assume flat cost.
 
-Classify a rejected dispatch by whether an agent launched. Correct a pre-launch argument rejection once, and leave capacity-limited work queued. Any other launch failure follows the phase's own failure direction. In the corpus audit, the proposal and defense contexts must be independent for the audit to mean anything, so a launch failure there is a blocker: stop the audit rather than running the missing side inline.
+Use OpenCode-native subagents for dispatch, `opencode.models` to resolve permitted model choices, and shell for deterministic local work, not another harness or bridge. Preserve configured choices and tiers as intent, fresh contexts, completion/failure receipts, and coverage.
+
+Delegation permission, model-selection permission, and remaining nesting depth are separate checks. This skill explicitly requests its agents: under a user-or-loaded-skill rule that satisfies the skill-requested exception without another approval. Respect unconditional higher-priority prohibitions and actual denials. If model overrides require an explicit user model request, omit the optional model argument and use a suitable inherited model; disclose unmet tiers or fixed routes. Separate same-model contexts are not cross-model coverage; an unavailable required different-model pass remains incomplete.
+
+Verify effective nesting depth through OpenCode's supported configuration discovery/debug output. Deep delegation requires effective `experimental.subagent_depth` of at least `3`; package defaults do not configure an installed plugin's consumer. Follow `ce-setup` for the user-level merge prerequisite; never change global settings automatically. Classify actual dispatch errors as permission denial, forbidden model argument, missing tool, or depth/capacity exhaustion. Correct a permissible pre-launch argument rejection once, and leave genuinely queued work queued. Never retry a denial or evade limits through another harness or shell. Any other launch failure follows the phase's failure direction. In the corpus audit, proposal and defense contexts must be independent: stop with incomplete coverage rather than running the missing side inline.
+
+Keep all per-run scratch under the target workspace's local `.tmp/` directory, ensure `.tmp/` is ignored, and retain durable evidence in the project's docs location.
 
 ## The shapes
 

@@ -60,25 +60,53 @@ After completing each task, decide whether to commit. Never commit while its tes
 
 If the plan has Implementation Units, use them as a starting guide for commit boundaries — but adapt based on what you find during implementation. A unit might need multiple commits if it's larger than expected, or small related units might land together. Use each unit's Goal to inform the commit message.
 
-**Message convention:** match project commit conventions already in context; else match the recent log pattern; else conventional commits (`type(scope): description`). User override wins.
+**Message convention:** Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards.
+
+Before composing, read the full Go guide and, from the target workspace's absolute root, resolve the actual task's verified history head and run `jj log --no-graph -r '::<verified-history-head>' -n 10 -T 'description ++ "\n"'`. Compare several full subjects AND bodies for prefixes/package names, casing, tense, subject/body separation, wrapping, and issue placement. Repository-local syntax established by project/user instructions and this history always wins over Go syntax; apply compatible Go guidance to clarity, quality and structure without replacing it. With no history, use explicit project/user instructions and Go guidance without inventing precedent. A style sample never replaces the reviewed base/head range.
+
+The following verbatim Go source guidance is illustrative, not a mandatory repository template:
+
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+
+```text
+net/http: handle foo when bar
+
+[longer description here in the body]
+
+Fixes #12345
+```
+
+> Notably, for the subject (the first line of description):
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+
+> For the body (the rest of the description):
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
 
 Preserve the full resolved message as data through the selected engine's canonical commit owner. If that owner cannot accept the full message, stop and report the blocker rather than truncate it or bypass the owner's protocol. Cross-model commits follow the controller integration contract in `references/cross-model-execution.md`.
 
-For native host-owned Git commits, write the full resolved message to a file outside the repo with your file-write tool. Pass that file to Git so the shell never interprets message text.
+For native host-owned JJ commits, write the full resolved message with the file-write tool under the workspace's `.tmp/rocketclaw/` run directory. Pass that file to JJ so the shell never interprets message text. Do not add attribution.
 
-**Native Git commit workflow:**
+**Native JJ commit workflow** (every command runs from the absolute target root):
 ```bash
 # 1. Verify tests pass (use project's test command)
 # Examples: bin/rails test, npm test, pytest, go test, etc.
 
-# 2. Stage only files related to this logical unit (not `git add .`)
-git add <files related to this logical unit>
+# 2. Inspect exact owned paths and unrelated changes before committing
+jj status
+jj diff --summary
 
-# 3. Commit with the resolved message, limited to those same paths
-git commit -F <message-file> -- <files related to this logical unit>
+# 3. Commit only the unit's owned paths with the full resolved message
+python3 -c 'import pathlib,subprocess,sys; subprocess.run(["jj", "commit", "-m", pathlib.Path(sys.argv[2]).read_text(), "--", *sys.argv[3:]], cwd=sys.argv[1], check=True)' "$workspace_root" <local-message-file> <files related to this logical unit>
 ```
 
-**Note:** Incremental commits add no plugin-generated attribution. The final Phase 4 handoff passes `branding:on` so `ce-commit-push-pr` can add generic Compound Engineering branding to the PR.
+**Note:** Incremental commits and final PR artifacts add no plugin, model, or harness attribution.
 
 **Workers:** worker commits follow the **No canonical commits** rule in `references/execution-strategy.md`; only the orchestrator makes canonical commits.
 
@@ -92,7 +120,7 @@ If **`ce-simplify-code`** is available, invoke it with `mode:pipeline` at phase 
 
 When the plan carries `session-settled:`-labeled KTDs or Key Decisions, pass the plan path as context for which structures must stay as they are, not as the simplification scope, with the one-line constraint that labeled entries are settled decisions the simplification must preserve (e.g., deliberate duplication stays duplicated).
 
-In return-to-caller mode, commit the pass's edits once its checks pass, then record that commit's SHA (HEAD when the pass changed nothing) as `simplified_through`. The caller's own simplify step then covers only what came after it. A later pass replaces the recorded SHA. Reviewing the files yourself records nothing.
+In return-to-caller mode, commit the pass's owned-path edits once its checks pass using the message standards above, then record its commit ID (the verified task head when the pass changed nothing) as `simplified_through`. The caller's own simplify step then covers only what came after it. A later pass replaces that ID. Reviewing the files yourself records nothing.
 
 4. **UI Verification** (if applicable)
 

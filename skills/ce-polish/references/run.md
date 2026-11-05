@@ -4,9 +4,9 @@ This reference owns checkout safety, server startup, reachability, and browser h
 
 ## Resolve the workspace
 
-If the user named a PR or branch, first locate whether its branch is already checked out in a worktree. Enter that existing worktree when the harness can; if it cannot, report the blocker and stop. Only use the harness's checkout capability in the current workspace when no other worktree owns the target. With no argument, stay in the current checkout.
+Resolve the absolute workspace root with `jj workspace root`. Run every subsequent JJ command with that absolute root as its working directory, for example `(cd "$workspace_root" && jj status)`. If the user named a PR or bookmark, verify its exact repository, remote, bookmark and revision, and inspect `jj workspace list` for existing isolation. For repository-scoped GitHub queries, run `gh` from that absolute root with exported `GIT_DIR=$(jj git root)`. Enter an existing target workspace through OpenCode's session-move capability when available; otherwise report the blocker and stop. Preserve its existing name and lifecycle. Only use the harness's supported JJ checkout capability in the current workspace when no other workspace owns the target and unrelated working-copy changes are preserved. With no argument, stay in the current workspace.
 
-Confirm the resulting branch is neither the repository's default branch nor detached. Report and stop when a safe feature-branch workspace cannot be reached; do not create another worktree behind the harness or move uncommitted user changes.
+Confirm the resulting change belongs to the verified feature bookmark, not the default bookmark; an empty `@` directly above its verified head is valid JJ state, not a detached-checkout failure. Report and stop when a safe feature workspace cannot be reached; do not create another workspace behind the harness or move unrelated user changes. This workflow does not create or remove workspaces. For workspace lifecycle guidance use `ce-worktree` and https://docs.jj-vcs.dev/latest/cli-reference/#jj-workspace ; never fall back to direct Git.
 
 ## Resolve the start command
 
@@ -48,7 +48,7 @@ Startup may proceed only when the tuple has a usable command, working directory,
 
 ## Start and hand off
 
-Inspect the chosen port and select exactly one intended server instance before handoff. Reuse a process already serving that port only when evidence identifies it as the intended project server. Only when no intended instance is selected may the resolved command be launched in the background with the project's working directory and environment; that process becomes the selected instance. Keep its process or session handle, and write its output under a directory created with `mktemp -d "${TMPDIR:-/tmp}/ce-polish-XXXXXX"`.
+Inspect the chosen port and select exactly one intended server instance before handoff. Reuse a process already serving that port only when evidence identifies it as the intended project server. Only when no intended instance is selected may the resolved command be launched in the background with the project's working directory and environment; that process becomes the selected instance. Keep its process or session handle, and write its output under a directory created with `mkdir -p "$workspace_root/.tmp" && mktemp -d "$workspace_root/.tmp/ce-polish-XXXXXX"`. Ensure `.tmp/` is ignored; preserve existing ignore rules.
 
 An occupied port that cannot be attributed to the intended project server remains an unresolved collision. Ask the user whether to stop that process, choose another port, or stop this run; never kill it or launch past it.
 

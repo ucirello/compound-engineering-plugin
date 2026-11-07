@@ -36,7 +36,7 @@ One PR named → `target` (ask once if a confirmed multi-layer stack exists); as
 2. Resolve the PR from the argument or current branch (`references/setup.md`); none → report, stop.
 3. **Old-PR intake** (fresh invocation, before the checkout gate): read `references/intake.md`; it decides whether this PR still belongs. A user request to take the PR over: `references/takeover.md`.
 4. Chain classification comes from the snapshot, never the user; resolve posture before semantic work.
-5. **Checkout must be the PR's head branch with matching upstream** before any delegated mutation; default `gh pr checkout <ref>`; no push access or dirty checkout → stop, say so.
+5. **Verify PR head repository, bookmark, remote and commit alignment** before delegated mutation, using latest JJ from the absolute workspace root. Empty `@` above the verified pushed head is already aligned; inspect `@-` for PR discovery before any no-work conclusion. Clean alignment and authorized monitoring need no reapproval; dirty/conflicted/ambiguous state or unknown push authority stops safely (`references/setup.md`).
 6. **Sustain mode** (`references/setup.md`, `references/watch-loop.md`): keep monitoring until a stop condition is met, one tick per wake from one wake source: the `pr-snapshot watch` detector, or the host's own mechanism when its instructions dictate PR waits. Never collapse the loop into a script. Checkpoint mode only when the user asks or nothing can wake this agent. **Pipeline** (`mode:pipeline`): bounded synchronous ticks, structured return (`references/pipeline.md`).
 
 ## Step 2: One tick (ordering invariant)

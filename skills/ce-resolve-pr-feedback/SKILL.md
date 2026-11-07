@@ -2,12 +2,20 @@
 name: ce-resolve-pr-feedback
 description: Judge PR feedback centrally, apply valid fixes, and complete review conversations with publication verified. Use when addressing feedback already left on a PR, preparing local fixes for a caller to publish, or completing a saved feedback batch. Use ce-code-review for reviewing code before feedback exists.
 argument-hint: "[mode:pipeline | mode:return-to-caller | mode:resume] [PR number, comment URL, or blank for current branch's PR] [handoff:<path>]"
-allowed-tools: Bash(gh *), Bash(git *), Bash(bash *), Bash(python3 *), Read, Write
+allowed-tools: Bash(gh *), Bash(jj *), Bash(bash *), Bash(python3 *), Read, Write
 ---
 
 # Resolve PR Review Feedback
 
 Judge fresh PR review feedback centrally, then dispatch generic subagents seeded with the bundled fixer prompt only for approved fixes. Publish the fixes before replying and resolving. Resume completes saved judgments without another fix pass.
+
+## Native execution contract
+
+Resolve the target's absolute `workspace_root` first. Run every JJ command and repository-scoped GitHub call there: `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh ...)`. Each separate shell call must establish this context again; bundled helpers establish it themselves. Never invoke the Git executable. JJ reference: https://docs.jj-vcs.dev/latest/cli-reference/ . Store private reply/input/error files under that workspace's `.tmp/`, not OS scratch storage.
+
+This skill explicitly requests native fixer subagents. Under a user-or-loaded-skill delegation rule this satisfies permission without another approval; genuine higher prohibitions and tool denials still apply. Use existing model configuration as route/tier intent and `opencode.models` to resolve available models, then native subagents/shell, never another harness dispatcher. Delegation permission does not authorize a model override: omit the optional model argument unless the host permits it (including any explicit-user-model-request requirement). Suitable inherited-model fixers are allowed. Classify actual missing-tool, permission, model-argument, and nesting/capacity errors separately; never evade them through another harness. Sequential inline implementation is permitted for fixers, but does not replace required independent or cross-model adjudication. Same-model peers are not cross-model coverage; disclose unmet routes and incomplete mandatory coverage. Respect effective nesting capacity independently of permission.
+
+Routine already-authorized publication or monitoring needs no renewed approval; respect actual permissions, scope, opt-outs, and final-merge/human-decision gates. A caller's authorized factual PR-description maintenance is not an optional rewrite approval flow. Preserve unrelated authored content and issue links. Optional existing-PR rewrites outside maintenance or explicit apply requests still need approval; description-only requests remain draft-only. Do not bundle or condition monitoring on rewrite approval. Clean alignment to a verified pushed PR head needs no extra approval, but verify repository/bookmark/remote/commit: empty `@` directly above it is already aligned. Dirty/conflicted/ambiguous state or unknown push authority stops safely without discarding tracked or ignored work.
 
 **Done:** Every selected item has a verdict and verified conversation completion or a reported residual. Completed threads have a visible submitted reply with quoted context and authoritative resolution; `needs-human` threads stay open. Ordinary and pipeline runs publish valid fixes before completion. Return-to-caller preserves its local fix commit and exact pending actions in a readable validated handoff, or records actual no-change completion. Resume verifies fresh publication and returns checkpointed completion or pending saved actions with retry evidence. Pending actions are never reported as resolved.
 

@@ -1,5 +1,7 @@
 # Completion reports
 
+For a context-pressure delegated Full run, include the source session ID, doc path (including an existing doc updated), verification limitations, and unapplied interactive-only discoverability and Compound Pack destination actions. The parent relays this report and doc path, then offers those actions with usual consent, without a second Full pass or parent re-edit of the learning. If native delegation was actually unavailable, name the missing-tool, permission, or exhausted-depth error in the Lightweight report and advise retrying from the same source session once available.
+
 ## Success Output
 
 **User-runnable refresh rendering.** The reports below print a refresh invocation for the user to copy. Default to `/ce-compound refresh <scope>`; use `$ce-compound refresh <scope>` only when the active host is Codex or explicitly documents dollar-prefixed skill invocation. Render only the invocation as inline code and output one form only.

@@ -27,8 +27,8 @@ The dispatch context writes this file after every local reviewer is collected, a
     "base": "<BASE: marker>",
     "diff_a": "<DIFF_A>", "diff_b": "<DIFF_B or null>",
     "pr": { "number": null, "url": null, "title": null, "body": null, "base_ref_name": null, "head_ref_oid": null, "head_ref": null, "base_ref": null, "has_prior_comments": false },
-    "branch": "<git branch --show-current at dispatch>",
-    "head_sha": "<git rev-parse HEAD at dispatch>",
+    "branch": "<verified associated JJ bookmark at dispatch, or empty>",
+    "head_sha": "<captured full JJ commit ID at dispatch>",
     "files": "<run-dir>/files.txt",
     "diff": "<run-dir>/full.diff",
     "tree_is_reviewed_head": true,
@@ -80,7 +80,7 @@ Where `finish-review.md` routes prose through another skill (`ce-noslop`) and a 
 
 Read `finish-input.json`, then `references/finish-review.md` from `skill_dir`, record `--start merge` in the stage log, and run Stage 5 and Stage 5b steps 1 through 3; record `--end merge --candidates <primary findings>` before returning. Wherever the reference refers to an earlier stage's result, the intent summary, the roster, the plan, the scope, or conversation context, that value is the matching field of the file, and `<root>` is `docs_root`.
 
-Every decision about the cross-model peer is already made. The dispatch context performed the single-reap finish and the fold-in classification `references/cross-model-review.md` defines, with its recovery branches in `references/cross-model-recovery.md` (including any replacement recipient, same-route recovery, or in-process `adversarial-reviewer` dispatch, all of which need a launch or a disclosure only it can make), deleted the job directory, and recorded the result in `peer.outcome`, `peer.artifact`, and `peer.coverage`. When `peer.artifact` is set, fold that file into Stage 5 as reviewer `adversarial-<provider>` under the reference's promotion rule; an in-process fallback's return is already in `raw-returns.json`. Copy `peer.coverage` into Coverage verbatim. This leaf never reads job state, waits on a peer, or starts a route.
+Every cross-model decision is already made. The dispatch context performed native bounded collection/cancellation and fold-in under `references/cross-model-review.md` and `references/cross-model-recovery.md`, including permitted bounded recovery/replacement or local adversarial fallback. It preserved durable receipts and diagnostics before any authorized cleanup of terminal run-owned artifacts, and recorded `peer.outcome`, `peer.artifact`, and `peer.coverage`. Fold a named artifact into Stage 5 as `adversarial-<provider>` under its attested promotion rule; local fallback returns are already in `raw-returns.json`. Copy Coverage verbatim, including unmet required cross-model/fixed-route coverage. This leaf never reads lifecycle state, waits or starts another route.
 
 Write, in the run directory: `synthesized-findings.json` (the final primary, pre-existing, and soft-bucket sets after Stage 5 steps 1 through 7, the triage groups, the hydrated detail, the fold-in outcome and every Coverage sentence Stage 5 produced) and `validator-input.json` (the Stage 5b step 3 batch: the selected findings in order, the skip count and its evidence basis, and the scope context the validator template needs). Return only a receipt: the two paths and the counts of primary and selected findings. Return nothing else; the dispatch context does not read findings.
 

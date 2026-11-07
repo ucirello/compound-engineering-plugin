@@ -8,7 +8,7 @@ A non-interactive run has no one to answer a question, so it asks none, in any p
 
 Apply a write when a reviewer can judge it from the pull request alone. That covers generated output (Step 5's example refresh), the `.gitignore` entries of Steps 7 and 8, and, when the invocation asked for review docs, the drafts and pointer lines `references/project-docs.md` produces.
 
-Report a write instead of making it when it needs a choice only a person can make, removes content a person wrote, or changes this machine rather than the checkout. That covers creating `config.yaml`, deleting `compound-engineering.local.md`, repairing `docs_root` or the `ce-work` engine settings, every Step 9 addition, moving rules out of an agent-instructions file or an AI reviewer's file, removing the legacy Codex tool map, and warming the npm cache.
+Report a write instead of making it when it needs a human choice, removes authored content, or changes this machine rather than the checkout. That covers creating `config.yaml`, deleting `rocketclaw.local.md`, repairing `docs_root` or model preferences, every Step 9 addition, moving authored rules, legacy tool-map removal, and the user-level OpenCode depth merge. Never change host config in unattended runs.
 
 A run that did not ask for review docs leaves them alone. It reports whether they exist, because a repository without them has made a valid choice.
 
@@ -24,7 +24,11 @@ Follow `references/project-docs.md`, with these differences:
 
 ## Publishing
 
-Name the branch `ce-setup/refresh-<YYYY-MM-DD>` so later runs can find this run's pull request. When an open pull request from a branch starting with `ce-setup/refresh` exists, do this run on the newest such branch, so the existing pull request is updated rather than joined by a second one. Otherwise start a new branch from the default branch. Never commit to the default branch.
+Use a JJ bookmark `ce-setup/refresh-<YYYY-MM-DD>` so later runs can find the pull request. Query GitHub from the absolute workspace root with `GIT_DIR=$(jj git root)`. Reuse the newest existing matching PR bookmark only after verifying its repository, remote, and exact head. Otherwise create a task change from the verified default-branch revision and a new bookmark, never commit onto the default bookmark. Reuse existing verified isolation unchanged; if new isolation is needed, follow the workspace contract below.
+
+Capture local `YYYYMMDD` once per run, stable across retry/resume. New workspace identity is `<date>-setup-refresh` with deterministic `-2`, `-3` suffixes after checking registrations and destinations. Destination is an absolute owned path under the survivor workspace's `.tmp/`. Create with `(cd "$workspace_root" && jj workspace add --colocate --name "$name" --revision "$verified_base" "$destination")`, then verify `(cd "$destination" && jj git colocation status)` and adopt the session there. A native lifecycle API must support both explicit name and colocation; otherwise stop with a compatibility blocker, not a bypass.
+
+Cleanup is not authorized by completion alone. For expressly authorized run-owned disposal, stop workers, move the session to a surviving absolute root, verify exact registration/name/path/ownership and integration plus recovery references, and copy/read back needed evidence outside the target. Inspect tracked, conflicted, ignored and untracked content; snapshots do not protect ignored/untracked files. Then `(cd "$surviving_root" && jj workspace remove "$verified_name")`; verify deregistration and directory disappearance. On failure preserve/report, never force-delete. `forget` only unregisters while preserving files. Preserve unrelated work and recovery/archive bookmarks.
 
 If the working tree has uncommitted changes before the run writes anything, write nothing and report that, because those changes would land in the pull request with this run's.
 

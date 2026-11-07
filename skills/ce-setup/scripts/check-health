@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Compound Engineering environment health check.
+# RocketClaw environment health check.
 # Reports optional tool capabilities and repo-local config safety in one pass.
 
 set -o pipefail
@@ -103,8 +103,8 @@ resolve_real_best_effort() {
 # docs_root_source, docs_root_error, and docs_root_local_ignored.
 resolve_docs_root() {
   local repo_root="$1"
-  local local_cfg="$repo_root/.compound-engineering/config.local.yaml"
-  local tracked_cfg="$repo_root/.compound-engineering/config.yaml"
+  local local_cfg="$repo_root/.rocketclaw/config.local.yaml"
+  local tracked_cfg="$repo_root/.rocketclaw/config.yaml"
   local value="" source="" repo_real real local_docs probe
 
   docs_root_error=""
@@ -358,56 +358,35 @@ read_work_engine_effort_keys() {
   ' "$config_file"
 }
 
-# Same prerequisite the peer workers check before launching acpx. Sets
-# node_version and, when unmet, node_problem.
+# Native runtime availability; model and delegation permissions need host checks.
 check_node_prerequisite() {
-  local major minor
-  node_version=""; node_problem=""
-  if ! command -v node >/dev/null 2>&1; then
-    node_problem="node not found; cross-model peers need Node 22.13 or newer"; return 1
-  fi
-  node_version="$(node -p 'process.versions.node' 2>/dev/null | tr -d '\r')"
-  node_version="${node_version#v}"
-  major="${node_version%%.*}"; minor="${node_version#*.}"; minor="${minor%%.*}"
-  case "$major$minor" in
-    ''|*[!0-9]*) node_problem="cannot read the Node version; cross-model peers need Node 22.13 or newer"; return 1 ;;
-  esac
-  if [ "$major" -lt 22 ] || { [ "$major" -eq 22 ] && [ "$minor" -lt 13 ]; }; then
-    node_problem="Node $node_version is too old; cross-model peers need Node 22.13 or newer"; return 1
-  fi
-  if ! command -v npx >/dev/null 2>&1; then
-    node_problem="npx not found; cross-model peers run acpx through npx"; return 1
-  fi
+  node_version="native"; node_problem="opencode unavailable; verify model discovery in the active host"
+  command -v opencode >/dev/null 2>&1
 }
 
-# Cache packages without starting their CLIs. npm still runs install lifecycle
-# scripts; node --version only prevents launching the agent afterward.
+# Compatibility flag: do not fetch retired dispatcher transports.
 if [ "$warm_acpx" = "yes" ]; then
-  echo ""
-  if ! check_node_prerequisite; then
-    warn "Cannot warm the npm cache: $node_problem"
-    echo ""
-    exit 1
-  fi
-  warm_failed=0
-  # Run from an empty directory, as the peer workers do: npx resolves packages
-  # from its working directory's node_modules and .npmrc first.
-  warm_dir="$(mktemp -d "${TMPDIR:-/tmp}/ce-acpx-warm-XXXXXX")" || { warn "Cannot warm the npm cache: no temporary directory"; echo ""; exit 1; }
-  for spec in "acpx@>=$ACPX_MIN_VERSION <=$ACPX_VERSION" $ACPX_ADAPTER_SPECS; do
-    if (cd "$warm_dir" && npx --yes --package="$spec" -- node --version >/dev/null); then
-      ok "cached $spec"
-    else
-      warn "could not fetch $spec"
-      warm_failed=1
-    fi
-  done
-  rmdir "$warm_dir" 2>/dev/null
-  echo ""
-  exit "$warm_failed"
+  warn "External dispatch transport warming is retired; use native opencode.models and subagents."
+  exit 1
 fi
 
 has_brew=$(command -v brew >/dev/null 2>&1 && echo "yes" || echo "no")
-in_repo=$(git rev-parse --is-inside-work-tree >/dev/null 2>&1 && echo "yes" || echo "no")
+in_repo=$(jj root >/dev/null 2>&1 && echo "yes" || echo "no")
+if [ "$in_repo" = "yes" ]; then
+  workspace_root=$(jj root) || exit 1
+  cd "$workspace_root" || exit 1
+fi
+
+ignored_path() {
+  # Conservative literal coverage check; complex patterns require inspection.
+  # Never claim safety when a later negation may re-include content.
+  [ -f "$repo_root/.gitignore" ] || return 1
+  awk -v path="$1" '
+    /^!/ { uncertain = 1 }
+    $0 == path || $0 == "/" path { covered = 1 }
+    END { exit !(covered && !uncertain) }
+  ' "$repo_root/.gitignore"
+}
 
 # Retired Bun-era Codex tool map (#1099). The block is present only when a
 # standalone BEGIN line is followed by a standalone END line.
@@ -481,18 +460,18 @@ project_issues=0
 antigravity_configured="no"
 
 if [ "$in_repo" = "yes" ]; then
-  repo_root=$(git rev-parse --show-toplevel 2>/dev/null)
-  local_config_path="$repo_root/.compound-engineering/config.local.yaml"
-  tracked_config_path="$repo_root/.compound-engineering/config.yaml"
+  repo_root=$(jj root 2>/dev/null)
+  local_config_path="$repo_root/.rocketclaw/config.local.yaml"
+  tracked_config_path="$repo_root/.rocketclaw/config.yaml"
   resolve_docs_root "$repo_root"
   [ "$docs_root_status" = "invalid" ] && project_issues=$((project_issues + 1))
   legacy_cfg="missing"
-  [ -f "$repo_root/compound-engineering.local.md" ] && legacy_cfg="present"
+  [ -f "$repo_root/rocketclaw.local.md" ] && legacy_cfg="present"
 
   local_cfg="missing"
   if [ -e "$local_config_path" ]; then
     local_cfg="present"
-    if git check-ignore -q "$local_config_path" 2>/dev/null; then
+    if ignored_path .rocketclaw/config.local.yaml; then
       repo_cfg_gitignore="ok"
     else
       repo_cfg_gitignore="missing"
@@ -502,7 +481,7 @@ if [ "$in_repo" = "yes" ]; then
   # Trailing slash is load-bearing: without it an existing directory-only rule
   # is missed before the directory exists, and a configured repo reads as bare.
   scratch_gitignore="missing"
-  if git -C "$repo_root" check-ignore -q .context/compound-engineering/ 2>/dev/null; then
+  if ignored_path .tmp/; then
     scratch_gitignore="ok"
   fi
 
@@ -646,7 +625,7 @@ if [ "$in_repo" = "yes" ]; then
 
   script_dir="$(cd "$(dirname "$0")" && pwd)"
   template="$script_dir/../references/config-template.yaml"
-  example="$repo_root/.compound-engineering/config.example.yaml"
+  example="$repo_root/.rocketclaw/config.example.yaml"
   if [ ! -f "$example" ]; then
     example_cfg="missing"
   elif [ -f "$template" ] && ! diff -q "$template" "$example" >/dev/null 2>&1; then
@@ -671,26 +650,12 @@ if [ "$in_repo" = "yes" ]; then
   done
 fi
 
-# Same runtime and helper the peer workers resolve before launching the
-# antigravity route. Reported only when the user configured it or installed it.
+# Configured provider identity is resolved natively, never via ACP executables.
 antigravity_row="skip"
 antigravity_problem=""
-antigravity_runtime="$(command -v agy_acp_server.par 2>/dev/null)"
-if [ "$antigravity_configured" = "yes" ] || [ -n "$antigravity_runtime" ]; then
-  capability_total=$((capability_total + 1))
-  antigravity_helper="${ANTIGRAVITY_HARNESS_PATH:-$(dirname "${antigravity_runtime:-.}")/localharness_external}"
-  if [ -z "$antigravity_runtime" ]; then
-    antigravity_problem="agy_acp_server.par not found on PATH; install Antigravity's ACP runtime"
-  elif [ ! -x "$antigravity_helper" ]; then
-    antigravity_problem="localharness_external not found at ${antigravity_helper}; install it from the same release as the runtime"
-  fi
-  if [ -z "$antigravity_problem" ]; then
-    capability_ok=$((capability_ok + 1))
-    antigravity_row="ok"
-  else
-    capability_missing=$((capability_missing + 1))
-    antigravity_row="missing"
-  fi
+if [ "$antigravity_configured" = "yes" ]; then
+  antigravity_row="missing"
+  antigravity_problem="Configured Gemini identity requires native opencode.models discovery; do not install external harness helpers"
 fi
 
 # =====================================================
@@ -720,19 +685,19 @@ for result in "${results[@]}"; do
 done
 
 if [ "$node_row" = "ok" ]; then
-  ok "node -- cross-model peers (Node $node_version, npx)"
+  ok "opencode -- native runtime found; verify opencode.models and subagent permissions in the host"
 else
-  warn "node -- unavailable: cross-model peers"
+  warn "opencode -- native runtime not found on PATH"
   detail "$node_problem"
-  detail "https://nodejs.org/en/download"
+  detail "https://opencode.ai/v2/docs/"
 fi
 
 if [ "$antigravity_row" = "ok" ]; then
-  ok "antigravity -- Gemini cross-model peer (runtime and helper found)"
+  ok "Gemini model identity resolved natively"
 elif [ "$antigravity_row" = "missing" ]; then
-  warn "antigravity -- unavailable: Gemini cross-model peer"
+  warn "Gemini cross-model identity requires native verification"
   detail "$antigravity_problem"
-  detail "https://github.com/agentclientprotocol/registry/blob/main/antigravity-acp/agent.json"
+  detail "Use native opencode.models; preserve configured model and effort intent"
 fi
 
 if [ "$legacy_codex_map" = "yes" ]; then
@@ -746,20 +711,20 @@ if [ "$in_repo" = "yes" ]; then
   section "Project config"
 
   if [ "$legacy_cfg" = "present" ]; then
-    warn "Obsolete compound-engineering.local.md exists"
+    warn "Obsolete rocketclaw.local.md exists"
     project_issues=$((project_issues + 1))
   else
-    ok "No obsolete compound-engineering.local.md"
+    ok "No obsolete rocketclaw.local.md"
   fi
 
   if [ "$tracked_cfg" = "present" ]; then
-    ok ".compound-engineering/config.yaml exists"
+    ok ".rocketclaw/config.yaml exists"
   else
-    skip "No repo config yet (.compound-engineering/config.yaml)"
+    skip "No repo config yet (.rocketclaw/config.yaml)"
   fi
 
   if [ "$local_cfg" = "present" ]; then
-    ok ".compound-engineering/config.local.yaml exists"
+    ok ".rocketclaw/config.local.yaml exists"
     if [ "$repo_cfg_gitignore" = "ok" ]; then
       ok "Local config is gitignored"
     else
@@ -767,14 +732,14 @@ if [ "$in_repo" = "yes" ]; then
       project_issues=$((project_issues + 1))
     fi
   else
-    skip "No local override yet (.compound-engineering/config.local.yaml)"
+    skip "No local override yet (.rocketclaw/config.local.yaml)"
   fi
 
   if [ "$scratch_gitignore" = "ok" ]; then
-    ok "CE scratch space is gitignored"
+    ok "Local scratch space is ignored"
   else
-    skip "CE scratch space is not gitignored"
-    detail "Skills that keep local scratch write it under .context/compound-engineering/"
+    skip "Local scratch space is not ignored"
+    detail "Skills that keep local scratch write it under .tmp/"
   fi
 
   if [ "$docs_root_status" = "default" ]; then
@@ -783,14 +748,14 @@ if [ "$in_repo" = "yes" ]; then
     ok "Artifact root: ${docs_root_value}/ (from ${docs_root_source})"
   elif [ "$docs_root_status" = "invalid" ]; then
     warn "Invalid docs_root '${docs_root_value}' in ${docs_root_source}: ${docs_root_error}"
-    detail "CE artifacts will not be written until docs_root is corrected or removed."
+    detail "Artifacts will not be written until docs_root is corrected or removed."
   fi
   if [ -n "$docs_root_local_ignored" ]; then
     skip "Local docs_root '${docs_root_local_ignored}' is ignored; set docs_root only in config.yaml"
   fi
 
   if [ "$work_engine_cfg" = "native" ]; then
-    ok "CE Work implementation engine: native (${work_engine_detail})"
+    ok "Work model preference: native (${work_engine_detail})"
     if [ -n "$work_engine_preferences_note" ]; then
       if [ "$work_engine_preferences_note_level" = "warn" ]; then
         warn "$work_engine_preferences_note"
@@ -799,11 +764,11 @@ if [ "$in_repo" = "yes" ]; then
       fi
     fi
   elif [ "$work_engine_cfg" = "prefer" ] || [ "$work_engine_cfg" = "require" ]; then
-    ok "CE Work implementation engine: ${work_engine_cfg} -> ${work_engine_detail}"
+    ok "Work model preference: ${work_engine_cfg} -> ${work_engine_detail} (resolve through native opencode.models)"
   elif [ "$work_engine_cfg" = "unavailable" ]; then
-    warn "CE Work implementation engine unavailable: ${work_engine_detail}"
+    warn "Work model preference unavailable: ${work_engine_detail}"
   elif [ "$work_engine_cfg" = "invalid" ]; then
-    warn "CE Work implementation engine: ${work_engine_detail}"
+    warn "Work model preference: ${work_engine_detail}"
   fi
   [ -n "$work_engine_migration_note" ] && warn "$work_engine_migration_note"
   for effort_note in ${work_engine_effort_notes[@]+"${work_engine_effort_notes[@]}"}; do
@@ -814,7 +779,7 @@ if [ "$in_repo" = "yes" ]; then
   if [ "$example_cfg" = "ok" ]; then
     ok "Example config is current"
   elif [ "$example_cfg" = "missing" ]; then
-    warn "Example config missing (.compound-engineering/config.example.yaml)"
+    warn "Example config missing (.rocketclaw/config.example.yaml)"
     project_issues=$((project_issues + 1))
   elif [ "$example_cfg" = "outdated" ]; then
     warn "Example config outdated (new settings available)"
@@ -843,7 +808,7 @@ if [ "$in_repo" = "yes" ]; then
       warn "packs-resolve.py failed to run"
       project_issues=$((project_issues + 1))
     else
-      packs_report="$(printf '%s' "$packs_json" | "$packs_python" -c '
+      packs_report="$(printf '%s' "$packs_json" | PACKS_RESOLVER="$packs_resolver" PACKS_WORKSPACE="$repo_root" "$packs_python" -c '
 import json, os, re, subprocess, sys
 data = json.load(sys.stdin)
 roots, errors, warns = data.get("roots", []), data.get("errors", []), data.get("warnings", [])
@@ -860,27 +825,34 @@ for r in roots:
         # which is why the ls-remote asks for `<tag>^{}` too.
         if not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", ref):
             try:
-                genv = dict(os.environ)
-                genv["GIT_TERMINAL_PROMPT"] = "0"
-                genv.setdefault("GIT_ASKPASS", "true")
-                _ssh = genv.get("GIT_SSH_COMMAND") or "ssh"
-                if "BatchMode" not in _ssh:
-                    genv["GIT_SSH_COMMAND"] = _ssh + " -o BatchMode=yes"
-                names = ["refs/tags/" + ref + "^{}", "refs/tags/" + ref, "refs/heads/" + ref]
-                remote = subprocess.run(["git", "ls-remote", "--end-of-options", url, *names],
-                                        capture_output=True, text=True, timeout=10, env=genv)
-                targets = {}
-                for row in remote.stdout.splitlines() if remote.returncode == 0 else []:
-                    sha, _, name = row.partition("\t")
-                    if name:
-                        targets[name] = sha
-                rsha = next((targets[n] for n in names if n in targets), "")
-                local = subprocess.run(["git", "-C", r["dir"], "rev-parse", "HEAD"], capture_output=True, text=True, timeout=10)
+                # Fetch into an isolated, disposable cache, never mutate the
+                # pinned cache used by planning. Tags and branches use the
+                # resolver exact-ref semantics, including annotated tag peeling.
+                import importlib.util, shutil, tempfile
+                spec = importlib.util.spec_from_file_location("packs", os.environ["PACKS_RESOLVER"])
+                resolver = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(resolver)
+                genv = resolver._git_env()
+                scratch = os.path.join(os.environ["PACKS_WORKSPACE"], ".tmp")
+                os.makedirs(scratch, exist_ok=True)
+                probe = tempfile.mkdtemp(prefix="pack-drift-", dir=scratch)
+                try:
+                    os.environ["CE_PACKS_CACHE_ROOT"] = os.path.join(probe, "packs")
+                    fresh = resolver.resolve_git_source(url, ref, [], "drift")
+                    remote = subprocess.run(["jj", "log", "--no-graph", "-r", "@-", "-T", "commit_id"],
+                                            cwd=fresh, env=genv, capture_output=True, text=True, timeout=10) if fresh else None
+                    rsha = remote.stdout.strip() if remote and remote.returncode == 0 else ""
+                finally:
+                    shutil.rmtree(probe)
+                located = subprocess.run(["jj", "root"], cwd=os.path.abspath(r["dir"]), env=genv, capture_output=True, text=True, timeout=10)
+                if located.returncode != 0:
+                    raise RuntimeError("cached pack workspace root unavailable")
+                local = subprocess.run(["jj", "log", "--no-graph", "-r", "@-", "-T", "commit_id"], cwd=os.path.abspath(located.stdout.strip()), env=genv, capture_output=True, text=True, timeout=10)
                 lsha = local.stdout.strip() if local.returncode == 0 else ""
                 if rsha and lsha and rsha != lsha:
                     line += " -- cached resolution is behind upstream"
             except Exception:
-                pass  # offline or slow remote: silently skip the drift note
+                line += " -- upstream drift check unavailable (offline, timeout, or ref error)"
     # Subdirectories are storage, so rule-shaped files there are a note on the
     # OK line, never a warning: the author may keep drafts and evidence with frontmatter.
     nested = r.get("nested_rule_shaped", 0)

@@ -20,15 +20,15 @@ Read this before Phase 0 and follow it for the whole run. The body states the in
 
 ### The State Root
 
-`<state-root>` is the directory that holds the run's ledger. Resolve it once, in Phase 0, by the body's Execution Surface rule: when the harness names a durable state root, `<state-root>` is `<that location>/ce-optimize/<spec-name>/`, placed where that location's own conventions keep working state rather than user-facing documents; otherwise it is `.context/compound-engineering/ce-optimize/<spec-name>/` in the repo checkout, which is gitignored and survives a local resume only on this machine. A run's root is wherever its log already is: never move a ledger mid-run, and a resume that finds the log at one root uses that root even when the other is now available. Give every subagent and worker the resolved path, not the rule.
+`<state-root>` holds the run's ledger. Resolve it once in Phase 0: a harness-named durable store uses `<that location>/optimize/<spec-name>/` following that store's working-state conventions; otherwise use the absolute workspace's `.tmp/rocketclaw/optimize/<spec-name>/`, ignored and locally resumable only on this machine. Never move an existing ledger mid-run. An explicitly supplied legacy ledger path remains valid and unchanged; do not rename or lose recovery data for branding. Give every worker the resolved absolute path, not the rule. Transient/error/fallback storage always remains under the workspace's `.tmp/`, even with a durable ledger.
 
 Examples of what the three capabilities look like on some harnesses. This table is not a tool list; the body's rule decides.
 
 | Harness | Durable state root | Wake after turn end | Detached worker |
 |---|---|---|---|
 | A coordinator harness with a persistent agent store (for example Cursor Projects' Agent Store) | The store path named in your context | Event subscriptions or a timer subscription that re-invokes the agent | A cloud-agent launch that returns a receipt and lands its work as a pushed branch or a store file |
-| Grok (CLI/TUI) | None named; `.context/` | `scheduler_create --durable` | None; `worktree` |
-| Claude Code, Codex, Cursor CLI sessions | None named; `.context/` | Whatever scheduling or wake tool the session lists; when it lists none, cron running the resume invocation is the user's escalation | None; `worktree` (or `codex` when the spec says so) |
+| Grok (CLI/TUI) | None named; local `.tmp/rocketclaw/optimize/` | `scheduler_create --durable` | None; `worktree` |
+| Claude Code, Codex, Cursor CLI sessions | None named; local `.tmp/rocketclaw/optimize/` | Whatever scheduling or wake tool the session lists; when it lists none, cron running the resume invocation is the user's escalation | None; native subagents in `worktree`; legacy backend names map as in `workspaces.md` |
 
 When the harness shows the user a status surface for this run, write a one-line run status there at CP-4 and at each stop, in addition to the log.
 

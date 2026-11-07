@@ -8,7 +8,7 @@
 #
 # Arguments:
 #   path (optional) — project root to inspect. Defaults to the repository
-#                     root via `git rev-parse --show-toplevel`, then to the
+#                     root via `jj workspace root`, then to the
 #                     current directory.
 #
 # Output contract (one JSON object on stdout, exit 0):
@@ -48,7 +48,7 @@ if [ -n "$TARGET_PATH" ]; then
     exit 1
   fi
 else
-  TARGET_PATH=$(git rev-parse --show-toplevel 2>/dev/null)
+  TARGET_PATH=$(jj workspace root 2>/dev/null)
   if [ -z "$TARGET_PATH" ]; then
     TARGET_PATH=$(pwd)
   fi

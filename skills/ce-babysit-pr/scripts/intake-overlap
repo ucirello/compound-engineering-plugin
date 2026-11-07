@@ -6,7 +6,7 @@ freshly fetched refs:
 
   intake-overlap --repo-dir DIR --remote NAME --base BRANCH --pr N
 
-Fetches the base branch and refs/pull/<N>/head into refs/ce-babysit/intake/<N>/,
+Fetches the base branch and exact refs/pull/<N>/head through native JJ,
 takes their merge-base, and compares the PR's changed paths with the base's
 changes since then. Overlap kinds:
 
@@ -46,11 +46,11 @@ class GitError(Exception):
     pass
 
 
-def git(repo_dir, *args, timeout=GIT_TIMEOUT_SECONDS, check=True):
+def jj(repo_dir, *args, timeout=GIT_TIMEOUT_SECONDS, check=True):
     env = dict(os.environ, GIT_TERMINAL_PROMPT="0")
     try:
         r = subprocess.run(
-            ["git", "-C", repo_dir, *args],
+            ["jj", "--no-pager", *args], cwd=os.path.abspath(repo_dir),
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -58,60 +58,76 @@ def git(repo_dir, *args, timeout=GIT_TIMEOUT_SECONDS, check=True):
             timeout=timeout,
         )
     except subprocess.TimeoutExpired:
-        raise GitError(f"git {args[0]} timed out after {timeout}s")
+        raise GitError(f"jj {args[0]} timed out after {timeout}s")
     except OSError as e:
-        raise GitError(f"could not run git: {e}")
+        raise GitError(f"could not run jj: {e}")
     out = r.stdout.decode("utf-8", errors="replace")
     if check and r.returncode != 0:
         err = r.stderr.decode("utf-8", errors="replace").strip()
-        raise GitError(f"git {args[0]} failed ({r.returncode}): {err}")
+        raise GitError(f"jj {args[0]} failed ({r.returncode}): {err}")
     return r.returncode, out
 
 
 def refs_for(pr):
-    prefix = f"refs/ce-babysit/intake/{pr}"
-    return f"{prefix}/base", f"{prefix}/head"
+    return f"intake-{pr}-base", f"intake-{pr}-head"
 
 
-def fetch(repo_dir, remote, base, pr, extra=()):
-    base_ref, head_ref = refs_for(pr)
-    git(
-        repo_dir, "fetch", "--no-tags", "--quiet", *extra, remote,
-        f"+refs/heads/{base}:{base_ref}",
-        f"+refs/pull/{pr}/head:{head_ref}",
+def fetch(repo_dir, remote, base, pr, head_remote=None, repo=None):
+    jj(
+        repo_dir, "git", "fetch", "--remote", remote,
+        "--branch", f"exact:{base}",
         timeout=FETCH_TIMEOUT_SECONDS,
     )
-    return git(repo_dir, "rev-parse", "--verify", base_ref)[1].strip(), \
-        git(repo_dir, "rev-parse", "--verify", head_ref)[1].strip()
+    # GitHub's PR mirror may lag: capture its exact OID, then import that exact ref.
+    env = dict(os.environ, GIT_DIR=jj(repo_dir, "git", "root")[1].strip())
+    query = subprocess.run(["gh", "pr", "view", str(pr), *( ["--repo", repo] if repo else [] ), "--json", "headRefOid,headRefName,isCrossRepository"], cwd=os.path.abspath(repo_dir),
+                           env=env, capture_output=True, text=True, timeout=120)
+    if query.returncode:
+        raise GitError("cannot resolve exact PR head")
+    pr_data = json.loads(query.stdout)
+    head = pr_data.get("headRefOid", "")
+    branch = pr_data.get("headRefName", "")
+    if not re.fullmatch(r"[0-9a-fA-F]{40,64}", head) or not branch:
+        raise GitError("cannot resolve exact PR head")
+    # The caller verifies a fork's named head remote against the PR head repository.
+    # The exact API OID below must exist after fetch, so a same-named wrong branch cannot pass.
+    if pr_data.get("isCrossRepository") and not head_remote:
+        raise GitError("fork overlap requires --head-remote verified against the PR head repository")
+    jj(repo_dir, "git", "fetch", "--remote", head_remote or remote, "--branch", f"exact:{branch}",
+       timeout=FETCH_TIMEOUT_SECONDS)
+    return jj(repo_dir, "log", "--no-graph", "-r", f'{json.dumps(base)}@{json.dumps(remote)}',
+              "-T", "commit_id")[1].strip(), jj(repo_dir, "log", "--no-graph", "-r", head,
+                                             "-T", "commit_id")[1].strip()
 
 
 def merge_base(repo_dir, a, b):
-    code, out = git(repo_dir, "merge-base", a, b, check=False)
+    code, out = jj(repo_dir, "log", "--no-graph", "-r", f"heads(::{a} & ::{b})",
+                   "-T", 'commit_id ++ "\\n"', check=False)
+    if len(out.splitlines()) != 1:
+        return None
     return out.strip() if code == 0 and out.strip() else None
 
 
 def changes(repo_dir, a, b):
-    """[(status, old, new)] for `git diff -M a b`; old == new unless renamed/copied."""
-    out = git(repo_dir, "-c", "diff.renameLimit=0", "diff", "--no-ext-diff",
-              "--name-status", "-M", "-z", a, b)[1]
-    tokens = out.split("\0")
+    """Exact path records including both sides of renames/copies, JSON escaped by JJ."""
+    out = jj(repo_dir, "diff", "--from", a, "--to", b,
+             "-T", 'status_char ++ " " ++ source.path().display().escape_json() ++ " " ++ target.path().display().escape_json() ++ "\\n"')[1]
     result = []
-    i = 0
-    while i < len(tokens) and tokens[i]:
-        letter = tokens[i][0]
-        if letter in ("R", "C"):
-            old, new = tokens[i + 1], tokens[i + 2]
-            i += 3
-        else:
-            old = new = tokens[i + 1]
-            i += 2
+    for line in out.splitlines():
+        letter, encoded = line.split(" ", 1)
+        decoder = json.JSONDecoder()
+        old, end = decoder.raw_decode(encoded)
+        new = json.loads(encoded[end:].strip())
+        if letter not in ("R", "C"):
+            old = new = new if letter != "D" else old
         result.append((STATUS_NAMES.get(letter, letter), old, new))
     return result
 
 
 def directories(repo_dir, commit):
-    out = git(repo_dir, "ls-tree", "-r", "-d", "--name-only", "-z", commit)[1]
-    return {d for d in out.split("\0") if d}
+    out = jj(repo_dir, "file", "list", "-r", commit, "-T",
+             'path.display().escape_json() ++ "\\n"')[1]
+    return {d for path in out.splitlines() for d in ancestors(json.loads(path))}
 
 
 def ancestors(path):
@@ -158,7 +174,7 @@ def overlap_reasons(pr_changes, base_changes, dirs_at_mb, dirs_at_base):
     ]
 
 
-def assess(repo_dir, remote, base, pr):
+def assess(repo_dir, remote, base, pr, head_remote=None, repo=None):
     result = {
         "base_oid": None,
         "head_oid": None,
@@ -168,21 +184,13 @@ def assess(repo_dir, remote, base, pr):
         "error": None,
     }
     try:
-        base_oid, head_oid = fetch(repo_dir, remote, base, pr)
+        base_oid, head_oid = fetch(repo_dir, remote, base, pr, head_remote, repo)
         result.update(base_oid=base_oid, head_oid=head_oid)
 
         mb = merge_base(repo_dir, base_oid, head_oid)
         if mb is None:
-            shallow = git(repo_dir, "rev-parse", "--is-shallow-repository")[1].strip() == "true"
-            if not shallow:
-                result["error"] = "no merge-base between base and PR head (unrelated histories)"
-                return result
-            base_oid, head_oid = fetch(repo_dir, remote, base, pr, extra=("--unshallow",))
-            result.update(base_oid=base_oid, head_oid=head_oid)
-            mb = merge_base(repo_dir, base_oid, head_oid)
-            if mb is None:
-                result["error"] = "no merge-base between base and PR head after unshallowing"
-                return result
+            result["error"] = "no unique merge-base; history may be incomplete or unrelated"
+            return result
         result["merge_base"] = mb
 
         if mb == base_oid:
@@ -198,7 +206,7 @@ def assess(repo_dir, remote, base, pr):
         result["reasons"] = reasons
         result["overlap"] = bool(reasons)
         return result
-    except GitError as e:
+    except (GitError, ValueError, subprocess.TimeoutExpired, OSError) as e:
         result["error"] = str(e)
         return result
 
@@ -207,6 +215,8 @@ def main():
     p = argparse.ArgumentParser(prog="intake-overlap")
     p.add_argument("--repo-dir", required=True)
     p.add_argument("--remote", required=True)
+    p.add_argument("--head-remote", help="named remote verified against the PR head repository; required for forks")
+    p.add_argument("--repo", required=True, help="host/owner/repo of the PR base repository")
     p.add_argument("--base", required=True)
     p.add_argument("--pr", type=int, required=True)
     args = p.parse_args()
@@ -220,7 +230,7 @@ def main():
     if not os.path.isdir(args.repo_dir):
         p.error("--repo-dir must be an existing directory")
 
-    print(json.dumps(assess(args.repo_dir, args.remote, args.base, args.pr)))
+    print(json.dumps(assess(os.path.abspath(args.repo_dir), args.remote, args.base, args.pr, args.head_remote, args.repo)))
 
 
 if __name__ == "__main__":

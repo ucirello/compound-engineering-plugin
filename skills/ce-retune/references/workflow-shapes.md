@@ -4,6 +4,12 @@ Which orchestration shape fits each phase, and what breaks when you pick the wro
 
 Two primitives are assumed, both platform-neutral:
 
+Use native OpenCode subagents (and shell for deterministic local work), not another harness's dispatcher or model-elevation bridge. Read existing model configuration and resolve available models with native `opencode.models`; preserve configured tier intent. This skill explicitly requests delegation and satisfies the user-or-loaded-skill delegation exception without another approval. Respect higher prohibitions and actual tool denial; never route around them. If the host requires explicit user requests for model overrides, omit optional model arguments absent such a request, use an appropriate inherited reviewer, and disclose unmet routes. Separate same-model contexts satisfy proposal/defense context independence, not cross-model independence.
+
+Permission, model override authority, effective depth and capacity are distinct. Classify actual errors; retain bounded retries and launch receipts and report missing coverage. The independent audit cannot fall back inline. Do not assume every host queues: follow its actual capacity response.
+
+Keep scratch, exports, errors and fallback storage beneath the absolute target workspace's `.tmp/` (local `.tmp/` without JJ), never OS temporary directories or implicit temporary-file defaults. Durable evidence belongs in repository docs.
+
 - **A dispatch primitive** that launches an independent agent with its own context window and returns a result to the orchestrator (in one host it is a subagent-spawning tool; in another a job runner). Only two properties matter: fresh context per agent, and a result the orchestrator can read.
 - **A concurrency cap** the host enforces on how many agents run at once (often around 10). Dispatches above the cap queue rather than fail, so a 31-unit fan-out is three waves, not one. Plan the wave count; do not assume flat cost.
 

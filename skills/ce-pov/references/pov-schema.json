@@ -8,7 +8,7 @@
     "voice": {
       "type": "string",
       "minLength": 1,
-      "description": "Short identity for the peer voice; the worker namespaces it to the provider."
+      "description": "Short identity for the distinct native peer voice; the caller records provider and model receipts separately."
     },
     "position": {
       "type": "string",

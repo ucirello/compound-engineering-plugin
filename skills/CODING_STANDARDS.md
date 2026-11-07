@@ -36,22 +36,22 @@ A case a stated condition already covers is not a finding; answer it with the co
   - artifacts already on disk.
 
   A fresh subagent inherits none of the parent's context. The dispatch also says what happens on capacity backpressure versus other failures.
-- Prompts and documents go to peer CLIs on stdin or as a file, so they never hit the OS argument limit.
+- Prompts and documents go to native subagents or shell tools as structured input or local files, not another harness's dispatcher.
 - When a diff edits one copy of a mirrored block (the code-review/doc-review workers, the ce-pov copies, paired references), the twin changes identically or a parity test pins it.
 
-## Git and targets
+## JJ and targets
 
-- A step that commits, stashes, switches branches, or pushes keeps pre-existing user changes, including staged and untracked files, out of its result, and restores exactly what it saved.
-- The target (host, owner, repo, PR, ref) is resolved once and passed to every read and mutation. A bare `gh` or `git` call falls back to the checkout, which is the wrong repo for forks and Enterprise hosts.
+- A step that describes, splits, changes revisions, or pushes preserves pre-existing user changes, including ignored and untracked files, outside its owned result.
+- Resolve the target (host, owner, repo, PR, ref) once and pass it to every read and mutation. Never invoke the Git executable. Run JJ with cwd set to the target workspace's absolute root; repository-scoped `gh` uses `GIT_DIR=$(jj git root)` there, with verified fork and Enterprise targets.
 - The default branch and remote are stated as conditions ("the default branch on its tracking remote; unknown means create a branch"), never as literal `main`, `master`, or `origin` and never as an enumerated list of fallback commands.
-- In a runnable template, a placeholder filled from branch, PR, or remote metadata is double-quoted, and positional git refs follow `--`.
+- In a runnable template, double-quote placeholders filled from bookmark, PR, or remote metadata and use exact verified JJ revisions.
 
 ## Temp directories
 
 The authoring statement is "Temp directories" in `docs/solutions/skill-design/portable-agent-skill-authoring.md`; review checks:
 
 - A directory that something must rediscover without being handed its path (a later invocation that resumes state, attaches to a live session, or polls a job it did not start) is created under the scratch-root preamble copied from a shipped skill. Only a known root makes it findable.
-- A directory whose absolute path is passed to everything that uses it, including a worker the run starts and later polls, may be a unique `mktemp -d "${TMPDIR:-/tmp}/<name>-XXXXXX"`. It is created private (0700) and atomically, so moving it under the scratch root adds no privacy. Asking for that move is not a finding.
+- Every temporary directory, including worker, fallback and error storage, is private (0700), created atomically under the absolute workspace root's ignored `.tmp/` (local `.tmp/` when no JJ repository exists), and passed by absolute path to its consumers. `mktemp` or `tempfile` must receive that explicit local parent; never use OS-global temporary storage.
 - No skill creates a temp directory with a fixed name or a name from an optional tool such as `openssl`. Two runs then share a path, or a missing tool collapses every run onto one.
 
 ## Edits that move or shrink text

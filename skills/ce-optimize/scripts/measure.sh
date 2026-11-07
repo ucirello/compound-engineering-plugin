@@ -117,7 +117,10 @@ CENSOR_STATUS_FILE=""
 if [[ -n "$CENSOR_AFTER" ]] && awk -v a="$CENSOR_AFTER" -v t="$TIMEOUT" 'BEGIN { exit !(a ~ /^[0-9]+(\.[0-9]+)?$/ && t+0 == t && a+0 > 0 && a+0 < t+0) }'; then
   TIMEOUT="$CENSOR_AFTER"
   CENSORING=1
-  CENSOR_STATUS_FILE=$(mktemp "${TMPDIR:-/tmp}/ce-optimize-censor-XXXXXX")
+  # Keep transient measurement state in this workspace, never the OS temp root.
+  scratch_root="$(jj root 2>/dev/null || pwd)/.tmp/rocketclaw/optimize"
+  mkdir -p "$scratch_root"
+  CENSOR_STATUS_FILE=$(mktemp "$scratch_root/censor-XXXXXX")
 fi
 
 # Run the measurement command with timeout

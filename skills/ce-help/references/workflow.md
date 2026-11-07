@@ -1,4 +1,4 @@
-# Moving work through CE
+# Moving work through RocketClaw
 
 Two questions get separate answers. The state of the work decides where it starts. The user's preference decides how hands-on they stay from there.
 
@@ -41,6 +41,8 @@ What the choice comes down to:
 - `lfg` does not wait for approval of the plan, diff, or findings, and it pushes without asking. Merging normally stays with the user.
 
 The `lfg` guide page owns how it handles each starting point and what each stage does, so fetch it before describing them.
+
+Already-authorized PR maintenance needs no repeated approval: factual stale-description refresh preserves unrelated authored content and issue links; verified clean-head alignment and authorized monitoring/rearm proceed without another question. An empty JJ `@` above the verified pushed PR head is already aligned; inspect `@-` and its bookmarks, remote and associated PR before concluding there is no PR. Dirty/conflicted work, ambiguous targets, denied permissions or unknown push authority require a safe stop without discarding tracked or ignored work. Outside authorized maintenance or an explicit apply request, optional existing-PR rewrites still require approval; description-only requests are draft-only. Never bundle rewrite consent with alignment/monitoring, and a declined rewrite must not block otherwise authorized monitoring. Preserve watch boundaries, opt-outs, final-merge and scope-expansion gates.
 
 ## What already runs on its own
 

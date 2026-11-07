@@ -24,6 +24,8 @@ Map each changed file to the route(s) that render it, then build the list of URL
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
+workspace_root="<verified absolute JJ workspace root>"
+cd "$workspace_root" || exit 1
 PORT=$(bash "$SKILL_DIR/scripts/resolve-port.sh");
 if lsof -i ":${PORT}" -sTCP:LISTEN -t >/dev/null 2>&1; then
   echo "Server running on port ${PORT}";
@@ -50,7 +52,7 @@ For each affected route, use the selected driver to navigate and capture fresh r
 
 **Test critical interactions:** derive locators or element references from the selected driver's latest inspected state, perform the click/fill/press action, then inspect the resulting state. Do not guess selectors or reuse stale references.
 
-**Take screenshots:** capture viewport and full-page evidence when the selected driver supports it. Materialize screenshots as local artifacts when a later workflow or report needs file paths; otherwise in-app evidence is sufficient.
+**Take screenshots:** capture viewport and full-page evidence when the selected driver supports it. Materialize screenshots as local artifacts under the verified workspace's `.tmp/rocketclaw/browser/` when a later workflow or report needs file paths; otherwise in-app evidence is sufficient. Keep logs, errors, downloads, and fallback artifacts under that workspace-local `.tmp/` as well, never an OS temporary directory.
 
 ## Human verification (when required)
 

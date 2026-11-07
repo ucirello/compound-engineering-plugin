@@ -21,7 +21,7 @@ A section belongs only when it serves one of these audiences. Omit padding.
 
 ## Unified plan artifact contract
 
-`ce-plan` writes the canonical compound-engineering plan artifact. The same
+`ce-plan` writes the canonical plan artifact. The same
 artifact may begin as a requirements-only skeleton from `ce-brainstorm` and
 later be enriched by `ce-plan`; it is still one plan file moving through
 planning stages, not a requirements doc plus a separate implementation doc.
@@ -401,7 +401,8 @@ plan.
   carries that classification.
 - **`type`** — conventional-commit-prefix-aligned classification (`feat`,
   `fix`, `refactor`, `chore`, `docs`, `perf`, `test`, etc.). Carries the
-  intent the eventual commit message should reflect.
+  change intent only, never a required commit-message prefix or template;
+  execution derives message syntax from repository history and user rules.
 - **`date`** — creation date in ISO 8601 (`YYYY-MM-DD`), ASCII digits only.
 
 Plans carry **no `status` field** — a plan is a decision artifact, not a

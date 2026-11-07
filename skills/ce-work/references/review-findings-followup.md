@@ -71,7 +71,42 @@ Dispatch file-grouped subagent batches when fixes need code you have not read, o
 - Do not re-run `ce-code-review`
 - Shared-directory fallback: do not stage or commit; return which `#` were applied or skipped and which files changed
 
-**After inline fixes and after each wave:** orchestrator reviews diffs (scope = assigned `#` only), runs tests (`requires_verification: true` on any applied finding → at least targeted tests; multi-file → broader suite), commits (`fix(review): apply findings #…`) unless worktree-isolated subagents merge per Phase 1. Repeat until all batches complete.
+**After inline fixes and after each wave:** orchestrator reviews diffs (scope = assigned `#` only), runs tests (`requires_verification: true` on any applied finding → at least targeted tests; multi-file → broader suite), and creates a host-owned JJ revision limited to the verified fixes unless isolated output still awaits host integration per the execution strategy. Preserve the applied finding `#` identifiers in the description using the repository's observed placement and syntax. Repeat until all batches complete.
+
+**Compose the description dynamically.** At composition time, read the full https://go.dev/wiki/CommitMessage and inspect several recent full subjects AND bodies with `(cd "$workspace_root" && jj log --no-graph -r '::<verified-history-head>' -n 10 -T 'description ++ "\n"')`. Resolve the history anchor from the actual task and verified history, not a hardcoded default bookmark; this style sample never replaces the exact reviewed revision/range. Compare prefixes/package names, casing, tense, subject/body separation, wrapping and issue placement. User instructions and observed repository syntax always win; use Go only for compatible quality and structure. With no history, use explicit instructions and Go without inventing precedent. No fixed type/scope prefix or subject/body template is required.
+
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards.
+
+From the absolute target workspace root, describe only the verified owned revision, preserving the full resolved message as data:
+
+```sh
+jj describe -r <verified-fix-revision> -m "<message composed from the standards above>"
+```
+
+### Go SOURCE GUIDANCE (subordinate to observed repository pattern)
+
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+
+```text
+net/http: handle foo when bar
+
+[longer description here in the body]
+
+Fixes #12345
+```
+
+> Notably, for the subject (the first line of description):
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+
+> For the body (the rest of the description):
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
 
 ### Summary (required)
 

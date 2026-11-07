@@ -18,6 +18,8 @@ npx:
 
 Then tell the user to add XcodeBuildMCP as an MCP server and restart the agent. Testing does not authorize installing or configuring it for them.
 
+For OpenCode setup, tell the user to merge `"experimental": { "subagent_depth": 3 }` into the existing `~/.config/opencode/opencode.json`, or use `opencode debug paths` / `opencode debug paths config` to locate their actual global configuration directory and update its existing `opencode.json(c)`. Preserve higher integer depths, unrelated settings, and sibling `experimental` fields; do not replace the file or create a competing JSON/JSONC file. Depth at least `3` supports deep agentic delegation; installing the plugin or its package-local configuration alone does not enable this consumer setting, and higher-precedence configuration must not lower it below `3`. This is user setup guidance, not authority to modify host configuration.
+
 Also stop with the missing prerequisite when Xcode, its command-line tools, a valid project/workspace, or an iOS simulator is unavailable.
 
 ## Discover and launch
@@ -30,3 +32,5 @@ Also stop with the missing prerequisite when Xcode, its command-line tools, a va
 Any failure before the app is visibly launched with log capture running is a setup blocker: preserve its evidence, report it, and stop later stages.
 
 At handoff, retain the project/workspace, scheme, simulator identity, app identity, and log-capture handle needed by `test-and-report.md`.
+
+Keep run-owned screenshots, exported logs, and temporary/error evidence under the target workspace's absolute `.tmp/` directory (local `.tmp/` when no JJ repository exists), not OS-global temporary storage. Configure capture output paths there when supported; otherwise copy returned evidence there before handoff without deleting tool-owned originals.

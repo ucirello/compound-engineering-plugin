@@ -12,20 +12,21 @@ Dispatch is tiered by task shape, never hardcoded to a model name:
 
 If the user's or project's active instructions or the live prompt name a model for this subagent, use that model instead of the default tier above. They can name it by the subagent's tier, by its prompt-asset name, or for the subagents being dispatched. Without such an instruction, a model configured for this subagent's role takes precedence over the default tier.
 
-**When per-agent models cannot be chosen.** If the platform's subagent mechanism cannot select a model per agent, dispatch every scout on the inherited model and keep their read budgets. Cost control then comes from the read budgets and the tier-sensitive scout count, not from tiering.
+**Native permission and model selection.** This skill explicitly requests these scouts, satisfying the user-OR-loaded-skill delegation exception without redundant approval. Resolve available models with native `opencode.models` and existing role configuration, then use native subagents; shell is for allowed evidence reads, never alternate-harness dispatch. Respect higher prohibitions and actual tool denials. Model-override permission is separate: if the host requires an explicit user model request, omit the optional model argument absent one and inherit, preserving configured tiers as intent and disclosing unmet routes. If per-agent models cannot be selected, inherit and retain read budgets. Distinct same-model scouts do not establish cross-model independence.
 
-When a scout dispatch is rejected, first check whether an agent launched. If the rejection was a bad argument before launch, correct it once. If the platform is out of capacity, leave the work queued. If a launch still fails after the correction, gather that scout's bounded evidence inline and lower the verdict's stated confidence.
+When a scout dispatch is rejected, first check whether an agent launched. Classify the actual error: correct bad arguments once before launch; queue capacity failures within the run budget; distinguish effective nesting-depth exhaustion from a permission denial. Never evade a denial using shell or another harness. If launch remains unavailable, gather that scout's bounded evidence inline where permitted and lower confidence. Inline work is not independent review; unmet mandatory coverage remains incomplete.
 
 Create the scratch dir once, and reuse the echoed path for every scout this run:
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+workspace_root="<verified absolute target workspace root; local project root if no JJ>";
+SCRATCH_ROOT="$workspace_root/.tmp/rocketclaw";
+[ ! -L "$workspace_root/.tmp" ] || { echo "unsafe scratch parent symlink" >&2; exit 1; };
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
 chmod 700 "$SCRATCH_ROOT" || exit 1;
-SCRATCH_DIR="$SCRATCH_ROOT/ce-pov/$(openssl rand -hex 4)";
+SCRATCH_DIR="$SCRATCH_ROOT/pov/$(openssl rand -hex 4)";
 (umask 077; mkdir -p "$SCRATCH_DIR") || exit 1; chmod 700 "$SCRATCH_DIR" || exit 1;
 echo "$SCRATCH_DIR";
 ```

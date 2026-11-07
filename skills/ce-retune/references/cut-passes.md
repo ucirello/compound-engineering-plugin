@@ -32,18 +32,24 @@ Fan out by **unit** instead: one agent edits one skill directory and applies the
 
 State the forbidden set in the prompt as paths, not as a rule to infer. An agent told "do not touch shared files" will decide for itself what is shared.
 
-## Isolation: separate worktrees or disjoint paths in one tree
+## Isolation: separate JJ workspaces or disjoint paths in one tree
 
 Disjoint paths in one tree are enough when nothing an agent runs mutates state outside its own paths. That covers most cut passes: edits are text, the manifest is a partition, and a single tree keeps the diff readable and the commit trivial.
 
-Pay for a worktree (or equivalent per-agent checkout) when any of these is true:
+Pay for a separate JJ workspace when any of these is true:
 
 - Agents run builds, formatters, generators, or anything that writes outside its unit, such as lockfiles, caches, generated output, or a repo-root config.
-- An agent needs to run the suite or the harness to check its own edit. Concurrent runs in one tree race on scratch and on git index state.
-- Agents commit, stage, or use branch operations. One git index shared by parallel agents corrupts staging.
+- An agent needs to run the suite or the harness to check its own edit. Concurrent runs in one tree race on scratch and working-copy state.
+- Agents describe changes or manipulate revisions or bookmarks. Parallel agents must not mutate the same working copy.
 - A pass may need to be abandoned wholesale, and a clean discard is worth more than a shared diff.
 
 Otherwise the isolation cost is real: N checkouts to create, N results to merge, and merge conflicts reintroduced on exactly the files the manifest was designed to keep apart.
+
+Detect isolation first and reuse verified existing isolation and its name without recreation or renaming. For new isolation, verify the exact base revision and an absolute owned destination beneath the source workspace's local `.tmp/`; check both workspace registrations and destination existence, preserving collisions. Delegate naming to `ce-worktree` when available: capture the local date once, use a stable `YYYYMMDD-meaningful-kebab-slug` derived from the task, PR or revision (normalize caller names without double prefixes), and use the same name as destination basename. Resolve collisions with `-2`, `-3`, never random, PID or timestamp suffixes; retain that identity across retries and midnight. Preserve PR/source bookmarks.
+
+Create explicitly with `(cd "$workspace_root" && jj workspace add --colocate --name "<name>" --revision "<verified-base>" "<absolute-owned-destination>")`, then verify `(cd "$new_workspace_root" && jj git colocation status)` and adopt that absolute root in the active harness session. A harness-native workspace facility must support this name and explicit colocation; otherwise report a compatibility blocker, not a bypass. Run all JJ commands from the absolute target root, never `jj -R`; use latest JJ and never the Git executable. Native references: https://docs.jj-vcs.dev/latest/cli-reference/#jj-workspace and https://docs.jj-vcs.dev/latest/git-command-table/ .
+
+Cleanup is separately authorized, never implied by completion. Stop workers, leave the target, and move the active harness session to a surviving absolute workspace root while respecting harness lifecycle authority. Verify exact registration, name, absolute path, run ownership and disposability; inspect tracked, conflicted, ignored and untracked content, prove required integration, preserve recovery/bookmark refs, and copy needed evidence outside the target with readback. A snapshot does not protect ignored/untracked files. If anything is ambiguous, referenced, unrelated or non-disposable, preserve it and report. Only then run `(cd "$surviving_workspace_root" && jj workspace remove "<verified-name>")`; verify both deregistration and directory disappearance, including warnings. On failure preserve/report, never force filesystem deletion or use Git cleanup. `jj workspace forget` only unregisters while preserving files and is not destructive cleanup. Bookmark deletion is separate and must retain archive/best/recovery refs.
 
 ## The shared-asset trap
 
@@ -125,5 +131,7 @@ A failure that moves to a later phase is progress and names the next target. A f
 ## Ship (Phase 6)
 
 Commit each pass separately with its own message so the history says which change was made and why, and so release tooling can classify intent. Keep the measurement artifacts.
+
+Before composing each message, follow `references/message-standards.md`; describe the intended change with `jj describe -m "<message composed from the standards above>"` from its absolute workspace root. Do not infer a fixed type/scope syntax from release tooling.
 
 Then write the finding down where the next person will hit it: the mechanism, the before and after, the measured numbers, and the hypotheses that died. **Record the ones that died.** They are what stops the next attempt from re-running a dead end, and they are the part every write-up omits.

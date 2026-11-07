@@ -4,7 +4,7 @@ description: Old name for refreshing learnings, which now lives in `ce-compound`
 argument-hint: "[optional: scope hint — directory, filename, module, or keyword] [mode:non-interactive] "
 ---
 
-# Compound Refresh (deprecated)
+# Learning Refresh (deprecated)
 
 This name still works, so existing prompts and schedules keep running. The refresh itself now lives in `ce-compound`.
 

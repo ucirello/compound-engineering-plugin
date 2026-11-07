@@ -36,8 +36,9 @@ agent-browser type @e1 "text"
 agent-browser press Enter
 
 # Capture evidence
-agent-browser screenshot out.png
-agent-browser screenshot --full out-full.png
+mkdir -p "$workspace_root/.tmp/rocketclaw/browser"
+agent-browser screenshot "$workspace_root/.tmp/rocketclaw/browser/out.png"
+agent-browser screenshot --full "$workspace_root/.tmp/rocketclaw/browser/out-full.png"
 
 # Navigation and waits
 agent-browser back

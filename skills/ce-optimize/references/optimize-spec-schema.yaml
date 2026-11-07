@@ -414,8 +414,8 @@ optional_fields:
       backend:
         type: enum
         values:
-          - worktree  # git worktrees for isolation (default)
-          - codex     # Codex sandboxes for isolation
+          - worktree  # explicitly colocated JJ workspaces (default)
+          - codex     # legacy alias for native subagents in JJ workspaces
           - remote    # detached workers with their own checkout; results arrive as a pushed ref or store file
         default: worktree
         description: "Where experiments run. remote needs a detached-worker capability (SKILL.md Execution Surface); without one the run falls back to worktree. remote workers measure paired on their own machine, so it requires a relative or paired comparison."
@@ -432,10 +432,10 @@ optional_fields:
       codex_security:
         type: enum
         values:
-          - full-auto                                # --full-auto (workspace write)
-          - yolo                                     # --dangerously-bypass-approvals-and-sandbox
+          - full-auto  # legacy configuration value only
+          - yolo       # legacy configuration value only; never bypass host permissions
         default: null
-        description: "Codex security posture. If null, user is asked once per session."
+        description: "Deprecated compatibility field; native dispatch always respects host permissions and never interprets this as a sandbox/approval override."
 
   parallel:
     type: object

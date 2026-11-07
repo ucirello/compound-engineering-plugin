@@ -205,8 +205,11 @@ def write_record(path: Path, raw: bytes, *, checkpoint: bool) -> None:
 
 
 def github_json(host: str, endpoint: str) -> dict:
+    workspace_root = subprocess.run(["jj", "workspace", "root"], capture_output=True, text=True, check=True).stdout.strip()
+    git_dir = subprocess.run(["jj", "git", "root"], cwd=workspace_root, capture_output=True, text=True, check=True).stdout.strip()
     result = subprocess.run(
         ["gh", "api", "--hostname", host, "--method", "GET", endpoint],
+        cwd=workspace_root, env={**os.environ, "GIT_DIR": git_dir},
         capture_output=True, text=True, check=False,
     )
     require(result.returncode == 0, result.stderr.strip() or f"GitHub GET failed: {endpoint}")
@@ -257,7 +260,11 @@ def main() -> None:
             command_parser.add_argument("--input", required=True)
     args = parser.parse_args()
     if args.command == "preflight":
-        path = Path(args.path).absolute() if args.path else Path(tempfile.mkdtemp(prefix="ce-pending-feedback-")) / "pending.json"
+        workspace_root = Path(subprocess.run(["jj", "workspace", "root"], capture_output=True, text=True, check=True).stdout.strip())
+        scratch = workspace_root / ".tmp"
+        scratch.mkdir(exist_ok=True)
+        path = Path(args.path).absolute() if args.path else Path(tempfile.mkdtemp(prefix="pending-feedback-", dir=scratch)) / "pending.json"
+        require(path.resolve().is_relative_to(scratch.resolve()), "handoff destination must be under workspace .tmp")
         require(not os.path.lexists(path), "handoff destination already exists")
         require(path.parent.is_dir(), "handoff parent directory does not exist")
         with tempfile.TemporaryFile(dir=path.parent):

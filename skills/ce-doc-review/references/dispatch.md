@@ -1,6 +1,6 @@
 # Dispatching the reviewers
 
-Dispatch generic subagents with **bounded parallelism** using the platform's subagent primitive (e.g., `Agent` in Claude Code, `spawn_agent` in Codex) where available; otherwise run the work inline or serially. Omit the `mode` parameter so the user's configured permission settings apply.
+Dispatch generic subagents with **bounded parallelism** using native OpenCode subagents. This skill explicitly requests reviewers, satisfying a user-OR-loaded-skill delegation exception without redundant approval. Respect higher prohibitions and tool denials; never evade them through shell. Inline/serial fallback cannot claim fresh independent coverage; mandatory undispatched coverage remains incomplete. Omit the `mode` parameter so the user's configured permission settings apply.
 
 A spawned worker or peer starts a new context and does not continue the parent conversation.
 
@@ -18,7 +18,7 @@ Each selected reviewer needs three files in full: its persona asset `references/
 - `security-lens-reviewer`, `feasibility-reviewer`, `product-lens-reviewer`, `adversarial-document-reviewer`: inherit the parent model unless the harness has an established high-capability review tier.
 - `design-lens-reviewer`, `scope-guardian-reviewer`, and the lite reviewer from `references/depth.md`: platform mid-tier model.
 
-If the user's or project's active instructions or the live prompt name a model for this subagent, use that model instead of the default tier above. They can name it by the subagent's tier, by its prompt-asset name, or for the subagents being dispatched. Without such an instruction, a model configured for this subagent's role takes precedence over the default tier.
+Discover exact IDs and variants with native `opencode.models`, preserving existing role configuration before default tiers. Model-override permission is separate from delegation: if the host requires an explicit user model request, omit optional model arguments without one and use a suitable inherited reviewer. Disclose unmet configured tier/routes. Separate inherited reviewers are not cross-model independence. Classify actual nesting-depth errors separately from capacity and permission; do not retry a fixed depth limit as though a busy slot could free.
 
 Each subagent receives the subagent template, by path or inlined as above. On the path route the reviewer fills `{persona_file}` and `{schema}` itself; the orchestrator fills the rest:
 

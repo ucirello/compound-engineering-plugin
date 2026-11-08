@@ -1,4 +1,4 @@
-# Moving work through CE
+# Moving work through RocketClaw
 
 Two questions get separate answers. The state of the work decides where it starts. The user's preference decides how hands-on they stay from there.
 
@@ -41,6 +41,14 @@ What the choice comes down to:
 - `lfg` does not wait for approval of the plan, diff, or findings, and it pushes without asking. Merging normally stays with the user.
 
 The `lfg` guide page owns how it handles each starting point and what each stage does, so fetch it before describing them.
+
+## Isolated work and cleanup
+
+Recommend `ce-worktree` for isolation, not direct Git commands. Reuse existing isolation under its verified name without renaming or recreating it. For new work, capture the local date once and select one stable `YYYYMMDD-meaningful-kebab-slug` for both workspace name and destination basename under the source workspace's absolute local `.tmp/` parent. Derive the slug from the task, PR, or revision, normalize supplied names without double date prefixes, check registrations and paths, and suffix collisions with `-2`, `-3`, etc. Preserve that identity across retries/resumes and preserve PR/source bookmarks.
+
+Creation from the source absolute root uses `(cd "$workspace_root" && jj workspace add --colocate --name "$name" --revision "$verified_base" "$absolute_destination")` after verifying the intended base. Verify `jj git colocation status` from the destination's absolute root. Respect harness ownership/session adoption; unsupported required naming or colocation is a blocker, not a fallback to another workspace mechanism. See https://docs.jj-vcs.dev/latest/cli-reference/#jj-workspace.
+
+Completion does not authorize removal. For authorized retirement of disposable run-owned isolation, stop workers, leave the target and move the active session to a surviving workspace; prove exact registered name, absolute path, run ownership, and integration where required. Preserve recovery references and copy/read back required evidence outside the target. Inspect tracked changes, conflicts, ignored and untracked files; retain ambiguous, referenced, or non-disposable content. From the surviving absolute root use `jj workspace remove <verified-workspace-name>`, then verify both deregistration and directory disappearance. Preserve and report failures without forced deletion or Git cleanup. Keep bookmark deletion separate and retain recovery/archive references. `jj workspace forget` is only for unregistering while preserving files.
 
 ## What already runs on its own
 

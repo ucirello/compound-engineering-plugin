@@ -4,7 +4,7 @@
 
 ## Before dispatching
 
-Gather two kinds of evidence for the scope, and keep the output in OS temp:
+Gather two kinds of evidence for the scope, and keep the output under the target workspace's local `.tmp/` (or a local `.tmp/` outside JJ):
 
 - **What changes together:** pairs of files that often change in the same commits, especially pairs in different directories.
 - **What imports what:** the import graph for the scope, with how often each file changes in that same history.
@@ -17,7 +17,7 @@ PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c 
 "$PY" "$SKILL_DIR/scripts/structure-evidence.py" <scope paths>
 ```
 
-It prints JSON. `imports_not_parsed` counts files in other languages; build their import evidence yourself. If the script fails, gather the evidence with short commands of your own.
+It prints JSON. Run it with the working directory set to the target workspace's absolute root. `imports_not_parsed` counts files in other languages; build their import evidence yourself. If the script fails, gather the same bounded history and import evidence with native JJ commands and local processing, never the Git executable. Capture the actual history head first, exclude merges, and retain full per-commit file sets for bulk-change filtering. See https://docs.jj-vcs.dev/latest/cli-reference/.
 
 When the scope is too large for one reviewer to read in full, also make an outline of it: each file's exports and function signatures, without bodies. Every reviewer gets the outline in place of the full file set, and opens the files it needs.
 
@@ -31,7 +31,7 @@ A grouping is kept only when all three of these hold after its change: pieces th
 
 A grouped change still follows Step 3. It must preserve outputs, errors, side effects, and ordering, and it must stay inside the scope. That holds for every exported function and other public interface on its own, not only for the code paths the tests exercise: code you cannot see may call it directly. So a redesign may move logic behind an export, but the export keeps its signature and does what it did before. When it cannot, do not apply it; list it as not applicable. A change that would correct a bug is reported as a possible defect, not applied as a simplification.
 
-Keep the groupings and their reasons in a file in OS temp while you work, so they survive if the context is compacted.
+Keep the groupings and their reasons in a file under the target workspace's local `.tmp/` while you work, so they survive if the context is compacted.
 
 ## In the report
 

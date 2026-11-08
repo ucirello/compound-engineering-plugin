@@ -8,7 +8,7 @@ A non-interactive run has no one to answer a question, so it asks none, in any p
 
 Apply a write when a reviewer can judge it from the pull request alone. That covers generated output (Step 5's example refresh), the `.gitignore` entries of Steps 7 and 8, and, when the invocation asked for review docs, the drafts and pointer lines `references/project-docs.md` produces. It also covers Step 5a's refresh of `config.yaml`: the pull request body lists every change with its reason, and the script's verification shows nothing else moved. On a reused refresh branch, first restore `config.yaml` from the default branch and refresh that copy, so edits the team made there since the branch opened are kept.
 
-Report a write instead of making it when it needs a choice only a person can make, removes content a person wrote, changes a file the pull request cannot show, or changes this machine rather than the checkout. That covers creating `config.yaml`, every change to the gitignored `config.local.yaml`, deleting `compound-engineering.local.md`, repairing `docs_root` or the `ce-work` engine settings, every Step 9 addition, moving rules out of an agent-instructions file or an AI reviewer's file, removing the legacy Codex tool map, and warming the npm cache.
+Report a write instead of making it when it needs a choice only a person can make, removes content a person wrote, changes a file the pull request cannot show, or changes this machine rather than the checkout. That covers creating `config.yaml`, every change to the gitignored `config.local.yaml`, deleting `rocketclaw.local.md`, repairing `docs_root` or the `ce-work` engine settings, every Step 9 addition, moving rules out of an agent-instructions file or an AI reviewer's file, removing the legacy Codex tool map, and warming the npm cache.
 
 A run that did not ask for review docs leaves them alone. It reports whether they exist, because a repository without them has made a valid choice.
 
@@ -24,7 +24,7 @@ Follow `references/project-docs.md`, with these differences:
 
 ## Publishing
 
-Name the branch `ce-setup/refresh-<YYYY-MM-DD>` so later runs can find this run's pull request. When an open pull request from a branch starting with `ce-setup/refresh` exists, do this run on the newest such branch, so the existing pull request is updated rather than joined by a second one. Otherwise start a new branch from the default branch. Never commit to the default branch.
+Name the JJ bookmark `ce-setup/refresh-<YYYY-MM-DD>` so later runs can find this run's pull request. When an open pull request from a bookmark starting with `ce-setup/refresh` exists, verify its repository, remote, bookmark and exact pushed head and continue on that head, so the existing pull request is updated rather than joined by a second one. Otherwise create a new change from the verified default-branch head and set that bookmark. Never commit to the default bookmark. Preserve unrelated work and stop on ambiguous targets, conflicts, or denied permissions rather than resetting or discarding anything.
 
 If the working tree has uncommitted changes before the run writes anything, write nothing and report that, because those changes would land in the pull request with this run's.
 

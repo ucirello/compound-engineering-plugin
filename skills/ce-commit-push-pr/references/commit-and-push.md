@@ -1,28 +1,48 @@
 # Committing and pushing
 
-If `references/stack-submit.md` already built and committed the stack layers before this step, skip the ordinary single-branch commit and push and continue to Step 4 (compose the PR title and body); `gh stack submit` in Step 5 (apply and report) pushes the stack.
+If stack mode already committed its layers, continue to Step 4; Step 5 publishes them. On the default bookmark, first read `references/branch-creation.md`.
 
-If you are on the default branch, creating the feature branch has to handle three things: a stale local `<base>`, unpushed commits on local `<base>`, and uncommitted changes that collide with the fresh remote base. Read `references/branch-creation.md` and follow its decision flow before continuing.
+## Message standards — required at every composition site
 
-Scan changed files for naturally distinct concerns. If they clearly group into separate logical changes, create separate commits (2-3 max). Group at file level only — no `git add -p`. When ambiguous, one commit is fine.
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards.
 
-Stage and commit each group. **Avoid `git add -A` and `git add .`** — they sweep in `.env`, build artifacts, and generated files. **Honor `exclude:<paths>` when the invocation carries it.** The caller names files that must stay uncommitted, typically the user's own in-progress edits it could not separate from its work. Never stage or commit them, and say in the report that they were left out. When a plan Implementation Unit ID is already in hand for this commit (conversation, caller, or the files belong to one unit), append that unit's U-ID in parentheses — `(U3)` means unit 3. Do not hunt for a plan. Omit when the commit spans units, the unit is unclear, or no plan is in hand.
-
-Add your commits on top of other people's commits on this branch; never rewrite theirs in a way that drops their author or trailers, such as squashing them into yours. When a commit you create carries someone else's work that will not otherwise land under their name (ported from their branch or PR, or applied from their patch), end its message with a `Co-authored-by: Name <email>` trailer for each person that work credits: its commit authors and anyone their `Co-authored-by` trailers name. Copy each identity exactly from those commits or the patch. Never guess an email: when none is recorded, name them in the message body instead.
+Before composing, read the full Go guide. Resolve the actual task's verified history head, then examine several recent full subjects AND bodies from the target workspace's absolute root:
 
 ```bash
-git add file1 file2 file3 && git commit -m "$(cat <<'EOF'
-commit message here
-EOF
-)" -- file1 file2 file3
+(cd "$workspace_root" && jj log --no-graph -r '::<verified-history-head>' -n 10 -T 'description ++ "\n"')
 ```
 
-The trailing path list on `git commit` matters. A bare `git commit` takes the whole index, so anything already staged before this run (a caller's `exclude:` paths, or work the user staged and did not name) would end up in the commit. Naming the paths commits exactly the group and leaves other index entries alone.
+Compare prefixes/package names, casing, tense, subject/body separation, wrapping and issue-reference placement. Repository instructions and observed repository-local syntax always win; apply compatible Go guidance to clarity and structure without replacing that syntax. With no history, use explicit project/user instructions and Go guidance without inventing precedent.
 
-Then apply the **Project publishing gate**. Immediately before pushing, re-confirm you are on the intended feature branch with `git branch --show-current`. The branch gathered in Context is a hint, and Step 1 (resolve branch and PR state) may have created or switched branches since. Push the live `HEAD` so it reflects the current checkout, never a stale branch name:
+The following verbatim Go excerpts are source guidance, not a mandatory repository template:
 
-```bash
-git push -u origin HEAD
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+
+```text
+net/http: handle foo when bar
+
+[longer description here in the body]
+
+Fixes #12345
 ```
 
-If the working tree is clean and all commits are already pushed, this step is a no-op.
+> Notably, for the subject (the first line of description):
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+
+> For the body (the rest of the description):
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
+
+## Scoped changes and publication
+
+Inspect `jj status` and `jj diff`. Group naturally distinct concerns by whole files into at most 2–3 changes; when ambiguous one is fine. JJ has no staging index. Explicitly name owned paths with `jj commit <owned-paths> -m "<message composed from the standards above>"`, leaving unrelated work in the working copy. Honor and report `exclude:<paths>`. Inspect new files before explicitly tracking owned paths with `jj file track`; never automatically track ignored files.
+
+For an already isolated change use `(cd "$workspace_root" && jj describe -r <owned-change> -m "<message composed from the standards above>")`. Preserve other authors' changes and existing human credit, never squash their work into yours. When shipping someone else's work, retain exact known human identities in repository-compatible credit, using prose when trailers conflict with local conventions; never invent emails. When a known plan Implementation Unit applies, include its U-ID according to project conventions, but do not hunt for a plan or force fixed subject syntax.
+
+Apply the Project publishing gate to the exact state being sent. Re-verify the feature bookmark, head repository, remote, and exact commit; move only the authorized bookmark to the completed change. Publish with `(cd "$workspace_root" && jj git push --remote <verified-head-remote> --bookmark <verified-feature-bookmark>)`. Never push the default or unrelated bookmarks. Conflicts, ambiguous targets, or unknown push authority block publication. With no owned changes and everything published, this step is a no-op.

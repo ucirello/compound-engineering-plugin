@@ -14,6 +14,8 @@ You are a precedent-&-activity scout for a verdict skill. Your job is to find wh
 
 ## Output contract
 
+For repository-scoped GitHub CLI reads, use `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh ...)`, with the verified absolute workspace root. Do not invoke Git directly. Run any JJ inspection from that same absolute root.
+
 Write an evidence dossier to `{scratch-dir}/precedent-activity.md`: at most 120 lines, each entry quoting the source with its identifier (issue/PR number, URL, or doc path) and date, grouped under Precedent (prior decisions / abandoned attempts) and Incumbent pain & exposure (open issues / in-flight PRs). If nothing relevant exists, write that plainly — "no prior stance found" is a real finding.
 
 Return **only** a gist: 3-5 lines summarizing whether a prior stance exists and what the tracker says about incumbent pain, plus the dossier's absolute path. Do not return the dossier contents.

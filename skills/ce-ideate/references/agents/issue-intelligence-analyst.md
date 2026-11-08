@@ -17,7 +17,7 @@ These are a floor plus a goal, not an algorithm. You are smart enough to read th
 
 Detect the reachable access method by **category**, never by assuming a specific binary exists:
 
-- **GitHub** — the `gh` CLI, or a GitHub MCP server (tools matching `mcp__github__*`).
+- **GitHub** — the `gh` CLI, or a GitHub MCP server (tools matching `mcp__github__*`). For every repository-scoped CLI call, use `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh ...)` with the target absolute JJ workspace root and the verified target repository. Inspect remotes through `jj git remote list` there, never by directly invoking Git.
 - **Linear** — a Linear MCP server, or the `orca linear` CLI.
 - **Jira** — a Jira MCP server, or a documented Jira CLI.
 
@@ -154,7 +154,7 @@ Order themes by leverage. Every theme has all its fields.
 
 **Critical: no scripts, no pipes.** Every `python3`/`node`/piped command triggers a separate permission prompt; with dozens of issues this is unacceptable permission-spam.
 
-- Use the tracker's CLI or MCP tools one simple call at a time — no chaining with `&&`, `||`, `;`, or pipes.
+- Use the tracker's CLI or MCP tools one simple call at a time — no chaining tracker operations or pipes. The required cwd/GIT_DIR preamble above is context setup for a single repository-scoped `gh` operation, not a second tracker operation.
 - Use the CLI's own field-extraction/filtering flags (e.g., `gh`'s `--jq`) rather than piping through `jq`/`grep`/`sort`; when a tracker's tool has no such flag, read the output and reason over it directly.
 - Never write inline scripts (`python3 -c`, `node -e`) to process, filter, or sort issue data — reason over it in context.
 - Use native file-search/content-search tools for any repo exploration; do not shell out to `find`/`cat`/`rg`.

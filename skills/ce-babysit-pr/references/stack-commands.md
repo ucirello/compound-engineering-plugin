@@ -1,49 +1,74 @@
-# Managed-stack CLI recipes
+# Native JJ stack recipes and handoff receipt
 
-Load this file when the active run uses a confirmed managed stack (`manager_status == "confirmed"`) and needs `gh stack` command recipes. Soft-depend on the CLI: if `gh stack` is missing or exits unavailable (e.g. code 9), surface a clear residual — do not invent managed membership from topology.
+All JJ commands run at the absolute target workspace root. Export `GIT_DIR=$(jj git root)` there for repository `gh`; store receipts/body files under local `.tmp/rocketclaw/`. `stack.md` owns authority, graph verification, conflict recovery and partial-publication rules. No `gh stack` checkout/init/add/rebase/push/sync/submit routes.
 
-Always non-interactive. Prefer JSON/view probes and explicit branch names; never rely on interactive prompts. Substitute `<tracking-remote>` with the stack branches' actual tracking remote (often `origin`, but may be `upstream` or a fork remote) — never hard-code `origin` when SKILL.md already resolved a different tracking remote.
+## Explicit native topology
 
-## After an owned push on the active layer (dependents exist)
+Materialize the complete caller-supplied graph as JSON, preserving exact PR/source bookmarks and ownership. This is a schema example, not inferred topology:
 
-```bash
-gh stack rebase "<first-open-dependent-branch>" --upstack --no-trunk --remote <tracking-remote>
-gh stack push --remote <tracking-remote>
+```json
+{
+  "kind": "native-jj",
+  "explicit": true,
+  "trunk": "main",
+  "base_oid": "<verified-full-base-oid>",
+  "entries": [
+    {
+      "url": "https://<host>/<base-owner>/<base-repo>/pull/<N>",
+      "name": "<head-bookmark>",
+      "remote": "<verified-head-remote>",
+      "head_repository": "<host>/<head-owner>/<head-repo>",
+      "head": "<verified-full-head-oid>",
+      "base_ref_name": "<immediate-parent-bookmark-or-trunk>",
+      "parent_head": "<captured-full-immediate-parent-oid>"
+    }
+  ]
+}
 ```
 
-Starting at the first dependent excludes the active target from the cascading rebase. Quote the branch name — git branch names may contain shell metacharacters. On conflict: `gh stack rebase --abort`, then surface a needs-human / stack-sync residual.
-
-## Check out a layer on a fresh checkout
+List every layer bottom-to-top; PR numbers are repository-scoped, URLs and head repositories are mandatory. `parent_head` captures the boundary of the owned layer before propagation; the next entry's base name must equal the previous bookmark. Retain before/after receipts and recovery bookmarks for each maintenance transaction. A caller's handoff does not waive live verification or grant land authority. Existing externally managed stacks retain their original ownership instead of being relabeled `native-jj`.
 
 ```bash
-gh stack checkout <PR_NUMBER>
+cd "$workspace_root" || exit 1
+export GIT_DIR=$(jj git root)
+export BABYSIT_TOPOLOGY_FILE="$workspace_root/.tmp/rocketclaw/<run>/topology.json"
+jj git fetch --remote <verified-head-remote> --branch 'exact:<head-bookmark>'
+jj log --no-graph -r '<verified-parent-oid> & ::<verified-head-oid>' -T commit_id
 ```
 
-Use the PR number, which pulls the stack from GitHub. A branch name only resolves stacks already known locally, and `gh pr checkout` leaves the manager unaware of the branch.
+Export the same absolute topology-file path in every later shell call; shell state does not persist. The helper also persists `pr_chain.topology_file` in the state journal and recovers that path on session/shell resumption, before fetching; a previously native-owned journal with missing/malformed ownership evidence stops instead of silently degrading to external/manual discovery. New layer state directories still require the explicit exported path. Fetch all exact heads and verify them against API data before polling. Missing/stale evidence is `probe-error`, never absent. Retain and reconcile recovery receipts across layer transitions and retries.
 
-## Discover order / next open layer
+## Clean alignment and scoped propagation
+
+```bash
+jj new <verified-head-commit>
+jj rebase -r '<exact-owned-layer-revset>' -d <verified-new-parent>
+jj bookmark set <owned-layer-bookmark> -r <verified-rewritten-tip>
+jj git push --remote <verified-head-remote> --bookmark <owned-layer-bookmark>
+```
+
+Alignment is only after the clean-state gate in `setup.md`; empty `@` above that head is already aligned. Rebase is caller-owned authorized upstack maintenance only, never the target fixer's scope. Capture old/new heads and parent boundaries first. Preserve intent, coverage and all unrelated revisions; stop at semantic conflicts or concurrent remote changes. Push one verified layer at a time, retain exact partial-publication receipts, and never claim atomicity or blindly retry.
+
+## Read-only existing-manager discovery
 
 ```bash
 gh stack view --json
 ```
 
-## Land one prefix (only under `posture:stack-land`)
+Preserve existing manager order and metadata. Supported GitHub read-only stack APIs are an alternative; malformed, denied or incomplete discovery remains uncertainty. No manager working-tree mutation is required or permitted.
 
-Merge the **bottom-most open settled** PR — `gh stack merge <PR>` merges the full stack prefix through that PR atomically. Never merge an upstack active PR while downstack PRs remain open when single-prefix landing is intended.
+## Final merge only under explicit stack-land
 
-```bash
-gh stack merge <BOTTOM_MOST_OPEN_SETTLED_PR> --yes --squash
-gh stack sync --remote <tracking-remote>
-```
-
-Run the sync only after the merge succeeded. A sync after a failed merge rebases and pushes every layer, which restarts their CI and review. If the merge says another process is editing the stack, retry it shortly: that lock is temporary, and all worktrees of one clone share it.
-
-Re-probe the landed PR before advancing: on merge-queue bases the CLI may succeed after enqueue while the PR stays OPEN — keep watching or return a queued residual until `pr_state` is `MERGED`. Only then treat the just-merged PR as a **layer transition** (stop watcher, re-probe, continue next open non-draft needing work with posture restated) — not a run-level Terminal stop for this babysit invocation.
-
-## Forbidden on managed stack members
+For native topology, after all current-head readiness gates:
 
 ```bash
-gh pr merge …
+gh pr merge <verified-bottom-most-open-settled-URL> --squash --match-head-commit <verified-head>
 ```
 
-Use `gh stack merge` only. Under `posture:target` and `posture:stack-ready`, print the exact merge command when reporting ready-as-next; do not execute it.
+For existing externally managed membership, retain the verified server-side ownership protocol where supported without workspace mutations:
+
+```bash
+gh stack merge <bottom-most-open-settled-PR> --yes --squash
+```
+
+Never substitute these protocols for each other. Under `target`/`stack-ready`, only print the appropriate command. After an authorized actual MERGED result (not enqueue), use `stack.md`'s native scoped retarget/rebase/push transaction; never `gh stack sync`. A failed merge performs no synchronization. Verify each remaining layer's graph, PR bases and exact remote heads; preserve/report incomplete synchronization or publication.

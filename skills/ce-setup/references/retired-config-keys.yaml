@@ -21,7 +21,7 @@ plan_use_fable:
 
 pr_branding:
   kind: remove
-  reason: "No longer does anything; PR branding is off by default and is requested per run with the branding:on token."
+  reason: "No longer does anything; creator, model, and harness attribution badges and bylines are not added to pull requests. Remove this retired setting; there is no replacement toggle."
 
 work_delegate:
   kind: remove

@@ -1,5 +1,7 @@
 # Completion reports
 
+For context-pressure delegated Full, report the source session ID, supported-interface export/reduction status, doc path (including reused paths), and interactive-only actions not applied: discoverability instruction-file edit and any eligible Compound Pack destination. The parent relays this report/path, then offers those actions with usual consent. It does not run a second Full pass or re-edit the doc. Report evidence failures and incomplete coverage truthfully. A context-pressure Lightweight fallback names the actual missing-tool, denial, or depth failure and advises retrying from the same source session once delegation is available, never a fresh session.
+
 ## Success Output
 
 **User-runnable refresh rendering.** The reports below print a refresh invocation for the user to copy. Default to `/ce-compound refresh <scope>`; use `$ce-compound refresh <scope>` only when the active host is Codex or explicitly documents dollar-prefixed skill invocation. Render only the invocation as inline code and output one form only.

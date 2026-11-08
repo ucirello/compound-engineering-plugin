@@ -29,33 +29,33 @@ Two modes:
 For PR mode, fetch metadata first:
 
 ```bash
-gh pr view <ref> --json baseRefName,headRefOid,url,body,state,isCrossRepository,headRepositoryOwner
+gh pr view <ref> --json baseRefName,headRefName,headRefOid,headRepository,url,body,state,isCrossRepository,headRepositoryOwner
 ```
 
 If `state` is not `OPEN`, report and stop. Use `baseRefName` as `<base>` and `headRefOid` as `<head>`.
 
-For current-branch mode, resolve `<base>` in priority order: `git rev-parse --abbrev-ref origin/HEAD` (strip `origin/`) → `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'` → try `main`/`master`/`develop` via `git rev-parse --verify origin/<candidate>`. If none resolve, ask the user. `<head>` is `HEAD`.
+For current-bookmark mode, resolve the base repository default with `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'`, then fetch and verify that exact remote bookmark using JJ. If unresolved, ask. Resolve `<head>` to the task's exact commit; inspect `@-` when `@` is empty above the published head.
 
-**Base remote:** `origin` for current-branch mode and same-repo PRs. For fork PRs, match the PR's base owner/repo against `git remote -v`. If no local remote matches, skip to the `gh` fallback — do not diff against `origin` (wrong base).
+**Base remote:** verify the base owner/repository against `jj git remote list`; never assume origin is the fork PR's base. Without a matching remote use the API fallback, not a wrong-base diff. Every command runs from the absolute workspace root; all repository `gh` calls use `GIT_DIR=$(jj git root)` there.
 
 ```bash
-git fetch --no-tags <base-remote> <base>
-git fetch --no-tags <base-remote> <head>   # PR mode only: <head> is headRefOid and may not be local
-git log  --oneline "<base-remote>/<base>..<head>"
-git log  --format=fuller "<base-remote>/<base>..<head>"   # full commit messages for related-reference discovery
-git diff           "<base-remote>/<base>...<head>"
+jj git fetch --remote <base-remote> --branch <base>
+jj log --no-graph -r '<verified-base>..<verified-head>' -T 'commit_id ++ " " ++ description.first_line() ++ "\n"'
+jj log --no-graph -r '<verified-base>..<verified-head>' -T 'description ++ "\n"'
+jj diff --from 'heads(::<verified-base> & ::<verified-head>)' --to <verified-head>
 ```
 
 If the commit list is empty, report "No commits to describe" and stop.
 
-**Fallback** — use `gh pr diff <ref>` and `gh pr view <ref> --json commits` when local git can't reach the refs (fork PR with no matching remote, shallow clone, offline, merge-base on unrelated histories). For GHES that reject SHA fetch but allow `refs/pull/`:
+**Exact head retrieval** — match the PR's actual head repository and owner against `jj git remote list`, then fetch that repository's actual head bookmark, not a pull ref on the base repository. `--branch` selects branch names, not arbitrary refs:
 
 ```bash
-git fetch --no-tags <base-remote> "refs/pull/<number>/head"
-PR_HEAD_SHA=$(awk '/refs\/pull\/[0-9]+\/head/ {print $1; exit}' "$(git rev-parse --git-dir)/FETCH_HEAD")
+jj git fetch --remote <verified-head-remote> --branch <verified-head-bookmark>
 ```
 
-Note in the user-facing summary when the API fallback was used.
+Resolve the fetched remote bookmark to its full commit OID and require equality with the captured `headRefOid`. Do not replace the verified base/head range or the task's message-style history anchor with another revision. If the exact source repository/bookmark is unavailable, no matching remote exists, fetch fails, or the OID differs, report the requested repository, bookmark and OID with the actual diagnostic; never substitute another ref.
+
+**API fallback** — when local JJ cannot reach the exact captured refs, use `gh pr diff <ref>` and `gh pr view <ref> --json commits,baseRefName,headRefOid` with the same PR. Verify the returned base/head still match the captured range; if they changed or exact coverage cannot be established, stop and report the uncertainty instead of describing a different range. Note API fallback use in the user-facing summary. It does not establish a missing local history-style sample or authorize a guessed history anchor.
 
 ---
 
@@ -100,7 +100,7 @@ A project PR-body contract sets the structural floor; this table sizes the conte
 
 ## Step B: Compose the title
 
-`type: description` or `type(scope): description`. Type by intent using the same `fix:`/`feat:` default as the skill's Step 2. Scope (optional): narrowest useful label. Description: from the scope map's umbrella outcome, not one cluster or mechanism; with program context, the title may name this PR's contribution under the program without restating the whole series — it must not make another material outcome sound incidental. Imperative, lowercase, under 72 chars, no trailing period. Match recent-commit conventions. **Never use `!` or `BREAKING CHANGE:` without explicit user confirmation.**
+Determine title syntax at runtime from project instructions and several recent full repository subjects and bodies, using the message standards in `commit-and-push.md` when the title may become a squash description. Do not impose a fixed type, scope or prefix. Express the scope map's umbrella outcome, not one mechanism, keeping it concise and compatible with repository conventions. Never invent a breaking-change declaration without explicit user confirmation.
 
 ---
 
@@ -144,7 +144,7 @@ Decide whether the change introduces a concept (pattern, technique, library, dom
 **Check each candidate against the base ref, never the working tree** (the working tree contains this PR's own code):
 
 ```bash
-git grep -il -e "<term>" "<base-remote>/<base>" | head -5
+jj file search -r <verified-base> --pattern '<term>' --name-only
 ```
 
 One call per candidate (cap two). Empty output → absent from the base. Teachable only when new *and* transferable. Never teach: established patterns, ordinary refactors/renames/dep bumps, project-internal plumbing. When in doubt, omit. On the `gh`-fallback path, judge from diff context alone and lean conservative.
@@ -160,7 +160,7 @@ Preserve an existing `## New concepts` section and explainer-doc link verbatim o
 
 ## Step C: Assemble the body
 
-When a project PR-body contract supplies headings or order, preserve that structure and place the applicable elements below within the sections it permits. Otherwise: opening → body sections that each answer a remaining reviewer question → related references when they need their own block → test plan if non-obvious → session-settled provenance when a labeled plan is in hand → New concepts section when Step B2 produced one → evidence block if one exists → branding when Step D calls for it → co-author trailers when contributor credit calls for them.
+When a project PR-body contract supplies headings or order, preserve that structure and place applicable elements within permitted sections. Otherwise: opening → sections answering remaining reviewer questions → related references → non-obvious test plan → known session-settled provenance → New concepts when applicable → evidence → repository-compatible human credit.
 
 When the project PR-body contract supplies a heading or location for the opening, place it there without inventing or renaming a heading. Otherwise, the opening goes under `## Summary` if the body uses any `##` headings; bare paragraph otherwise. No orphaned opening above the first heading.
 
@@ -170,31 +170,15 @@ The why belongs inside that one idea when it is the reason the outcome takes its
 
 **Session-settled provenance:** when a plan is already in hand (caller path or conversation) whose key technical decisions carry a `session-settled:` label, one static sentence naming settled decisions and classes (e.g. "Session-settled decisions carried from planning: X (user-directed, over Y); Z (user-approved)."). Add proceed-under-conflict clauses only when the caller flagged them. Never an outstanding-items ledger; never hunt for plans when none is in hand.
 
-**Contributor credit:** applies only when this PR ships work by someone other than its author. For an existing PR the author is the PR's author; for a new PR it is the person shipping, whose identity is the configured `git config user.name` and `user.email` (they may also commit under another email). The evidence is a Pre-A commit authored by such a person, a `Co-authored-by` trailer naming one, or this work continuing or replacing another PR. Model, harness, and bot attributions never count. Otherwise add nothing.
+**Contributor credit:** applies only when shipping another human's work. Resolve the shipping identity from JJ configuration (`jj config get user.name` and `jj config get user.email`) and compare actual range authors, existing human trailers and continued/replaced PRs. Model, harness and bot attribution never counts. Otherwise add nothing.
 
 When it applies, name those contributors in the body, and link the PR this work continues or replaces when there is one. On rewrite, keep existing contributor credit.
 
-A squash merge keeps one author per PR, so other contributors survive it only as trailers in the squash message. If the repository squash-merges (its documented convention, or `squashMergeAllowed` from `gh repo view`), end the body with `Co-authored-by: Name <email>` trailers, one per contributor. They are the body's last paragraph, after any template sections, so git parses them when the body becomes the squash message. Copy each identity exactly from a commit's author or an existing trailer; for a replaced PR whose commits are not in the range, read them from that PR's commits. Never guess or construct an email: a contributor without one is credited by name only.
+When the PR body may become a squash description, read and follow the complete runtime message standards and verbatim Go source guidance in `commit-and-push.md` first. Preserve human contributor credit using the repository's observed syntax; do not impose a trailer template against that syntax. Copy known identities exactly, including credit from replaced PRs; never invent emails. Credit a contributor without a recorded email by name only.
 
-**Evidence:** preserve existing `## Demo` / `## Screenshots` unless focus asks to refresh or later commits change what its screenshots show (`references/visual-evidence.md`). Splice caller-passed capture as `## Demo`, and screenshots this run took as `## Screenshots`. Place before the badge. Never label test output as "Demo" or "Screenshots." SKILL.md Step 4 (via `references/compose.md`) decides whether to include validation notes or skip them.
+**Evidence:** preserve existing `## Demo` / `## Screenshots` unless focus asks to refresh or later commits change what they show. Splice caller capture as `## Demo` and this run's screenshots as `## Screenshots`. Never label test output as either. `references/compose.md` decides validation notes.
 
 **Visual aids:** diagram or table when faster than prose (flows, trade-offs, a before/after comparison when observable behavior changed); a navigation hint (which file to start in, or the small but decisive hunk a reviewer would otherwise miss) only when the reviewer would start in the wrong place — never a list of changed files, which the diff already shows; skip all of these for simple/rename/dep-bump. Content pattern decides, never size or file count. Prose wins on conflict. **GitHub:** never prefix list items with `#` (auto-links as issues); use `org/repo#123` or full URL for real refs. Link a repository file with a full URL, such as the one `gh browse -n --commit=<head-sha> -- <path>` prints: a relative path resolves under the PR's own URL and 404s. A file the PR does not commit, such as local test output, gets no link.
-
----
-
-## Step D: Generic Compound Engineering branding
-
-For a **new PR body**, append the following only when the resolved branding gate is on; otherwise omit it.
-
-```markdown
----
-
-[![Compound Engineering](https://img.shields.io/badge/Built_with-Compound_Engineering-6366f1)](https://github.com/EveryInc/compound-engineering-plugin)
-```
-
-Do not add model or harness attribution **to this branding block**. If the project's PR-body contract requires model/harness disclosure, fill *that* section per the project contract (see "Project PR-body contract").
-
-For an **existing PR body**, preserve an existing branding block verbatim (including legacy model/harness badges). Never add one when absent, and never refresh, normalize, or remove it unless the user explicitly asks to remove or replace that exact content. Branding alone never creates rewrite intent.
 
 ---
 
@@ -211,4 +195,4 @@ Before returning the title and body, check against the scope map and material cl
 - Is every claim the diff can't establish present — and any claim the diff *does* show restated needlessly?
 - Was program altitude actually checked (the map says "none" or names the program)? When program context was present: does the lead place this PR on the arc (program + this contribution, with lead-in and/or lead-out when known)? When program context was absent: does the body invent a multi-PR series? If so, cut it.
 - Is decision-changing evidence a stated result (not unexplained "tests passed"), with demonstrated results distinct from assumptions and mixed/negative outcomes?
-- Can any sentence or section of the *description* be cut without lowering reviewer confidence? If so, cut it, except for headings, fields, checklists, or boilerplate the project's PR-body contract requires. Retain Step D branding when enabled, the session-settled provenance sentence when Step C included one, and contributor credit when Step C included it — all are intentional, not fluff.
+- Can any sentence or section be cut without lowering reviewer confidence? If so, cut it, except required project structure, applicable session-settled provenance and human contributor credit.

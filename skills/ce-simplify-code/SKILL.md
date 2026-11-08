@@ -18,10 +18,10 @@ Strip a `mode:pipeline` token, a `size-cutoff:<N>` token, and every `proof-test:
 Resolve the scope in this order:
 
 1. **User-named scope** is authoritative; do not widen it. In standalone mode it may be the whole repo, an area, or a path.
-2. **Otherwise, in git**, use the current branch versus its base. Without a usable base, use staged and unstaged changes (`git diff HEAD`).
-3. **Outside git or without a diff**, use files the user named or that were edited earlier in the conversation.
+2. **Otherwise, in JJ**, resolve and capture the actual task history head and its verified base, and use `jj diff --from <verified-base> --to <captured-head>`. Without a usable base, inspect the working-copy change with `jj diff -r @`; JJ has no staging-area split. Run every JJ command with its working directory set to the target workspace's absolute root, including helper calls. See https://docs.jj-vcs.dev/latest/cli-reference/.
+3. **Outside JJ or without a diff**, use files the user named or that were edited earlier in the conversation.
 
-In pipeline mode the scope is what the caller passed, else the branch diff. Within it, prune only tests and comments the current work added or changed.
+In pipeline mode the scope is what the caller passed, else the verified base/head diff. Within it, prune only tests and comments the current work added or changed.
 
 If none of the above produces a non-empty scope, pipeline mode reports "nothing to simplify" and returns. Standalone mode asks the user what to simplify, as `references/standalone-report.md` describes.
 
@@ -31,7 +31,7 @@ When the platform's task-tracking capability is available, show the review, appl
 
 ## Step 2: Launch review agents in parallel
 
-Dispatch each reviewer as its own generic subagent via the platform's subagent primitive (`Agent`/`Task` in Claude Code, `spawn_agent` in Codex). Run reviews inline only when the platform has no subagent primitive, or when a dispatch fails as `references/reviewer-dispatch.md` describes. For each reviewer, read its prompt asset from this skill's directory and pass the **full file content** as the subagent's prompt, together with the resolved scope (the full diff or file set), the mode, any proof test, the user's constraints, and the project standards governing the scope (or their file paths):
+This skill explicitly requests reviewer delegation. Dispatch each reviewer as its own generic OpenCode-native subagent. Run reviews inline only under the permitted, disclosed fallback in `references/reviewer-dispatch.md`; never bypass a denial with shell or another harness. For each reviewer, read its prompt asset from this skill's directory and pass the **full file content** as the subagent's prompt, together with the resolved scope (the full diff or file set), the mode, any proof test, the user's constraints, and the project standards governing the scope (or their file paths):
 
 - `references/personas/code-reuse-reviewer.md`
 - `references/personas/code-quality-reviewer.md`
@@ -49,7 +49,7 @@ Read `references/reviewer-dispatch.md` before dispatching; it covers the reviewe
 
 ## Step 3: Fix issues
 
-Proceed only after every review outcome is complete, whether returned by subagents or produced inline. In standalone mode, unless the request says to just fix them, report and stop here. Otherwise apply worthwhile findings directly; record false positives and low-value findings as skipped without asking the user.
+Proceed only after every review outcome is terminal, whether returned by subagents, produced inline, or reported unavailable. Disclose missing coverage; never call an unavailable pass complete. In standalone mode, unless the request says to just fix them, report and stop here. Otherwise apply worthwhile findings directly; record false positives and low-value findings as skipped without asking the user.
 
 Inspect beyond the resolved scope when needed to evaluate a finding, but edit only that scope and the import/export lines it needs. For a user-named file or directory scope, those import/export lines must also be inside it; skip any fix that would edit outside the mutation boundary.
 

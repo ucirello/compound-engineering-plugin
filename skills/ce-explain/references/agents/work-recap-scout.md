@@ -6,9 +6,9 @@ Dispatch context supplies: `{window}` (a date range, relative window, or since-r
 
 Work through these sources for the window, cheapest first:
 
-1. **Git activity** — `git log` over the window (subjects, shas, dates, authors), and for the substantial commits, a stat-level view of what they touched. Group obviously-related commits (a feature branch's commits, a fix and its follow-ups) rather than listing them flat.
-2. **Merged and open PRs** — only when a PR interface is reachable (a `gh` CLI that responds, a connector/MCP tool). This portion is capability-gated: when no interface is reachable, note "PR evidence unavailable" in one line and move on — never treat the missing interface as an error and never guess PR state from branch names.
-3. **Project docs** — plans, brainstorms, and solution docs added or modified in the window (`<root>/plans/`, `docs/brainstorms/`, `<root>/solutions/`, or wherever this repo keeps them). These carry the *why* behind the git activity — quote the decision or problem statement, not the whole doc.
+1. **JJ activity** — resolve the actual history head and the requested window to a verified JJ revset, then use `jj log --no-graph -r '<verified-window-revset>' -T 'commit_id ++ "\n" ++ author.name() ++ "\n" ++ author.timestamp() ++ "\n" ++ description ++ "\n"'` for full subjects, bodies, commit IDs, dates, and authors. For substantial changes use `jj show --stat -r '<verified-change>'`. Run every JJ command with its working directory set to the absolute `{repo-root}`, not with `-R` alone. Preserve the exact requested range; do not replace it with a style sample or another bookmark. Group obviously-related changes (a feature bookmark's changes, a fix and its follow-ups) rather than listing them flat. See https://docs.jj-vcs.dev/latest/cli-reference/ .
+2. **Merged and open PRs** — only when a PR interface is reachable (a `gh` CLI that responds, a connector/MCP tool). For repository-scoped `gh`, use `(cd "{repo-root}" && GIT_DIR=$(jj git root) gh <arguments>)`. This portion is capability-gated: when no interface is reachable, note "PR evidence unavailable" in one line and move on — never treat the missing interface as an error and never guess PR state from bookmark names.
+3. **Project docs** — plans, brainstorms, and solution docs added or modified in the window (`<root>/plans/`, `docs/brainstorms/`, `<root>/solutions/`, or wherever this repo keeps them). These carry the *why* behind the JJ activity — quote the decision or problem statement, not the whole doc.
 
 ## Output
 

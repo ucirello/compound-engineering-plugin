@@ -27,8 +27,8 @@ The dispatch context writes this file after every local reviewer is collected, a
     "base": "<BASE: marker>",
     "diff_a": "<DIFF_A>", "diff_b": "<DIFF_B or null>",
     "pr": { "number": null, "url": null, "title": null, "body": null, "base_ref_name": null, "head_ref_oid": null, "head_ref": null, "base_ref": null, "has_prior_comments": false },
-    "branch": "<git branch --show-current at dispatch>",
-    "head_sha": "<git rev-parse HEAD at dispatch>",
+    "branch": "<verified source bookmark at dispatch, or null>",
+    "head_sha": "<captured unique jj log -r @ -T commit_id at dispatch>",
     "files": "<run-dir>/files.txt",
     "diff": "<run-dir>/full.diff",
     "tree_is_reviewed_head": true,
@@ -70,7 +70,7 @@ Each leaf reads, from `skill_dir`, its own finish reference (`references/finish-
 
 ## How the dispatch context launches a leaf
 
-Put the full contents of `finish-input.json` inline in the leaf's prompt, together with the absolute paths of the run directory, the leaf's own finish reference, and this reference, and tell it which stages it owns, to read its own finish reference and then this reference before anything else, and to record its own stage in the stage log with `scripts/run-log.py` under `skill_dir` (the recipe is in `references/scope.md`, Stage log). Include this sentence in the leaf's prompt exactly as written: "Give each file you read its own tool call, so its output comes back on its own, never several files in one command or one script. A read counts only when the whole file came back. Some hosts cut the middle out of a long tool output and leave a truncation marker in its place, so when a read comes back shortened, read the missing lines in smaller ranges before you act on that file." Inline the file rather than only naming it: the facts it carries are small, and a subagent that has them in its prompt cannot skip the read. Everything larger (the diff, the per-reviewer artifacts, the compact returns) stays on disk and is read by path. By default both leaves inherit the session model, with no override; `references/subagent-model.md` decides what each leaf actually passes, and in Codex it replaces this default. If the user's or project's active instructions or the live prompt name a model for this subagent, use that model instead of the default tier above. They can name it by the subagent's tier, by its prompt-asset name, or for the subagents being dispatched. Without such an instruction, a model configured for this subagent's role takes precedence over the default tier. Tell each leaf plainly that it launches no subagents.
+Put full `finish-input.json` inline in the leaf prompt with absolute run-directory/reference paths and owned stages. Require reading its finish reference, then this one, and recording its stage via `scripts/run-log.py`. Include exactly: "Give each file you read its own tool call, so its output comes back on its own, never several files in one command or one script. A read counts only when the whole file came back. Some hosts cut the middle out of a long tool output and leave a truncation marker in its place, so when a read comes back shortened, read the missing lines in smaller ranges before you act on that file." Keep larger diffs/artifacts on disk by path. Apply `subagent-model.md`'s separate delegation/model/depth rules to both leaves: inherited model by default, requested/configured tiers as intent, no forbidden model override, no denial/depth bypass, and accurate incomplete-coverage reporting. Tell each leaf plainly that it launches no subagents.
 
 Collect each leaf with blocking waits, each asking for as long as the host allows, repeated back to back until the leaf returns, for the same cost reason the reviewer collection rule in `references/dispatch-reviewers.md` gives. Apply the agent lifecycle rule in `references/dispatch-reviewers.md` (Agent lifecycle) to each leaf and to the validator.
 

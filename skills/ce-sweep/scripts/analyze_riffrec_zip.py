@@ -4,7 +4,7 @@ Analyze a product feedback source.
 
 Supported sources: Riffrec zip or unpacked capture directory, standalone
 video, standalone audio, and meeting notes text/markdown. The script extracts
-transcript, high-signal video frames when available, and CE-friendly markdown
+transcript, high-signal video frames when available, and planning-friendly markdown
 artifacts.
 """
 
@@ -69,7 +69,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        help="Directory for extracted evidence/kickoff artifacts. Defaults to docs/brainstorms/riffrec-feedback/<source-stem> when available; durable ce-brainstorm outputs live in the plans artifact directory.",
+        help="Directory under local .tmp for extracted evidence/kickoff artifacts. Defaults to .tmp/rocketclaw/riffrec-feedback/<source-stem>; durable ce-brainstorm outputs live in the plans artifact directory.",
     )
     parser.add_argument("--topic", help="Kebab-case topic for requirements-kickoff frontmatter")
     parser.add_argument(
@@ -207,9 +207,7 @@ def promote_frames_snapshot(staging_dir: Path, frames_dir: Path) -> None:
 def default_output_dir(source_path: Path) -> Path:
     cwd = Path.cwd()
     stem = slugify(source_path.stem)
-    if (cwd / "docs" / "brainstorms").is_dir():
-        return cwd / "docs" / "brainstorms" / "riffrec-feedback" / stem
-    return cwd / "riffrec-feedback" / stem
+    return cwd / ".tmp" / "rocketclaw" / "riffrec-feedback" / stem
 
 
 def classify_source(source_path: Path) -> str:
@@ -833,7 +831,7 @@ def write_analysis_md(
     lines.append("- Open each selected screenshot and name the exact visible control or state.")
     lines.append("- Tie transcript language to the closest click or visible UI state.")
     lines.append("- Promote only confirmed product problems into requirements.")
-    lines.append("- Use repo-relative screenshot paths when moving evidence into a CE requirements document.")
+    lines.append("- Use repo-relative screenshot paths when moving evidence into a requirements document.")
     output_path.write_text("\n".join(lines) + "\n")
 
 
@@ -1195,6 +1193,8 @@ def main() -> int:
         return 2
 
     output_dir = (args.output_dir or default_output_dir(source_path)).expanduser().resolve()
+    if not output_dir.is_relative_to((Path.cwd() / ".tmp").resolve()):
+        raise SourceInputError("Output directory must remain under the workspace's local .tmp directory")
     if source_path == output_dir or source_path.is_relative_to(output_dir):
         print(
             f"Invalid output directory: source {source_path} must be outside the analyzer output directory {output_dir}.",
@@ -1297,7 +1297,7 @@ def main() -> int:
     print("Analysis complete. Ready to brainstorm the findings.")
     print(f"Source materials: {display_path(source_materials_md, repo_root)}")
     print(f"Problem statements: {display_path(problem_analysis_md, repo_root)}")
-    print(f"Brainstorm handoff: $compound-engineering:ce-brainstorm {display_path(kickoff_md, repo_root)}")
+    print(f"Brainstorm handoff: /ce-brainstorm {display_path(kickoff_md, repo_root)}")
     print("Brainstorm should first confirm whether the captured requirements are complete and correctly grouped, then write the durable unified plan under the plans artifact directory.")
     return 0
 

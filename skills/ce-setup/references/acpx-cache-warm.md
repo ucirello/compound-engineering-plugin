@@ -1,4 +1,6 @@
-# Warm the npm cache for cross-model peers
+# Optional legacy npm cache warming
+
+OpenCode-native execution uses `opencode.models` and native subagents, never ACPX or another harness dispatcher. This optional cache-only support is for users explicitly maintaining legacy compatibility packages; do not offer it as a prerequisite or launch peer models with it. The remaining instructions apply only to that explicit legacy cache request.
 
 Cross-model peers resolve acpx within tested version bounds, preserving npm's release-age and date-cutoff policies. Warming downloads an eligible transport and the adapters associated with the newest validated release. An older policy-selected transport may fetch different adapter packages on its first run.
 

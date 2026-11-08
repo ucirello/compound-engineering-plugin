@@ -26,7 +26,7 @@ This skill cannot run without a way to observe behavior. Check for all three, an
 
 If any is missing, **stop and say so**, naming what to build. Do not fall back to a static audit and present it as retuning: an audit can say what looks cuttable and never whether cutting helped. An audit-only pass is a legitimate thing to want; it is a different request.
 
-State the target model and the harness you found before continuing.
+State the target model and the harness you found before continuing. Execute through native OpenCode subagents and shell, using `opencode.models` for permitted model resolution and configured choices/tiers as intent; follow `references/workflow-shapes.md` for delegation versus model-override permissions, depth errors, independence and incomplete coverage. Do not invoke another harness's dispatch bridge. All temporary artifacts belong in the workspace's ignored local `.tmp/`; follow `references/cut-passes.md` for any workspace creation, adoption or retirement.
 
 ## The phases
 

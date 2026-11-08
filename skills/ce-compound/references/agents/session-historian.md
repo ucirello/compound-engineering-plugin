@@ -31,7 +31,7 @@ These rules apply at all times during synthesis.
 - **Never invoke the Skill tool.** This agent runs in subagent context where Skill calls deadlock. The orchestrator has already done all extraction; you only synthesize.
 - **Never extract or reproduce tool call inputs/outputs verbatim.** Summarize what was attempted and what happened.
 - **Never include thinking or reasoning block content.** Claude Code thinking blocks are internal reasoning; Codex reasoning blocks are encrypted. Neither is actionable. The skeleton extractor already strips these. Do not report them if any survived.
-- **Never analyze the current session.** Its conversation history is already available to the caller; the orchestrator already excluded it from the dispatch payload.
+- **Never analyze your own current session.** In delegated Full capture, the passed source session is primary evidence and must not be excluded: synthesize its reduced supported-interface export supplied by the orchestrator. Exclude only the delegated run's own session. Never access OpenCode SQLite/internal storage or use legacy scripts as a substitute for OpenCode export.
 - **Never make claims about team dynamics or other people's work.** This is one person's session data.
 - **Never write any files.** Return text findings only.
 - **Report technical content, not personal content.** Sessions contain everything: credentials, frustration, half-formed opinions. Use judgment about what belongs in a technical summary and what does not.

@@ -41,7 +41,7 @@ Use the harness's tools to run the detector and wait for its output. A skill dri
 
 **Checkpoint:** Use checkpoint mode only when the user requests it or nothing can wake this agent. Run one tick, persist state, report, and print the exact host-rendered resume invocation. Say monitoring is paused. Never fake a loop with a foreground `sleep` or an unmanaged detached process.
 
-**Durability:** the in-session watch dies with the session. Re-invoking the skill resumes from disk, because `/tmp` persists across ticks. For an unattended multi-day watch, escalate to a durable scheduler: Grok's `scheduler_create --durable`, or cron running `<cli> exec '<host-rendered resume invocation>'`. A fresh headless run has no memory of this conversation, so persist consequential decisions to disk.
+**Durability:** the in-session watch dies with the session. Re-invoking the skill resumes from disk, because workspace-local `.tmp/rocketclaw/` persists across ticks. For an unattended multi-day watch, use an authorized durable scheduler or cron running `opencode run '<host-rendered resume invocation>'`. A fresh headless run has no conversation memory, so persist consequential decisions to disk.
 
 ## Choosing the wake source
 
@@ -157,7 +157,7 @@ State lives at `<scratch-root>/ce-babysit-pr/<host>-<owner>-<repo>-<pr>/state.js
   },
   "pr_chain": {
     "manager_status": "confirmed|absent|probe-error",
-    "manager_source": "gh-stack|graphql|null",
+    "manager_source": "native-jj|gh-stack|graphql|null",
     "relationship_status": "dependent|independent|probe-error",
     "target_position": 2,
     "target_needs_rebase": false,
@@ -220,7 +220,7 @@ Do not re-derive "required checks" or required reviews; GitHub already computes 
 
 ## Edge cases
 
-- **Managed stack:** trunk movement alone is not a reason to restack. The manager's `needsRebase` flag turns on for plain trunk drift, and GitHub already prices that into the target's mergeability against its parent base, so `stack_blocker` is null and the target may be ready whenever GitHub reports a certain `MERGEABLE`/`CLEAN`. `stack_blocker` is `target-needs-rebase` / `managed-freshness-unknown` only when the target is stale or of unknown freshness **and** GitHub does not clear it; that becomes `stack-blocked`. Never use `gh pr update-branch` or a local base merge on a managed target. The pre-push baseline and post-push upstack maintenance are in `references/stack.md`.
+- **Owned stack:** accept freshly verified explicit native JJ topology or existing manager membership, preserving which owns it. Native `needs_rebase` comes from exact parent/head ancestry, not a working-tree manager; existing-manager freshness remains read-only metadata. Trunk drift alone does not authorize restacking: GitHub's certain `MERGEABLE`/`CLEAN` read may clear target freshness, but never failed topology/ownership verification. Stale/unknown target freshness without that read becomes `target-needs-rebase` / `managed-freshness-unknown`; failed ownership probes remain `stack-blocked`. Never use `gh pr update-branch` or a local base merge on an owned stack target. `stack.md` owns exact scoped JJ propagation, partial-publication recovery, metadata preservation, and explicit final merge authority. Manual chains remain target-local.
 - **Manual dependency chain:** keep the requested PR as the target, qualify readiness relative to its parent, and report downstream impact. An eligible emitted `normal-base` item may still be repaired target-locally (`references/branch-currency.md`), but never rebase, rewrite, restack, or otherwise mutate its dependent branches. A target push may make open children stale; that is a residual only.
 - **External head change / force-push:** the head SHA moved under the loop. The snapshot clears SHA-scoped CI state automatically; just re-snapshot. Never clobber unrelated pushed work.
 - **PR closed or merged externally:** detected as `pr_state != "OPEN"` on any tick, which is a clean exit with a final status. The exception is a just-landed MERGED from this run's authorized `stack-land` land step, which is a layer transition (see Managed-stack continuation above), not a Terminal exit.

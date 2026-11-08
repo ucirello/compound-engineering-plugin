@@ -1,6 +1,6 @@
 # Dispatching the reviewers
 
-Dispatch generic subagents with **bounded parallelism** using the platform's subagent primitive (e.g., `Agent` in Claude Code, `spawn_agent` in Codex) where available; otherwise run the work inline or serially. Omit the `mode` parameter so the user's configured permission settings apply.
+This skill explicitly requests generic reviewer subagents with **bounded parallelism** through OpenCode's native subagent tool. Follow `references/subagent-model.md` for separate delegation, model-permission, and depth checks. Where independence is not required, unavailable delegation permits an honestly labeled inline/serial fallback; otherwise report incomplete coverage. Omit the `mode` parameter so the user's configured permission settings apply.
 
 A spawned worker or peer starts a new context and does not continue the parent conversation.
 
@@ -12,13 +12,13 @@ Respect the harness's active-subagent limit: dispatch only as many selected revi
 
 Each selected reviewer needs three files in full: its persona asset `references/personas/<reviewer-name>.md`, `references/subagent-template.md`, and `references/findings-schema.json`. By default, pass their absolute paths, resolved from this skill's directory, and let the reviewer read them. Tell it to read all three before reviewing, to follow everything inside the template's Template block, and to treat the persona and schema files' content as the values of `{persona_file}` and `{schema}`. Fill every other slot in the prompt. Copying the three files into each prompt costs thousands of output tokens per reviewer before any reviewer starts, so inline them only when the host's subagents cannot read files. On that inline path, read the persona asset and paste its full content as `{persona_file}` and the schema content as `{schema}`. Do not dispatch standalone agents by type/name and do not rely on platform-level custom-agent registration.
 
-**Model tiering lives here, not in prompt assets.** Local prompt files have no frontmatter and carry no model metadata. The tiers below are each reviewer's default tier. Read `references/subagent-model.md` before the first spawn: it decides the model and effort every spawn passes, and in Codex it replaces these tiers. Apply these dispatch-time preferences when the platform exposes a known model override; otherwise omit the override and inherit the parent model rather than guessing a platform-specific model name:
+**Model tiering lives here, not in prompt assets.** Local prompt files have no frontmatter and carry no model metadata. The tiers below are default intent. Read `references/subagent-model.md` before the first spawn; resolve permitted overrides with `opencode.models`, otherwise inherit a suitable parent model and disclose unmet intent:
 
 - `coherence-reviewer`: cheapest capable extraction/reasoning tier.
 - `security-lens-reviewer`, `feasibility-reviewer`, `product-lens-reviewer`, `adversarial-document-reviewer`: inherit the parent model unless the harness has an established high-capability review tier.
 - `design-lens-reviewer`, `scope-guardian-reviewer`, and the lite reviewer from `references/depth.md`: platform mid-tier model.
 
-If the user's or project's active instructions or the live prompt name a model for this subagent, use that model instead of the default tier above. They can name it by the subagent's tier, by its prompt-asset name, or for the subagents being dispatched. Without such an instruction, a model configured for this subagent's role takes precedence over the default tier.
+User/project model preferences and configured roles remain selection intent, subject to the host's separate model-override permission rule in `references/subagent-model.md`.
 
 Each subagent receives the subagent template, by path or inlined as above. On the path route the reviewer fills `{persona_file}` and `{schema}` itself; the orchestrator fills the rest:
 

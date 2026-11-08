@@ -2,20 +2,24 @@
 
 This rule decides the model and reasoning effort for every subagent this skill spawns: reviewers, the lite reviewer, checks, leaves, and validators. Read it before the first spawn. The orchestrator itself keeps the session model.
 
-**Default tier.** The step that spawns the subagent names its default tier. In Codex (the host whose subagent tool is `spawn_agent`), the default tier for every subagent is instead `gpt-6.1-terra` with reasoning effort `high`, passed as the spawn's `model` and `reasoning_effort`. That replaces the step's tier, including a step that would otherwise run the subagent on the session model or a cheaper tier.
+**Delegation, model permission, and depth are separate.** This skill explicitly requests native reviewer subagents. Under a user-OR-skill delegation rule that is sufficient; no second approval is needed. Respect unconditional higher-priority prohibitions and actual denials. Never bypass them through shell or another harness.
 
-If the user's or project's active instructions or the live prompt name a model for this subagent, use that model instead of the default tier above. They can name it by the subagent's tier, by its prompt-asset name, or for the subagents being dispatched. Without such an instruction, a model configured for this subagent's role takes precedence over the default tier.
+**Default tier.** Preserve the spawning step's tier as intent (including Codex's `gpt-6.1-terra` / `high` preference). Resolve permitted model names with `opencode.models`. If the host requires an explicit user model request before overriding a model, configuration or this skill alone does not authorize a `model` argument: omit it and use inherited reviewers where adequate. Disclose unmet tiers and required different-model coverage. Separate same-model reviewers are not cross-model evidence.
 
-**Configured model.** `review_subagents` in CE config is the model configured for this subagent's role. Read it under this rule:
+**Depth.** Verify effective OpenCode `experimental.subagent_depth` and available nesting capacity; permission does not imply capacity. Classify actual launch errors as depth/capacity, permission denial, model-argument rejection, or unavailable tool. Never evade limits or repeat denied calls. Use an allowed inline or parent-coordinator fallback only when its contract preserves required independence; otherwise report incomplete coverage.
+
+Subject to host model-override permission, a user-requested model takes precedence, then the configured role choice, then the default tier. Project preferences remain intent, not permission to override host policy.
+
+**Configured model.** `review_subagents` in RocketClaw config is the model configured for this subagent's role. Read it under this rule:
 
 <!-- ce-config-layers:start -->
-**Resolve ordinary CE yaml keys from the two repo files.**
+**Resolve ordinary RocketClaw yaml keys from the two repo files.**
 
-- **Read** `<repo-root>/.compound-engineering/config.local.yaml`, then `config.yaml` (`<repo-root>` = `git rev-parse --show-toplevel`). Missing files are skipped. Gitignore does not change resolution.
+- **Read** `<repo-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<repo-root>` = `jj workspace root`). Missing files are skipped. Ignore rules do not change resolution.
 - **Win** with the first active (non-commented) value. For scalars, empty is unset; an invalid value continues to the next layer, then the skill default. For lists and maps, a present key — including an empty list or map — replaces the whole key.
 - **Do not** use this rule for `docs_root` — that key is `config.yaml` only.
 <!-- ce-config-layers:end -->
 
 The key maps a harness name (`codex`, `claude`, `grok`, `cursor`, `opencode`, `antigravity`) to an entry with an optional `model` and an optional `effort`. Only the entry for the current harness applies, and it applies to every subagent this skill spawns. A field the entry leaves out keeps the default tier's value. A field that is not a string is ignored. Pass an effort only when the spawn tool takes one; otherwise say in Coverage that the configured effort was not applied.
 
-**Refused model.** When the spawn is refused because the requested model or effort is not available, spawn that subagent once more with no model or effort override, so it inherits the session model. Do not try a different model. Say in Coverage which model was refused and, when the error lists them, which models the host offers. A spawn refused because the host is at its active-agent limit is not this case; the spawning step's own capacity handling covers it.
+**Refused model.** Only an actual unavailable-model error permits one inherited-model attempt, where policy and the review contract allow it. A policy denial is not model unavailability: do not retry it. Report requested and actual model, error category, and unmet independence or tier requirements in Coverage. Capacity handling belongs to the spawning step.

@@ -8,7 +8,7 @@ When `ce-work` cannot re-read the reference file that defines its return after i
 
 ## What each route outcome means
 
-`ce-work` discloses an unavailable route once and continues natively under both `prefer` and `require` (its `cross-model-execution.md` defines that behavior), so LFG decides the route outcome from the return fields rather than expecting `ce-work` to refuse. A return whose `implementation_engine_binding.mode` is `require` and whose `actual_route` differs from `requested_route` stops the pipeline as blocked, reporting `requested_route`, `actual_route`, and `fallback_reason`; `require` is the caller's instruction, and work done natively against it does not ship. A completed `prefer` fallback may continue to step 3 exactly once after prominently disclosing its requested-versus-actual route/model and `fallback_reason` to the user; fallback is not a reason to invoke implementation again.
+`ce-work` resolves configured/requested routes with `opencode.models` and native subagents, preserving legacy route labels as intent rather than launching another harness. An unavailable requirement-strength route must block; a permission denial must not trigger an evasion or repeated call. LFG also checks the returned evidence: a return whose `implementation_engine_binding.mode` is `require` and whose actual route/model fails the requested requirement stops as blocked, reporting `requested_route`, `actual_route`, and `fallback_reason`. A completed permitted `prefer` fallback may continue to step 3 exactly once after prominently disclosing its requested-versus-actual route/model and `fallback_reason`; fallback is not a reason to invoke implementation again. Required cross-model coverage that did not run remains incomplete.
 
 ## What `status: complete` must carry
 
@@ -18,7 +18,7 @@ Also require the fields that record which route actually ran: `implementation_en
 
 ## The work must be committed
 
-`ce-code-review` leaves out untracked files, so files this run added go unreviewed until they are committed. Before step 3, confirm the return's `changed_files` are committed. If any are not, commit those files and continue. Do not stop for this.
+Before step 3, confirm the return's `changed_files` are tracked in JJ and included in the implementation change. Inspect `jj status` and `jj diff` from the absolute workspace root, including ignored/untracked files that were not automatically tracked. Explicitly track only intended new files with `jj file track -- <owned-paths>` when necessary. If the implementation still needs a described checkpoint, read `message-standards.md` and commit only those files using its dynamically composed message; preserve unrelated edits. Do not stop merely because a checkpoint is needed.
 
 ## Verification evidence
 

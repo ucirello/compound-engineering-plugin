@@ -18,7 +18,7 @@ PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c 
 "$PY" "$SKILL_DIR/scripts/config-refresh.py" draft --layer tracked
 ```
 
-- `draft --layer tracked|local [--changes FILE]` writes a rebuilt copy to a temp directory and prints JSON. The JSON includes the draft and changes paths, the changes it recorded, each retired and unrecognized setting, the team comments it could not tie to a setting, the verification result, and a diff. `action: none` means the file is already current.
+- `draft --layer tracked|local [--changes FILE]` writes a rebuilt copy under `<workspace-root>/.tmp/rocketclaw/config-refresh/` and prints JSON. Keep decision files there too. The JSON includes the draft and changes paths, the changes it recorded, each retired and unrecognized setting, the team comments it could not tie to a setting, the verification result, and a diff. `action: none` means the file is already current.
 - `verify --layer L --draft D --changes C` re-reads both files and names the first difference the changes do not explain.
 - `apply --layer L --draft D --changes C` verifies again, then replaces the file.
 

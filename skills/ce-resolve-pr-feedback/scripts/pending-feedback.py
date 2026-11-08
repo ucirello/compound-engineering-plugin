@@ -186,7 +186,10 @@ def write_record(path: Path, raw: bytes, *, checkpoint: bool) -> None:
     if checkpoint:
         temporary = None
         try:
-            with tempfile.NamedTemporaryFile(dir=path.parent, prefix=".pending-feedback-", delete=False) as temp:
+            root = subprocess.run(["jj", "workspace", "root"], capture_output=True, text=True, check=True)
+            temporary_dir = Path(root.stdout.strip()).resolve() / ".tmp"
+            temporary_dir.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(dir=temporary_dir, prefix=".pending-feedback-", delete=False) as temp:
                 temporary = Path(temp.name)
                 temp.write(raw)
                 temp.flush()
@@ -205,9 +208,14 @@ def write_record(path: Path, raw: bytes, *, checkpoint: bool) -> None:
 
 
 def github_json(host: str, endpoint: str) -> dict:
+    root_result = subprocess.run(["jj", "workspace", "root"], capture_output=True, text=True, check=True)
+    workspace_root = Path(root_result.stdout.strip()).resolve()
+    git_root = subprocess.run(["jj", "git", "root"], cwd=workspace_root,
+                              capture_output=True, text=True, check=True).stdout.strip()
+    environment = dict(os.environ, GIT_DIR=git_root)
     result = subprocess.run(
         ["gh", "api", "--hostname", host, "--method", "GET", endpoint],
-        capture_output=True, text=True, check=False,
+        cwd=workspace_root, env=environment, capture_output=True, text=True, check=False,
     )
     require(result.returncode == 0, result.stderr.strip() or f"GitHub GET failed: {endpoint}")
     return object_value(json.loads(result.stdout), "GitHub response")

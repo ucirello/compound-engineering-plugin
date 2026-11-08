@@ -50,22 +50,24 @@ Enter non-interactive mode when **either** holds: the arguments you were invoked
 Resolve `<root>` when you first compose a `<root>/solutions/` path, and pass a subagent the resolved path rather than the config.
 
 <!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only (`<repo-root>` = `jj workspace root`). Run JJ from the target workspace's absolute root; see https://docs.jj-vcs.dev/latest/cli-reference/. Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
 - **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
 
 ## Write boundary
 
-**Only the orchestrator writes product files.** Phase 1 subagents write to per-run scratch only, and never touch `<root>/`, project instruction files, or any other tracked path.
+**Only the orchestrator writes product files.** The fresh delegated Full run is the orchestrator for its one capture, not a Phase 1 research worker, and retains the normal non-interactive write boundary. Phase 1 subagents write to per-run scratch only, and never touch `<root>/`, project instruction files, or any other tracked path.
 
-The orchestrator writes what `references/form.md` chooses, in every mode and without asking: at most one added test, added or tightened lint rule with any baseline entries it needs, or condition in an existing `CODING_STANDARDS.md`, and at most one learning under `<root>/solutions/`. It never changes product code. It also writes two maintenance side effects that their own step describes: `CONCEPTS.md` during vocabulary capture, and — **only in interactive Full mode after consent** — a small discoverability line in a project instruction file. Two further writes exist **only in interactive Full mode when the user selects them at the assembly destination step**: a rule file inside a writable declared Compound Pack, and the `packs:` entry appended to `.compound-engineering/config.yaml`. An instruction file is only ever edited, never created. Nothing else in the tree is written. Edits to *other* docs belong to a refresh, which a capture recommends or runs with a narrow scope.
+The orchestrator writes what `references/form.md` chooses, in every mode and without asking: at most one added test, added or tightened lint rule with any baseline entries it needs, or condition in an existing `CODING_STANDARDS.md`, and at most one learning under `<root>/solutions/`. It never changes product code. It also writes two maintenance side effects that their own step describes: `CONCEPTS.md` during vocabulary capture, and — **only in interactive Full mode after consent** — a small discoverability line in a project instruction file. Two further writes exist **only in interactive Full mode when the user selects them at the assembly destination step**: a rule file inside a writable declared Compound Pack, and the `packs:` entry appended to `.rocketclaw/config.yaml`. An instruction file is only ever edited, never created. Nothing else in the tree is written. Edits to *other* docs belong to a refresh, which a capture recommends or runs with a narrow scope.
 
 ## Full Mode
 
 Run these in order. Each reference is a required read at the step that names it.
+
+**Delegated-source bootstrap:** when passed a source session ID, first read the delegated evidence section of `references/session-history.md`, export under local `.tmp/`, and reduce before reading or starting research/classification/drafting. The passed source is primary evidence; only your own session is excluded. The later bounded prior-session probe is separate.
 
 1. **Research** — read `references/research.md`.
 2. **Session history** — read `references/session-history.md`, and start it *after* dispatching the Related Docs Finder so it overlaps your drafting rather than serializing.
@@ -73,5 +75,7 @@ Run these in order. Each reference is a required read at the step that names it.
 4. **Refresh check and discoverability** — read `references/refresh-and-discoverability.md`.
 5. **Optional enhancement** — read `references/enhancement.md`. Interactive only.
 6. **Report** — read `references/report.md` for the report shape your mode must emit and how the skill ends.
+
+**Context pressure:** follow `references/modes.md`: delegate exactly one fresh native `ce-compound mode:non-interactive depth:full` run, passing the source `$OPENCODE_SESSION_ID` read with shell, known title, absolute `jj workspace root`, any existing learning-doc path, and one-sentence topic without pre-digest. The child exports and reduces source evidence via `references/session-history.md`. Relay its report/doc path and offer only its unapplied interactive actions with consent; no second Full pass or parent doc re-edit. Lightweight is the context-pressure fallback only after actual unavailable delegation, with reason and same-session retry advice. Explicit non-interactive depth tokens are unchanged.
 
 **Lightweight Mode** replaces steps 1-6 with a single pass; read `references/lightweight.md`, which defines its own completion output for both modes.

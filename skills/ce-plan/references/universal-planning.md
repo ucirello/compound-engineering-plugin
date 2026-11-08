@@ -82,9 +82,9 @@ Evaluate two things before planning:
 | Research need | Signals | Action |
 |--------------|---------|--------|
 | **None** | Generic, timeless, or conceptual plan (study curriculum methodology, project management approach, personal goal breakdown) | Skip research. Model knowledge is sufficient. After structuring the plan, offer: "I based this on general knowledge. Want me to search for [specific thing research would improve]?" — e.g., sourced recipes, current product recommendations, expert frameworks. Only if the user accepts. |
-| **Recommended** | Plan references specific locations, venues, dates, prices, schedules, seasonal availability, or current events — anything where stale information would break the plan (closed restaurants, changed prices, cancelled events, wrong seasonal dates). | Research before planning. Decompose into 2-5 focused research questions and dispatch parallel web searches. In Claude Code, use the Agent tool with `model: "haiku"` for each search to reduce cost. Collate findings before structuring the plan. |
+| **Recommended** | Plan references specific locations, venues, dates, prices, schedules, seasonal availability, or current events — anything where stale information would break the plan (closed restaurants, changed prices, cancelled events, wrong seasonal dates). | Research before planning. Decompose into 2-5 focused research questions and dispatch parallel native subagent web searches. The desired economical tier is haiku; resolve availability with `opencode.models` and apply the permissions below. Collate findings before structuring the plan. |
 
-If the user's or project's active instructions or the live prompt name a model for this subagent, use that model instead of the default tier above. They can name it by the subagent's tier, by its prompt-asset name, or for the subagents being dispatched. Without such an instruction, a model configured for this subagent's role takes precedence over the default tier.
+This skill explicitly requests these research subagents, satisfying a user-OR-skill delegation rule without second approval, but never an unconditional prohibition. Model intent precedence is user/project, configured role, then default tier. Model-override permission remains separate: if an explicit user model request is required, omit `model` for config/skill-only choices and use a suitable inherited model, disclosing unmet intent. Classify actual denial, missing-tool, model-argument, depth/capacity and runtime failures separately; never retry denied calls or bypass depth with another harness. Use inline/serial research if permitted, and report any required independence or different-model coverage as incomplete rather than claiming it ran.
 
 When research is recommended, do it — don't just offer. Stale recommendations (closed restaurants, rethemed attractions, outdated prices) are worse than no recommendations. The user invoked `ce-plan` because they want a good plan, not a disclaimer about training data.
 
@@ -158,7 +158,7 @@ After structuring the plan, ask the user how they want to receive it using the h
 1. **Save to disk** — Write the plan as a markdown file. Ask where:
    - `<root>/plans/` (only show if this directory exists)
    - Current working directory
-   - `/tmp`
+   - Local `.tmp/`
    - A custom path
    - Use filename convention: `YYYY-MM-DD-HHMM-<descriptive-name>-plan.md`, taking `HHMM` from the local wall-clock time at write; reserve the path atomically and, on collision, retry with the smallest available numeric suffix before the extension rather than overwriting
    - Start the document with a `# Title` heading, followed by `Created: YYYY-MM-DD` on the next line. No YAML frontmatter.

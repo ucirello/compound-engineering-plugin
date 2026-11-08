@@ -7,9 +7,9 @@ Read this when Phase 2.45 runs. The doc just written becomes permanent, trusted 
 Two claim categories verify against different trees:
 
 - **Code-behavior claims** (enum values, status semantics, limits, defaults) verify against the **local working tree**. They describe what this session's work produced and verified here.
-- **Merge-state claims** ("fixed in #1608", "landed", "shipped") verify against **remote truth**. The checkout may predate a merge, so `gh pr view` (or the tracker equivalent) is primary and local git reachability is only the fallback. The script's `INFO: worktree is N commits behind …` line tells you how much to distrust the local tree for this category.
+- **Merge-state claims** ("fixed in #1608", "landed", "shipped") verify against **remote truth**. The checkout may predate a merge, so workspace-scoped `GIT_DIR=$(jj git root) gh pr view` (or the tracker equivalent) is primary and local JJ ancestry is only the fallback. The script's `INFO: worktree is N commits behind …` line tells you how much to distrust the local tree for this category.
 
-Before running the script, optionally run `git fetch --quiet` (best-effort; skip silently on failure or offline, because the network is never a correctness dependency). When remote state cannot be checked at all, keep the claim, add an as-of qualifier ("as of this writing"), and record degraded verification in the run report.
+Before running the script, optionally run `(cd "$workspace_root" && jj git fetch)` (best-effort; skip silently on failure or offline, because the network is never a correctness dependency). Run all JJ commands from the target absolute workspace root; repository-scoped `gh` uses `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh ...)`. When remote state cannot be checked at all, keep the claim, add an as-of qualifier ("as of this writing"), and record degraded verification in the run report.
 
 ## Step 1: Adjudicate the mechanical flags
 
@@ -34,16 +34,16 @@ After any body edit from this step or Step 2, re-run the script until it reports
 
 ## Step 2: Semantic validator subagent (Full and non-interactive; skipped in lightweight)
 
-Dispatch **one generic read-only subagent** covering the written solution doc plus any `CONCEPTS.md` entries added or edited this run. Phase 2.4's entries are claims too; a glossary entry written from a session-level summary is exactly how wrong semantics enter the vocabulary. Use the same mid-tier model class as other reviewer subagents when the platform exposes one.
+Dispatch **one native generic read-only subagent** covering the written solution doc plus any `CONCEPTS.md` entries added or edited this run. Phase 2.4's entries are claims too; a glossary entry written from a session-level summary is exactly how wrong semantics enter the vocabulary. The same mid-tier model class as other reviewer subagents remains intent, subject to the model-override permission below.
 
-If the user's or project's active instructions or the live prompt name a model for this subagent, use that model instead of the default tier above. They can name it by the subagent's tier, by its prompt-asset name, or for the subagents being dispatched. Without such an instruction, a model configured for this subagent's role takes precedence over the default tier.
+Resolve configured tiers and model choices as intent with `opencode.models`. This skill explicitly requests the reviewer, satisfying user-OR-skill delegation permission, not a higher-priority prohibition. Only pass a model override when the host permits it and the user explicitly requested that model; otherwise use a suitable inherited model and disclose any unmet route or independence requirement. Same-model review is not cross-model evidence. Classify actual errors as permission, missing tool, model argument, or nesting/capacity; never repeat denied operations or bypass depth through another harness. Report incomplete coverage if required independent review cannot run.
 
 Build its prompt from this template:
 
 ```
 You are a grounding validator for documentation about to enter a permanent
 knowledge store. You are read-only: never edit files. Inspect with Read,
-Grep, Glob, git (non-mutating), and gh when available.
+Native content search, file discovery, non-mutating JJ, and repository-scoped gh with `GIT_DIR=$(jj git root)` when available.
 
 Inputs: the doc content below, the CONCEPTS.md entries below (if any), and
 this staleness context: <INFO line from the mechanical script, or "none">.

@@ -20,4 +20,4 @@ Every investigation subagent's prompt carries these three clauses verbatim, plus
 
 Two subagent roles: **investigation** subagents are read-only and return evidence + a recommended action; **replacement** subagents write successor docs (one per Replace or Split candidate, run one at a time, sequentially). The orchestrator merges results, resolves contradictions, and performs all deletions and metadata edits centrally.
 
-Classify a rejected subagent dispatch by whether an agent launched: correct a pre-launch argument rejection once, leave capacity-limited work queued, and if another launch failure survives correction, perform that pass in the orchestrator with the same inputs and report the substitution.
+Follow `references/research.md` native dispatch permission/model/depth rules. Classify actual errors before fallback; never retry denials or bypass nesting limits. An allowed inline non-independent pass preserves the same inputs and reports substitution; any unmet independence or coverage remains explicitly incomplete.

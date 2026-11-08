@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bring a repo's Compound Engineering config files up to date with the bundled template.
+"""Bring a repo's RocketClaw config files up to date with the bundled template.
 
 Subcommands (each prints one JSON object on stdout):
 
@@ -14,7 +14,7 @@ Subcommands (each prints one JSON object on stdout):
                              verify again, then replace the layer's file with the draft
 
 L is `tracked` (config.yaml) or `local` (config.local.yaml). `--repo DIR` overrides
-the repository root (default: the git top level of the working directory).
+the repository root (default: the JJ workspace root of the working directory).
 
 Exit 0 when the command did its job (status always; draft drafted or found nothing
 to do; verify and apply passed). Exit 1 when the file is refused, a change is not
@@ -66,13 +66,13 @@ VERSION_LINE = re.compile(r"^# ce-config-template-version:(.*)$")
 ANCHOR_OR_ALIAS = re.compile(r"(?:^|:\s+|-\s+|[\[{,]\s*)[&*][A-Za-z0-9_-]")
 BLOCK_SCALAR = re.compile(r"(?:^|:\s+|-\s+)[|>][-+0-9]*\s*$")
 LEGACY_LOCAL_MARKERS = (
-    "# Compound Engineering -- local config",
-    "# Copy to .compound-engineering/config.local.yaml",
+    "# RocketClaw -- local config",
+    "# Copy to .rocketclaw/config.local.yaml",
 )
 
 MARKER = "# --- Kept from the previous file: settings this plugin does not recognize, and notes ---"
 LOCAL_HEADER = [
-    "# Compound Engineering -- checkout-local overrides. Keep this file gitignored.",
+    "# RocketClaw -- checkout-local overrides. Keep this file gitignored.",
     "# A setting here wins over config.yaml for this checkout; docs_root is read",
     "# only from config.yaml. config.example.yaml lists every setting.",
 ]
@@ -772,14 +772,14 @@ def repo_root(arg):
     if arg:
         return os.path.abspath(arg)
     try:
-        out = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, timeout=10)
+        out = subprocess.run(["jj", "workspace", "root"], cwd=os.path.abspath(os.getcwd()), capture_output=True, text=True, timeout=10)
         if out.returncode == 0 and out.stdout.strip():
             return out.stdout.strip()
     except (OSError, subprocess.SubprocessError):
         pass
     path = os.getcwd()
     while True:
-        if os.path.exists(os.path.join(path, ".git")):
+        if os.path.exists(os.path.join(path, ".jj")):
             return path
         parent = os.path.dirname(path)
         if parent == path:
@@ -788,7 +788,7 @@ def repo_root(arg):
 
 
 def layer_path(repo, layer):
-    return os.path.join(repo, ".compound-engineering", LAYER_FILES[layer])
+    return os.path.join(repo, ".rocketclaw", LAYER_FILES[layer])
 
 
 def emit(payload, code=0):
@@ -862,7 +862,11 @@ def cmd_draft(bundle, repo, args):
         return emit({"ok": True, "layer": layer, "state": state, "action": "none", "keys": report})
 
     lines = render(bundle, layer, original, changes)
-    workdir = tempfile.mkdtemp(prefix=DRAFT_PREFIX)
+    scratch = os.path.join(repo, ".tmp", "rocketclaw", "config-refresh")
+    if os.path.realpath(scratch) != os.path.join(os.path.realpath(repo), ".tmp", "rocketclaw", "config-refresh"):
+        return emit({"ok": False, "refused": "temporary path contains a symlink"}, 1)
+    os.makedirs(scratch, exist_ok=True)
+    workdir = tempfile.mkdtemp(prefix=DRAFT_PREFIX, dir=scratch)
     draft_path = os.path.join(workdir, LAYER_FILES[layer])
     changes_path = os.path.join(workdir, "changes.json")
     text = to_text(original, lines)
@@ -914,7 +918,9 @@ def remove_draft_files(draft_path, changes_path):
     """Delete only the two files `draft` wrote, then their directory if it is now empty."""
     workdir = os.path.dirname(os.path.abspath(draft_path))
     if not (os.path.basename(workdir).startswith(DRAFT_PREFIX)
-            and os.path.dirname(os.path.realpath(workdir)) == os.path.realpath(tempfile.gettempdir())):
+            and os.path.basename(os.path.dirname(os.path.realpath(workdir))) == "config-refresh"
+            and os.path.basename(os.path.dirname(os.path.dirname(os.path.realpath(workdir)))) == "rocketclaw"
+            and os.path.basename(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(workdir))))) == ".tmp"):
         return
     for path in (draft_path, changes_path):
         if os.path.dirname(os.path.abspath(path)) == workdir and os.path.basename(path) in (
@@ -938,7 +944,11 @@ def cmd_apply(bundle, repo, args):
         return emit({"ok": False, "layer": args.layer, "applied": False, "verify": problem}, 1)
     with open(os.path.abspath(args.draft), "rb") as fh:
         data = fh.read()
-    fd, tmp = tempfile.mkstemp(prefix=".refresh-", dir=os.path.dirname(path))
+    scratch = os.path.join(repo, ".tmp", "rocketclaw", "config-refresh")
+    if os.path.realpath(scratch) != os.path.join(os.path.realpath(repo), ".tmp", "rocketclaw", "config-refresh"):
+        return emit({"ok": False, "applied": False, "verify": "temporary path contains a symlink"}, 1)
+    os.makedirs(scratch, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix=".refresh-", dir=scratch)
     try:
         with os.fdopen(fd, "wb") as fh:
             fh.write(data)
@@ -954,7 +964,7 @@ def cmd_apply(bundle, repo, args):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Refresh Compound Engineering config files.")
+    parser = argparse.ArgumentParser(description="Refresh RocketClaw config files.")
     sub = parser.add_subparsers(dest="command", required=True)
     for name in ("status", "draft", "verify", "apply"):
         cmd = sub.add_parser(name)
@@ -967,7 +977,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     repo = repo_root(args.repo)
     if repo is None:
-        return emit({"ok": False, "error": "not inside a git repository"}, 1)
+        return emit({"ok": False, "error": "not inside a JJ repositorysitory"}, 1)
     bundle = Bundle()
     return {"status": cmd_status, "draft": cmd_draft, "verify": cmd_verify, "apply": cmd_apply}[args.command](
         bundle, repo, args)

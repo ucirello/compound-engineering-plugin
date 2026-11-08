@@ -2,12 +2,14 @@
 
 Which orchestration shape fits each phase, and what breaks when you pick the wrong one.
 
-Two primitives are assumed, both platform-neutral:
+Use native OpenCode subagents for independent contexts and shell for deterministic local work, never another harness or dispatch bridge. Two primitives are assumed:
 
 - **A dispatch primitive** that launches an independent agent with its own context window and returns a result to the orchestrator (in one host it is a subagent-spawning tool; in another a job runner). Only two properties matter: fresh context per agent, and a result the orchestrator can read.
-- **A concurrency cap** the host enforces on how many agents run at once (often around 10). Dispatches above the cap queue rather than fail, so a 31-unit fan-out is three waves, not one. Plan the wave count; do not assume flat cost.
+- **A concurrency cap** the host enforces on how many agents run at once. Respect its actual queueing or capacity-error behavior and plan bounded waves; do not assume flat cost or automatic queueing.
 
-Classify a rejected dispatch by whether an agent launched. Correct a pre-launch argument rejection once, and leave capacity-limited work queued. Any other launch failure follows the phase's own failure direction. In the corpus audit, the proposal and defense contexts must be independent for the audit to mean anything, so a launch failure there is a blocker: stop the audit rather than running the missing side inline.
+This skill explicitly requests the agents below: under a user-OR-skill delegation rule that satisfies permission without second approval. An unconditional prohibition, missing tool, or actual denial still controls; never retry a denied call or bypass it via shell or another harness. Resolve permitted model choices with `opencode.models`, preserving configured models and tiers as intent. Delegation permission does not grant model-override permission: without a permitted explicit user model request, omit the optional model argument and use inherited reviewers only when adequate. Separate same-model contexts are independent reviewers, not cross-model verification; report required but unavailable tiers or cross-model coverage as incomplete.
+
+Classify actual errors separately: permission denial, model-argument rejection, missing tool, nesting-depth exhaustion, and concurrency capacity. Correct a non-denied pre-launch argument error once only when allowed; queue work only if the host supports queuing. Do not assume permission supplies remaining nesting depth or evade its limit. Any launch failure follows the phase's own failure direction. In the corpus audit, proposal and defense contexts must be independent, so unavailable independent dispatch is a blocker: stop the audit rather than running the missing side inline.
 
 ## The shapes
 

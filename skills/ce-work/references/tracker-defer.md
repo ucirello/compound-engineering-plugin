@@ -2,6 +2,8 @@
 
 This reference covers how residual actionable findings are filed in the project's tracker. Loaded by caller workflows (for example `ce-work` Residual Work Gate, or `lfg` residual handling), not by `ce-code-review`, which stops after the report.
 
+For every repository-scoped `gh` probe/create/update below, resolve the target absolute JJ workspace root and run `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh ...)`. Keep temporary ticket bodies/error logs under that workspace's local `.tmp/`; never directly execute Git or infer another repository from ambient environment.
+
 ---
 
 ## Execution Modes

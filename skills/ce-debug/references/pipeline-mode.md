@@ -11,9 +11,41 @@ Being invoked by an orchestrator is **not** itself authorization. You mutate und
 - **Phase 0 (triage):** If an issue fetch fails, do not ask the user to paste content. Proceed with the input you have and note the gap in the return. Do not ask "what have you tried"; infer prior attempts from the input.
 - **Phase 1 (reproduce):** When reproduction cannot run in this environment (a CI- or production-only failure), do not ask for access, artifacts, or a go-ahead. Continue on the best evidence already in reach: the failing job's logs, captured artifacts, the seeded log tails. If a gap-free root cause is still established, the ordinary statuses apply. If not, return `needs-human` with a `decision_context` naming what reproduction requires and what was tried.
 - **Phase 2 (root cause + fix gate):** There is no "Fix it now / Diagnosis only" question. The caller invoked this skill to fix, so **fix by default, but only convergent fixes** (see the boundary below). A divergent fix is deferred, not applied.
-- **Phase 3 (workspace/branch):** Operate on the current branch. The orchestrator decides branch context, so never prompt to create a branch and never prompt about uncommitted work. Commit the fix using the project's commit message conventions already in context; otherwise follow the recent log pattern, then use conventional commits (`fix(ci): <summary>` for a CI failure, `fix: <summary>` otherwise). User override wins. Read the branch's PR state immediately before pushing. If the branch has a PR and it is merged or closed, do not push and return `fixed-not-pushed` with that reason; otherwise push the fix. Never weaken, skip, or mock a failing assertion to make it pass. Repair the real issue or defer.
+- **Phase 3 (workspace/bookmark):** Operate on the caller's verified PR bookmark. The orchestrator decides context, so never prompt to create a bookmark or about existing work; uncertain/conflicted or out-of-scope work instead takes the safe deferred/needs-human path without discard. Commit only fix-owned paths with `jj commit <fix-owned-paths> -m "<message composed from the standards below>"` from the absolute target workspace root. Preserve all other work. Record the resulting immutable fix commit ID, advance only the authorized PR bookmark to it, and push only that bookmark with `jj git push --bookmark <verified-PR-bookmark>`. Read its PR state immediately before pushing using `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh ...)`. If merged or closed, do not push and return `fixed-not-pushed` with that reason. Never weaken, skip, or mock a failing assertion to make it pass. Repair the real issue or defer.
+
 - **Phase 4 (handoff):** No prompt. Emit the structured return below as the last thing this skill writes, then skip the compound offer. The return ends this skill, not the turn. The caller runs in this same session, and its next step follows the return.
 - **Post-fix simplify and review steps:** Skip them in pipeline to bound cost and nesting depth; the orchestrator scopes review at its own level. Keep the Phase 3 tests.
+
+### Message composition standards
+
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards.
+
+Before composing, read the full Go guide and compare several recent full subjects AND bodies from the actual task's verified history head: `(cd "$workspace_root" && jj log --no-graph -r '::<verified-history-head>' -n 10 -T 'description ++ "\n"')`. Resolve that head from the actual PR/task, including an empty `@` above it; do not assume a default remote bookmark or substitute this style sample for any reviewed base/head range. Determine repository prefixes, casing, tense, subject/body separation, wrapping and issue-reference placement. Repository-local instructions and observed syntax always win; apply compatible Go clarity/structure guidance within that pattern. Without history, use explicit project/user instructions and Go guidance, never invent precedent. Describe the actual fix and CI failure where applicable; preserve required issue references without imposing fixed syntax.
+
+The following verbatim Go excerpts are source guidance, not a mandatory repository template:
+
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+
+```text
+net/http: handle foo when bar
+
+[longer description here in the body]
+
+Fixes #12345
+```
+
+> Notably, for the subject (the first line of description):
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+
+> For the body (the rest of the description):
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
 
 ## The fix-authority boundary: convergent vs divergent
 

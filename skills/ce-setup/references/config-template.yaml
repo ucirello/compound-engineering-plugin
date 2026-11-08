@@ -1,18 +1,18 @@
-# Compound Engineering -- repo config
+# RocketClaw -- repo config
 # ce-config-template-version: 1
-# Copy to .compound-engineering/config.yaml in your project root (team defaults).
-# Optional override: .compound-engineering/config.local.yaml, same keys.
+# Copy to .rocketclaw/config.yaml in your project root (team defaults).
+# Optional override: .rocketclaw/config.local.yaml, same keys.
 # Ordinary keys: local wins when set, then this file, then the skill default.
 # docs_root is repo layout -- set it only here; local docs_root is ignored.
 # All settings are optional. Invalid ordinary values continue to the next layer.
 # docs_root fails closed on an unusable value.
 
 # --- Artifact root ---
-# Relocate every CE-written artifact folder (solutions, plans, ideation,
+# Relocate every RocketClaw-written artifact folder (solutions, plans, ideation,
 # explainers, pulse-reports, dogfood-reports,
 # feedback-sweep, personas) under one repo-relative root. Unset -> `docs`,
-# byte-identical to today. A configured root becomes the sole location CE reads
-# and writes; CE never falls back to reading `docs/`.
+# byte-identical to today. A configured root becomes the sole location RocketClaw reads
+# and writes; RocketClaw never falls back to reading `docs/`.
 #
 # Set this only in this tracked file so every clone and worktree share one
 # artifact tree. A docs_root in config.local.yaml is ignored.
@@ -20,10 +20,10 @@
 # The value must be a repo-relative directory whose real (symlink-resolved) path
 # stays inside the repo, is not the repo root itself, and is not under `.git/`.
 # Unlike every other setting here, an unusable value does NOT fall through to the
-# default -- CE stops with an error so a typo can't silently write artifacts into
+# default -- RocketClaw stops with an error so a typo can't silently write artifacts into
 # the location you configured away from. `/ce-setup` reports the resolved root.
 
-# docs_root: .compound-engineering/artifacts   # repo-relative dir (default: docs)
+# docs_root: .rocketclaw/artifacts   # repo-relative dir (default: docs)
 
 # --- Product pulse ---
 # Settings written by /ce-product-pulse first-run interview. Re-run the skill with
@@ -106,6 +106,13 @@
 # plan_skip_scoping_confirm: true   # true | false (default: false)
 
 # --- Cross-model review policy and preference ---
+# Legacy harness keys express provider/model intent, not executable routes.
+# Resolve choices with opencode.models and execute via native subagents/shell;
+# never invoke a harness dispatcher or ACP adapter. Preserve models and tiers.
+# Delegation, model-override permission, and nesting capacity are separate: omit
+# model arguments unless user model selection is permitted; use suitable inherited
+# reviewers and disclose unmet routes/tiers. Same-model reviewers do not prove
+# cross-model coverage. Never retry denials or bypass limits via another harness.
 # `cross_model_review_mode` decides whether ce-doc-review and ce-code-review may
 # automatically send review content (diffs, documents) to a second model
 # provider when their conditional cross-model pass activates. `off` skips that
@@ -143,7 +150,7 @@
 # left out keeps the skill default. Defaults: in Codex, gpt-6.1-terra at high
 # for every subagent; elsewhere, each reviewer's own tier. A model named in
 # conversation or in the project's instructions wins. A model the host refuses
-# falls back once to the session model, and the review says so.
+# is not retried after denial; suitable inherited-model coverage is disclosed.
 
 # review_subagents:
 #   codex:
@@ -201,7 +208,7 @@
 #   - { type: github-issues, id: gh-issues, target: owner/repo, ack_action: "feedback:ack", closeout_action: "feedback:resolved", sensitive: false, approved: true }
 
 # Sweep-owned settings.
-# sweep_state_path: docs/feedback-sweep/state.yml   # committed (multi-agent) or /tmp path (solo)
+# sweep_state_path: docs/feedback-sweep/state.yml   # committed (multi-agent) or .tmp/ path (solo)
 # sweep_ack_cap: 25                                 # max acks per source per run before the circuit breaker
 # sweep_lease_ttl_minutes: 60                       # single-writer lease staleness threshold
 # sweep_shared_branch: false                        # true: push-gated lease for shared-docs-branch topology

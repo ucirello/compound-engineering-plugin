@@ -50,7 +50,7 @@ For each affected route, use the selected driver to navigate and capture fresh r
 
 **Test critical interactions:** derive locators or element references from the selected driver's latest inspected state, perform the click/fill/press action, then inspect the resulting state. Do not guess selectors or reuse stale references.
 
-**Take screenshots:** capture viewport and full-page evidence when the selected driver supports it. Materialize screenshots as local artifacts when a later workflow or report needs file paths; otherwise in-app evidence is sufficient.
+**Take screenshots:** capture viewport and full-page evidence when the selected driver supports it. Materialize screenshots under the target workspace's local `.tmp/` when a later workflow or report needs file paths; otherwise in-app evidence is sufficient. Keep all temporary artifacts and error output under that local `.tmp/`, and ensure `.tmp/` is ignored in the target project's `.gitignore`.
 
 ## Human verification (when required)
 

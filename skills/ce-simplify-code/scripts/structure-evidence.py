@@ -40,9 +40,9 @@ JS_IMPORT = re.compile(
 PY_IMPORT = re.compile(r"^\s*(?:from\s+([.\w]+)\s+import\s+(\([^)]*\)|[^\n]*)|import\s+([\w.]+))", re.M)
 
 
-def git(root: Path, *args: str) -> str:
+def jj(root: Path, *args: str) -> str:
     return subprocess.run(
-        ["git", "-C", str(root), *args],
+        ["jj", *args], cwd=root,
         check=True, capture_output=True, text=True,
     ).stdout
 
@@ -124,10 +124,23 @@ def resolve_py_import(m: re.Match, importer: str, files: set[str], roots: list[s
     return found if found and len(found) == len(names) else [*found, resolve_py(spec, importer, files, roots)]
 
 
-def log_changes(root: Path, max_commits: int, paths: list[str], *extra: str) -> list[tuple[int, list[str]]]:
-    log = git(root, "log", "--no-merges", "--no-renames", f"-n{max_commits}", *extra,
-              "--format=%x00%ct", "--name-only", "--", *paths)
-    return [(int(b.splitlines()[0]), b.splitlines()[1:]) for b in log.split("\0")[1:]]
+def log_changes(root: Path, max_commits: int, paths: list[str], since: int | None = None) -> list[tuple[int, list[str]]]:
+    # Select scoped history, but inspect each revision's complete diff so bulk
+    # changes remain bulk even when the requested scope is small.
+    selectors = " | ".join(f"files({json.dumps(p)})" for p in paths)
+    revisions = f"(ancestors(@) ~ merges() ~ root()) & ({selectors})"
+    log = jj(root, "log", "--no-graph", "-r", revisions, "-n", str(max_commits),
+             "-T", 'commit_id ++ " " ++ committer.timestamp().format("%s") ++ "\\n"')
+    history = []
+    for line in log.splitlines():
+        revision, timestamp = line.split()
+        stamp = int(timestamp)
+        if since is not None and stamp < since:
+            continue
+        changed = jj(root, "diff", "--from", revision + "-", "--to", revision,
+                     "--name-only").splitlines()
+        history.append((stamp, changed))
+    return history
 
 
 def main() -> int:
@@ -138,11 +151,11 @@ def main() -> int:
     ap.add_argument("scope", nargs="*", default=["."])
     a = ap.parse_args()
 
-    root = Path(git(Path(a.repo), "rev-parse", "--show-toplevel").strip())
+    root = Path(jj(Path(a.repo).resolve(), "root").strip()).resolve()
     scopes = [os.path.relpath((Path(a.repo) / s).resolve(), root) for s in a.scope]
     scopes = ["" if s == "." else s for s in scopes]
 
-    tracked = set(git(root, "ls-files").splitlines())
+    tracked = set(jj(root, "file", "list").splitlines())
     files = sorted(f for f in tracked if f.endswith(CODE_EXT) and in_scope(f, scopes))
     # A test counts as part of the file it tests, so the pair or import between them is not reported.
     subject_of = {unit_key(f): f for f in sorted(tracked) if f.endswith(CODE_EXT) and not TEST_MARKER.search(os.path.basename(f))}
@@ -150,8 +163,8 @@ def main() -> int:
     def unit(f: str) -> str:
         return subject_of.get(unit_key(f), f) if TEST_MARKER.search(os.path.basename(f)) else f
 
-    # --full-diff lists every file a commit touched, so a repo-wide commit counts as bulk in any scope.
-    history = log_changes(root, a.max_commits, [s or "." for s in scopes], "--full-diff")
+    # Full revision diffs ensure a repo-wide commit counts as bulk in any scope.
+    history = log_changes(root, a.max_commits, [s or "." for s in scopes])
     churn: Counter[str] = Counter()
     pairs: Counter[tuple[str, str]] = Counter()
     commits = bulk = 0
@@ -190,8 +203,8 @@ def main() -> int:
     outside = sorted({t for _, t in edges if not in_scope(t, scopes)})
     if outside:
         # Count an out-of-scope import target over the same window the scope's history covered.
-        window = [f"--since=@{history[-1][0]}"] if len(history) >= a.max_commits else []
-        for _, changed in log_changes(root, a.max_commits, outside, *window):
+        window = history[-1][0] if len(history) >= a.max_commits else None
+        for _, changed in log_changes(root, a.max_commits, outside, window):
             churn.update({unit(l) for l in changed if l in outside})
 
     co_change = [
@@ -224,5 +237,5 @@ if __name__ == "__main__":
     try:
         sys.exit(main())
     except subprocess.CalledProcessError as e:
-        print(f"git failed: {e.stderr.strip()}", file=sys.stderr)
+        print(f"jj failed: {e.stderr.strip()}", file=sys.stderr)
         sys.exit(2)

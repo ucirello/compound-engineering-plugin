@@ -27,7 +27,7 @@
 # (force the gate on for one run).
 # (in-session, saved to memory, or in your agent instructions) overrides these
 # --- Artifact root ---
-# --- Compound Packs ---
+# --- Packs ---
 # --- Cross-model review policy and preference ---
 # --- Cross-model review preference ---
 # --- Fable elevation (Claude Code only) ---
@@ -49,15 +49,14 @@
 # All settings are optional. Invalid values fall through to defaults.
 # Assumptions section, announces that it's proceeding, and keeps going. It skips
 # By default /ce-plan pauses before research/plan-write to show a scoping
-# Claude CLI is invoked when installed and authenticated; otherwise the step runs
 # Claude Code ONLY; silently ignored on every other harness (Codex, Cursor, ...).
 # Codex and Claude at high, native Grok at xhigh, Antigravity at high (it takes
 # Codex and Claude at high, native Grok at xhigh, OpenCode with no variant.
 # Codex and Claude at high, native Grok at xhigh. OpenCode and Cursor routes
-# Compound Engineering -- local config
-# Compound Engineering -- repo config
-# Copy to .compound-engineering/config.local.yaml in your project root.
-# Copy to .compound-engineering/config.yaml in your project root (team defaults).
+# RocketClaw -- local config
+# RocketClaw -- repo config
+# Copy to .rocketclaw/config.local.yaml in your project root.
+# Copy to .rocketclaw/config.yaml in your project root (team defaults).
 # Cross-harness: setting a key means every harness you run these skills in will
 # Cursor routes take no effort. A map in config.local.yaml replaces this one.
 # Declared, never scanned: an entry names a source (repo-relative path,
@@ -67,14 +66,13 @@
 # Feedback sources swept by /ce-sweep. Generic key: other skills may read this list.
 # HTML styling. CLI arguments override these defaults; pipeline contexts
 # HTML styling. Precedence: a format request in your prompt for that run wins
-# New PRs include a generic Compound Engineering badge by default. Set false to
-# Optional override: .compound-engineering/config.local.yaml, same keys.
+# Optional override: .rocketclaw/config.local.yaml, same keys.
 # Ordinary keys: local wins when set, then this file, then the skill default.
 # Per-skill output format default. Selects the exclusive format the artifact
 # Preferred peer for ce-doc-review and ce-code-review when their conditional
 # Prescriptive domain knowledge folders that planning reads and cites.
 # Reasoning effort for the external worker, per harness. Each value is one of
-# Relocate every CE-written artifact folder (solutions, plans, ideation,
+# Relocate every RocketClaw-written artifact folder (solutions, plans, ideation,
 # Rules are top-level .md files with title + applies_when; subfolders are storage.
 # Send only the reasoning-heavy step of /ce-plan (interpret research, then author
 # Set this only in this tracked file so every clone and worktree share one
@@ -88,8 +86,8 @@
 # Unlike every other setting here, an unusable value does NOT fall through to the
 # When a PR introduces a concept new to the codebase, the generated PR
 # When on, /ce-plan and /ce-brainstorm dispatch their reasoning-heavy step (plan
-# Where to put it: prefer the TRACKED `.compound-engineering/config.yaml` (not
-# Written automatically when you decline the Spiral setup offer in /ce-promote.
+# Where to put it: prefer the TRACKED `.rocketclaw/config.yaml` (not
+# Written automatically when you decline the publishing setup offer in /ce-promote.
 # `auto`. Conversation instructions still win, and the skills skip routes that
 # `cross_model_model` and `cross_model_effort` pin the model and reasoning
 # `cross_model_peer` is the preferred peer, consulted only when the mode is
@@ -107,7 +105,7 @@
 # and archival. Archival additionally writes the explainer to docs/explainers/
 # and links it from the PR (full-workflow runs only; override per run with
 # and which layer supplied it.
-# and writes; CE never falls back to reading `docs/`.
+# and writes; RocketClaw never falls back to reading `docs/`.
 # archive:on|off). Note: this file is gitignored and per-checkout -- fresh
 # archive:on|off). Ordinary cascade: local, then this file, then the skill default.
 # argument `setup` or `reconfigure` to edit interactively.
@@ -122,7 +120,7 @@
 # brainstorm_model: fable        # model alias for approach generation; candidate preference when a Bake-off runs (no default)
 # brainstorm_output: html        # md | html (default: md)
 # brainstorm_use_fable: true     # true | false (default: false)
-# byte-identical to today. A configured root becomes the sole location CE reads
+# byte-identical to today. A configured root becomes the sole location RocketClaw reads
 # cannot establish the required host/peer distinction.
 # cannot honor skips the pass with a stated reason -- never substituted.
 # ce-code-review and ce-doc-review spawn on the same host (reviewers, checks,
@@ -141,13 +139,13 @@
 # cross_model_peer: codex          # codex | claude | grok | cursor | composer
 # cross_model_peer: codex          # codex | claude | grok | cursor | composer | opencode
 # cross_model_review_mode: off   # auto | off (default: auto)
-# default -- CE stops with an error so a typo can't silently write artifacts into
+# default -- RocketClaw stops with an error so a typo can't silently write artifacts into
 # default. Composer is a model
 # description gains a "New concepts" section teaching it. The section toggle is
 # disable-model-invocation) always force `md`.
 # docs_root fails closed on an unusable value.
 # docs_root is repo layout -- set it only here; local docs_root is ignored.
-# docs_root: .compound-engineering/artifacts   # repo-relative dir (default: docs)
+# docs_root: .rocketclaw/artifacts   # repo-relative dir (default: docs)
 # effort of whichever peer target runs; unset keeps the skills' editorial
 # effort. A map in config.local.yaml replaces this one.
 # elevation.
@@ -215,7 +213,7 @@
 # pulse_payments_source: stripe                         # stripe | custom (no default)
 # pulse_pending_metrics: "retention_d7,nps"             # comma-separated strategy metrics awaiting instrumentation; render as 'no data'
 # pulse_primary_event: "session_started"                # the event that means "user showed up"
-# pulse_product_name: "Spiral"                          # used in report titles (no default)
+# pulse_product_name: "Product"                         # used in report titles (no default)
 # pulse_quality_dimension: "answer accuracy"            # dimension scored 1-5 when pulse_quality_scoring is true
 # pulse_quality_scoring: false                          # true | false (default: false; AI products only)
 # pulse_tracing_source: sentry                          # sentry | datadog | custom (no default)
@@ -238,7 +236,7 @@
 # sweep_ack_cap: 25                                 # max acks per source per run before the circuit breaker
 # sweep_lease_ttl_minutes: 60                       # single-writer lease staleness threshold
 # sweep_shared_branch: false                        # true: push-gated lease for shared-docs-branch topology
-# sweep_state_path: docs/feedback-sweep/state.yml   # committed (multi-agent) or /tmp path (solo)
+# sweep_state_path: docs/feedback-sweep/state.yml   # committed (multi-agent) or .tmp/ path (solo)
 # switch. Per-skill so you can enable one without the other. You can also just
 # take no effort. A map in config.local.yaml replaces this one.
 # task/session/project instructions and LFG's provenance-bearing binding may

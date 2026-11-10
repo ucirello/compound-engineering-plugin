@@ -23,7 +23,7 @@ METADATA_FILE = "metadata.json"
 # Stages whose end marks the receipt being written; a run with one of these
 # ended and no dangling start is complete.
 RECEIPT_STAGES = {"report", "receipt"}
-# The job directory holds detached-runner state, not review output.
+# Legacy transient job diagnostics are not normalized review output.
 EXCLUDED_DIRS = {"jobs"}
 # Stages that produce candidates; merge and validate only filter them, so
 # their counts stay per stage and never enter the total.
@@ -42,26 +42,8 @@ def parse_iso(value: str) -> datetime | None:
 
 
 def host_from_env() -> str:
-    """The same attestation the cross-model reference uses, host only."""
-    env = os.environ
-    seen = [
-        host
-        for host, present in (
-            ("claude", env.get("CLAUDECODE") == "1"),
-            ("codex", any(env.get(k) for k in ("CODEX_SANDBOX", "CODEX_SANDBOX_NETWORK_DISABLED", "CODEX_SESSION_ID", "CODEX_THREAD_ID", "CODEX_CI"))),
-            ("grok", env.get("GROK_AGENT") == "1" or bool(env.get("GROK_SESSION_ID"))),
-        )
-        if present
-    ]
-    if env.get("OMPCODE"):
-        return "omp"
-    if len(seen) == 1:
-        return seen[0]
-    if seen:
-        return "unknown"
-    if env.get("CURSOR_AGENT") or env.get("CURSOR_CONVERSATION_ID"):
-        return "cursor"
-    if env.get("OPENCODE_TERMINAL"):
+    """Host presence only; never serving-family attestation."""
+    if os.environ.get("OPENCODE_SESSION_ID") or os.environ.get("OPENCODE_TERMINAL"):
         return "opencode"
     return "unknown"
 

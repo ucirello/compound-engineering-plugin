@@ -6,7 +6,23 @@
 /ce-compound mode:non-interactive depth:full [context]
 ```
 
-An interactive run picks its own depth rather than asking the user. Default to **Full**. Choose **Lightweight** only when the session is near its context limit.
+An interactive run picks its own depth rather than asking the user. Default to **Full**. Under context pressure, first delegate Full to a fresh native subagent with `mode:non-interactive depth:full`, following the source-session handoff below. Lightweight is only a fallback for an actually unavailable or denied dispatch, or a reported depth/capacity limit; identify the exact limitation and suggest retrying Full in the same source session later.
+
+## Context-pressure Full handoff
+
+Read `OPENCODE_SESSION_ID` with the shell, not from an inferred tool/session identifier:
+
+```bash
+source_session_id="${OPENCODE_SESSION_ID:?source session ID is required}"
+printf '%s\n' "$source_session_id"
+jj root
+```
+
+Pass that source ID, its title if known, the verified absolute `jj root` workspace, the existing learning document path if any, and a one-sentence topic to **one** fresh native delegate. Do not predigest or summarize the source conversation. The delegate loads this skill and runs `mode:non-interactive depth:full`. From that absolute workspace root, it obtains source evidence via `opencode session export <source-session-id>` **or** `opencode api get /api/session/<id>/message`, saving the JSON response under the workspace's local `.tmp/`. Use the API alternative when the session-export interface is unavailable; do not substitute `opencode export` or invent another runtime interface. Never query a session database. Reduce exported user/assistant text and tool names, inputs and short results into bounded evidence files before reading; omit reasoning and bulky irrelevant output, and redact secrets before passing evidence onward. Use `scripts/session-history/reduce-opencode-export.py` for the reduction. The passed source session is primary evidence, not an optional prior-session match. Exclude only the delegate's own current session ID; never exclude its parent/source. If both prescribed source interfaces are unavailable, report that evidence gap rather than inventing conversation details.
+
+Use native delegation only, subject to host permission. This skill requests delegation; permission to override a model is separate. Discover available model IDs with native `opencode.models` when needed; honor configured role choices when allowed, otherwise inherit a suitable model and disclose missing required cross-model coverage. Distinguish denial, missing tools, depth/capacity exhaustion and pre-launch model-argument rejection; correct a rejected argument once without evading policy through shell or another harness. Never label incomplete coverage Full.
+
+The parent relays the delegate's report and document, then handles interactive discoverability and pack-destination consent. It must not run a second Full pass. Explicit non-interactive depth routing below remains unchanged.
 
 A non-interactive run takes its depth only from an explicit token, and at most one depth token is accepted. `depth:lightweight` routes directly to Lightweight Mode. `depth:full` or no depth token enters Full Mode, including its automatic session-history probe. A non-interactive call carrying no depth token therefore behaves as it always has. Non-interactive lightweight asks no blocking questions and launches no subagents. If the invocation carries an unknown `depth:` token, multiple `depth:` tokens, or a `depth:` token without non-interactive intent, do not guess: emit the non-interactive failure report with the reason and end with `Documentation skipped`.
 

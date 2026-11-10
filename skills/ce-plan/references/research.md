@@ -6,6 +6,8 @@ Phase 1 of `ce-plan`. Read this before dispatching any research subagent.
 
 All specialist research and deepening prompts used in this phase are skill-local prompt assets under `references/agents/`. When dispatching one, read the matching file and seed a generic subagent with that prompt content plus the task-specific context below. Do not dispatch standalone agents by type/name.
 
+Use native OpenCode delegation only. This skill's request authorizes delegation independently of a user request, but model override still needs host permission. Resolve configured models through `opencode.models`; configuration takes precedence over suggested default tiers. Inherit a suitable session model when no authorized override exists and disclose any missing required cross-model coverage. Queue temporary capacity failures; distinguish depth exhaustion, denial, missing tools, model-argument rejection, and launched provider failure. Follow `reasoning-elevation.md` for receipts and bounded native recovery, never shell or another harness. Inline research is reduced coverage, not an independent review.
+
 A generic subagent is one whose whole brief is the prompt you send it. When the host's subagent tool makes you name an agent, use only a name you have seen the host list, and list its agents before the first dispatch if you have not. Pick the plain one that adds no role of its own, which still counts as a generic subagent. Never pick a specialist, such as a reviewer or worker agent, whose own role prompt, output format, or tool limits would replace or narrow your prompt.
 
 This skill, not the prompt assets, decides which model tier each subagent uses. Local prompt files have no frontmatter. Use the platform's mid-tier model for external/organizational research prompts such as `slack-researcher` and `web-researcher` when the current harness exposes a known override; otherwise omit the override and inherit. Use inherited model for high-judgment architecture, migration, and planning-deepening prompts unless the harness has an established cheaper capable tier.
@@ -18,7 +20,7 @@ At every native subagent boundary in this phase, classify a rejected dispatch by
 
 A **Lightweight** Durable plan does not dispatch the research agents below. Ground it from bounded inline reads of the files the request names and their tests, note any `<root>/solutions/` entry whose title matches the topic and, after running **Pack discovery** below, any resolved pack file whose `applies_when` matches the work, and continue to 1.1b; 1.4b's reclassification still applies when those reads surface an external contract surface.
 
-**Pack discovery.** For every Durable plan — before composing the `learnings-researcher` dispatch, or inline on the Lightweight path — resolve the packs declared in CE config by running this skill's resolver as one command:
+**Pack discovery.** For every Durable plan — before composing the `learnings-researcher` dispatch, or inline on the Lightweight path — resolve the packs declared in RocketClaw config by running this skill's resolver as one command:
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
@@ -40,8 +42,9 @@ Pass the project's active instructions and the planning context summary to `repo
 When this phase dispatches a researcher, create one scratch directory first and reuse that absolute path for every researcher this run. Pass each researcher the absolute path of its own file. It writes its document there and returns a gist plus that path. Read a dossier when its gist can change a decision. Do not load every dossier into context. Later dispatches in this phase reuse the directory. If a later dispatch is the first one, create the directory then.
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+workspace_root="$(jj root)" || exit 1
+cd "$workspace_root" || exit 1
+SCRATCH_ROOT="$workspace_root/.tmp";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
@@ -69,7 +72,7 @@ Collect:
 - Exact dependency or runtime versions only when they materially affect the plan or an external research decision
 - Relevant architecture and implementation patterns, files, modules, and tests for the requested scope
 - Applicable constraints from the project's active instructions and context
-- Institutional learnings from `<root>/solutions/` and any Compound Pack, each pack finding labeled with its pack id
+- Institutional learnings from `<root>/solutions/` and any knowledge pack, each pack finding labeled with its pack id
 - Product strategy context when any product doc is present — flag any plan decisions that pull away from the active tracks or the stated positioning, or that land inside its stated boundaries or non-goals
 - Agent-native planning findings when the conditional triage dispatched: action/context parity decisions, tool/workspace/execution-lifecycle choices, scope boundaries, and verification scenarios
 
@@ -145,7 +148,7 @@ Announce the decision and the intent briefly before continuing. Examples:
 
 #### 1.3 External Research (Conditional)
 
-If Step 1.2 indicates external research is useful, dispatch by the **intent** classified in Stage 2, using the platform's subagent primitive (`Agent`/`Task` in Claude Code, `spawn_agent` in Codex) where available; otherwise run the work inline or serially. Read the selected prompt asset from `references/agents/` and seed a generic subagent with it. For `web-researcher.md`, pass a focus hint plus the planning context summary and do **not** pass codebase content — it operates externally.
+If Step 1.2 indicates external research is useful, dispatch by the **intent** classified in Stage 2, using native OpenCode subagents where available; otherwise disclose reduced coverage and run inline or serially. Read the selected prompt asset from `references/agents/` and seed a generic subagent with it. For `web-researcher.md`, pass a focus hint plus the planning context summary and do **not** pass codebase content — it operates externally.
 
 - **Implementation-guidance** — run in parallel:
   - `references/agents/best-practices-researcher.md` with the planning context summary and `$SCRATCH_DIR/best-practices.md`.
@@ -169,7 +172,7 @@ Summarize:
 
 **Land external findings in decisions, not an appendix.** Any external research that ran must appear where it changes a choice — Key Technical Decisions rationale, Alternatives, Risks, or Sources & Research — not as a detached list with no bearing on the plan. If a finding shaped nothing, it did not matter to the plan; do not pad the plan with it.
 
-**Cite Compound Pack findings where they land.** A requirement, KTD, constraint, or risk that a pack finding shaped ends with `(pack: <id>, <path within the pack>)` (shape in `references/plan-sections.md`, Sources & Research). A pack finding that shaped nothing is not cited, and a plan whose research used no pack finding never mentions packs. If the researcher output contains a `Skipped pack files` line, show it to the user once as a warning naming each file; never write it into the plan.
+**Cite knowledge pack findings where they land.** A requirement, KTD, constraint, or risk that a pack finding shaped ends with `(pack: <id>, <path within the pack>)` (shape in `references/plan-sections.md`, Sources & Research). A pack finding that shaped nothing is not cited, and a plan whose research used no pack finding never mentions packs. If the researcher output contains a `Skipped pack files` line, show it to the user once as a warning naming each file; never write it into the plan.
 
 **Mark whether external research shaped the plan.** Record a single internal flag: did external findings materially shape a KTD, Alternative, Scope boundary, or Risk? This flag answers only that question — it does **not** decide whether research runs (Phase 1.2 decides that). Phase 5.3.2 reads it to decide whether to enter a confidence-scoring pass.
 

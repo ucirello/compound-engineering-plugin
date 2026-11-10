@@ -10,20 +10,20 @@ Think in terms of the deploy window: old code on new schema, new code on old dat
 
 ## Step 0: Schema drift (when a schema dump is in the diff)
 
-Run this **first** when `db/schema.rb` or `db/structure.sql` appears in the diff. Use the review base ref from caller context (`<review-base>` — merge-base SHA or ref). **Never assume `main`.**
+Run this **first** when a schema dump appears. Use the exact verified base and reviewed-head IDs from caller context, with JJ cwd set to the supplied absolute workspace root. Missing endpoints mean hunk-only checks plus a coverage gap, never a default branch or mismatched workspace. **Never assume `main`.**
 
 ```bash
-git diff <review-base> --name-only -- db/migrate/
+jj diff --summary --from <review-base> --to <reviewed-head> -- db/migrate/
 ```
 
 Then diff each dump file that is actually in the PR diff (one or both may apply):
 
 ```bash
 # When db/schema.rb is in the diff:
-git diff <review-base> -- db/schema.rb
+jj diff --git --from <review-base> --to <reviewed-head> -- db/schema.rb
 
 # When db/structure.sql is in the diff:
-git diff <review-base> -- db/structure.sql
+jj diff --git --from <review-base> --to <reviewed-head> -- db/structure.sql
 ```
 
 Cross-reference every change in each in-scope dump against migrations **in this PR's diff**:
@@ -32,15 +32,15 @@ Cross-reference every change in each in-scope dump against migrations **in this 
 - Every new column/table/index in the dump must come from a PR migration
 - **Drift:** columns, tables, indexes, or version bumps not explained by PR migrations
 
-When drift is present, emit a **P1** finding on the affected dump path (`db/schema.rb` or `db/structure.sql`) with `autofix_class: manual`, concrete unrelated objects listed, and `suggested_fix`:
+When drift is present, emit a **P1** finding with `autofix_class: manual`, concrete unrelated objects and this suggested fix for an authorized fixer. Do not execute it as a read-only reviewer. Regenerate only in a faithful disposable scratch copy under the workspace-local `.tmp/`; never overwrite the shared checkout or touch a production database:
 
 ```bash
 # schema.rb:
-git checkout <review-base> -- db/schema.rb
+jj file show -r <review-base> db/schema.rb > <scratch-copy>/db/schema.rb
 bin/rails db:migrate
 
 # structure.sql (regenerate after restoring and migrating):
-git checkout <review-base> -- db/structure.sql
+jj file show -r <review-base> db/structure.sql > <scratch-copy>/db/structure.sql
 bin/rails db:migrate
 ```
 

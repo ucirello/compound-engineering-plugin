@@ -14,13 +14,14 @@ If the user's or project's active instructions or the live prompt name a model f
 
 **When per-agent models cannot be chosen.** If the platform's subagent mechanism cannot select a model per agent, dispatch every scout on the inherited model and keep their read budgets. Cost control then comes from the read budgets and the tier-sensitive scout count, not from tiering.
 
-When a scout dispatch is rejected, first check whether an agent launched. If the rejection was a bad argument before launch, correct it once. If the platform is out of capacity, leave the work queued. If a launch still fails after the correction, gather that scout's bounded evidence inline and lower the verdict's stated confidence.
+This skill explicitly requests native research subagents: under a user-OR-skill delegation rule, this is sufficient delegation permission even without a separate user request. It is not permission to override a model or bypass a host denial. Resolve available model IDs through native `opencode.models`; honor configured choices subject to host permission. If model selection is unavailable or disallowed, inherit a suitable model and disclose missing required model coverage.
 
-Create the scratch dir once, and reuse the echoed path for every scout this run:
+When a scout dispatch is rejected, first check whether an agent launched. Correct a malformed argument once; a rejected model argument is not a depth error. Queue capacity-limited work. Actual depth-limit errors, explicit denial, and a missing native tool are distinct outcomes: report the observed one, gather bounded evidence inline where possible, and lower confidence. Do not evade a limit through a shell launcher, another harness, or repeated dispatch. Inline evidence is not independent scout coverage.
+
+Resolve `workspace_root` to the absolute `jj root` and set the shell cwd there; for a non-JJ folder use its verified absolute project directory. Create the scratch dir once, and reuse the echoed path for every scout this run. No global-temp fallback is allowed:
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+SCRATCH_ROOT="$workspace_root/.tmp/ce-pov";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;

@@ -10,15 +10,15 @@ A supplied folder or collection is a discovery boundary, not a selected document
 
 ## Without an explicit source
 
-1. Search the folder or collection the user supplied; otherwise resolve the managed roots in the current shell call with this block, then enumerate candidate files beneath `$SCRATCH_ROOT/ce-handoff/` and, when it differs from `$SCRATCH_ROOT` and passes the same symlink and ownership checks, beneath the other candidate root's `ce-handoff/` as well (`/tmp/compound-engineering-$(id -u)` or `${TMPDIR:-/tmp}/compound-engineering-$(id -u)`, whichever the block did not select) — a handoff written from a sandboxed session and resumed from an unsandboxed one, or the reverse, lives under the other root. Bound the candidate set before inspecting content; prefer recent files and current repository or working-directory affinity without making repository affinity mandatory. Resolve the roots with this block:
+1. Search the folder or collection the user supplied; otherwise resolve the workspace-local managed root in the current shell call with this read-only block, then enumerate candidate files beneath `$SCRATCH_ROOT/ce-handoff/`. Do not search global temporary storage or other workspaces automatically. Bound the candidate set before inspecting content; prefer recent files and current repository or working-directory affinity without making repository affinity mandatory. Resolve the root with this block:
 
    ```bash
-   SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-   [ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+   workspace_root="$(jj workspace root 2>/dev/null)" || workspace_root="$(pwd -P)";
+   cd "$workspace_root" || exit 1;
+   SCRATCH_ROOT="$workspace_root/.tmp";
    if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
-   (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
+   if [ ! -d "$SCRATCH_ROOT" ]; then echo "no local handoff store: $SCRATCH_ROOT" >&2; exit 1; fi;
    if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
-   chmod 700 "$SCRATCH_ROOT" || exit 1;
    ```
 
 2. Before reading any candidate metadata or frontmatter, resolve the discovery boundary and exclude symlink candidates and candidates whose resolved path escapes that boundary. This discovery-only containment rule does not restrict an explicit selected source.
@@ -35,11 +35,13 @@ Read the selected source directly. For a long or structured source, inspect the 
 
 Assess whether the source contains enough concrete continuity context to orient the session. Judge sufficiency from its contents, not its author, format, location, ownership, or metadata contract. If it is too sparse, ambiguous, or unrelated to recover a meaningful objective or current state, say what context is missing and ask the user to supplement it or choose another source. Do not invent a forced resume; stop without acting.
 
-The current user, the current project's active instructions, and verified current state are authoritative. Check only material claims that can be verified read-only within the user's present scope. If the handoff is stale, the worktree is gone, or current files disagree, name the mismatch and distinguish durable state from missing machine-local state.
+The current user, the current project's active instructions, and verified current state are authoritative. Check only material claims that can be verified read-only within the user's present scope. Use native JJ from the target absolute workspace root for repository state; never invoke Git. If the handoff is stale, the workspace is gone, or current files disagree, name the mismatch and distinguish durable state from missing machine-local state. Do not create, adopt, or remove a workspace merely to orient.
 
 Intent and decisions in the source carry the user's weight only where the source attributes them to the user; the rest is its writer's own reading, whoever wrote it. Check those with the current user where acting on them would commit the user to something hard to walk back.
 
 When the source is sufficient, return a concise orientation covering the recovered objective, meaningful progress, decisions, constraints, current state, unfinished work, and material drift. Then recommend how to continue from this handoff's actual continuity reason — research parked mid-thread, a pending decision, unfinished planning, ready implementation, a debug pause, review feedback, a no-repo conversation, or another shape evidenced by the source. Do not default to an implementation-resume menu. Name relevant installed skills only when they fit that reason.
+
+Retain attributed user model/provider/tier choices and configured review routes as intent in that orientation, not as authorization to launch another harness or override the current host's policy. After confirmation, any requested delegation uses native OpenCode capabilities (`opencode.models` discovery and permitted subagents/shell). A user-or-skill delegation rule permits an applicable skill's explicit delegation request, but model override is a separate permission: use a suitable inherited model when required, and disclose unmet fixed-model or independent cross-model coverage. Distinguish actual missing tools, permission denials, depth/capacity limits, and model-argument rejection; do not evade any of them with another harness or shell dispatcher. Reading this handoff alone does not request delegation or authorize execution.
 
 Present a numbered choice list only for mutually exclusive forks (the user can pick at most one). Keep related pieces of one continuation — including ordered steps that belong together — under a single recommendation; do not promote them into competing options. If only one natural continuation fits, say that one and stop; do not invent alternate options for symmetry.
 

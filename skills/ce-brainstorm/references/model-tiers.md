@@ -1,13 +1,11 @@
-# Model Tiers
+# Subagent model tiers
 
-Read this when dispatching a sub-agent (the Phase 1.1 grounding scout, the Phase 2.6 claim verifier, or the opt-in Slack researcher). Sub-agent dispatch is tiered by task shape, never hardcoded to a model name:
+This skill authorizes native delegation for the grounding scout, claim verifier, and opt-in Slack researcher, subject to host policy. Delegation permission and model-override permission are separate.
 
-- **Extraction tier** — the grounding scout: retrieval and quoting work. Use the platform's cheapest capable model when the current harness exposes a known override. "Capable" is part of the spec — escalate to the generation tier when the repo is large or the stack obscure.
-- **Generation tier** — the claim verifier: evidence-driven mechanical verification. Use the platform's mid-tier model when the current harness exposes a known override. If model names are unknown, omit the override and inherit rather than guessing.
-- **Ceiling tier** — the dialogue itself. Questions, approaches, synthesis, and the requirements-only unified plan run in the main conversation on the orchestrator's model; nothing is dispatched for them.
+- **Extraction tier:** retrieval and quoting for the scout; favor the cheapest capable permitted model, escalating for large or obscure repositories.
+- **Generation tier:** evidence-driven claim verification; favor a capable mid-tier model.
+- **Ceiling tier:** dialogue, synthesis, and writing remain in the main conversation unless the separately resolved reasoning-elevation preference applies.
 
-If the user's or project's active instructions or the live prompt name a model for this subagent, use that model instead of the default tier above. They can name it by the subagent's tier, by its prompt-asset name, or for the subagents being dispatched. Without such an instruction, a model configured for this subagent's role takes precedence over the default tier.
+Explicit active user instructions win, then configured role-specific model choices, then these defaults. Config choices remain authoritative subject to host permission. Discover exact available models through `opencode.models`, never guess aliases or override arguments. Inherit the current model when suitable. If a requested model cannot be selected, disclose the unmet request and any missing independent or cross-model coverage; never claim full coverage silently.
 
-**Degradation rule.** When the platform's subagent primitive does not support per-agent model selection, dispatch the scout and verifier on the inherited model and keep their read budgets and output caps — cost control then comes from structure, not tiering. When the platform has no subagent primitive at all, do the topic scan inline at Phase 1.1 — still writing the grounding dossier to the scratch path, because downstream consumers (the Phase 2.6 verifier, the ce-plan handoff) receive that path — and verify claims inline before the Phase 3 write, with the same budgets.
-
-Classify a rejected native dispatch by whether an agent launched: correct a pre-launch argument rejection once, leave capacity-limited work queued, and send any other failure to the inline degradation above.
+Use the native subagent primitive only. If unavailable, perform the bounded scan inline, still writing the grounding dossier for downstream consumers, and verify claims inline before Phase 3. A denied dispatch is not missing tooling; obey the denial. Correct a pre-launch argument rejection once using the supported schema. Queue capacity-limited work; depth exhaustion requires returning work to the parent or inline execution, not another nested launch. Never bypass any of these conditions through shell, another harness, or provider CLI. A started agent's failure is recorded and disclosed, not blindly duplicated. Preserve all original read budgets and output caps on inherited or inline execution.

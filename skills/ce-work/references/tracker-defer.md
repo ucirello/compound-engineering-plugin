@@ -1,5 +1,7 @@
 # Tracker Detection and Defer Execution
 
+Run repository-scoped `gh` commands from the absolute JJ workspace root with exported `GIT_DIR=$(jj git root)`. Keep temporary request/evidence files in that root's `.tmp`; never launch Git directly.
+
 This reference covers how residual actionable findings are filed in the project's tracker. Loaded by caller workflows (for example `ce-work` Residual Work Gate, or `lfg` residual handling), not by `ce-code-review`, which stops after the report.
 
 ---

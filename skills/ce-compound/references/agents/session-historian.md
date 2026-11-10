@@ -8,7 +8,8 @@ The dispatch prompt provides:
 
 - **`problem_topic`** — one sentence naming the concrete question or problem to synthesize against.
 - **`scratch_dir`** — absolute path to a `mktemp` scratch directory holding pre-extracted files.
-- **`sessions`** — an array of objects (5 max), one per pre-extracted session, each with:
+- **`source_evidence`** *(optional)* — reduced OpenCode evidence paths for the explicitly passed source session; primary evidence outside the five-prior-session limit, not subject to prior-session relevance filters.
+- **`sessions`** — an array of objects (5 max), one per pre-extracted prior session, each with:
   - `path` — absolute path to a skeleton text file inside `scratch_dir`
   - `errors_path` *(optional)* — absolute path to an errors text file when the orchestrator extracted errors-mode for this session
   - `platform` — `claude`, `codex`, `cursor`, `pi`, or `omp`
@@ -21,7 +22,7 @@ The dispatch prompt provides:
 
 ## Standalone fallback
 
-If the dispatch prompt arrives without a `sessions` array, or with an empty array, return the literal string `no relevant prior sessions` and stop. Do not attempt to discover or extract sessions on your own. That is the orchestrator's job, and direct dispatch without an orchestrator is not a supported pattern.
+If the dispatch prompt arrives without both prior `sessions` and `source_evidence`, return the literal string `no relevant prior sessions` and stop. When only `source_evidence` is supplied, synthesize that primary evidence. Do not attempt to discover or extract sessions on your own. That is the orchestrator's job, and direct dispatch without an orchestrator is not a supported pattern.
 
 ## Guardrails
 
@@ -31,9 +32,9 @@ These rules apply at all times during synthesis.
 - **Never invoke the Skill tool.** This agent runs in subagent context where Skill calls deadlock. The orchestrator has already done all extraction; you only synthesize.
 - **Never extract or reproduce tool call inputs/outputs verbatim.** Summarize what was attempted and what happened.
 - **Never include thinking or reasoning block content.** Claude Code thinking blocks are internal reasoning; Codex reasoning blocks are encrypted. Neither is actionable. The skeleton extractor already strips these. Do not report them if any survived.
-- **Never analyze the current session.** Its conversation history is already available to the caller; the orchestrator already excluded it from the dispatch payload.
+- **Exclude only your own current session ID.** A passed parent/source session is primary evidence in a context-pressure Full handoff and must not be excluded. Read its reduced export evidence even if ordinary prior-session filters would reject it. Never read a session database.
 - **Never make claims about team dynamics or other people's work.** This is one person's session data.
-- **Never write any files.** Return text findings only.
+- **Write only the requested scratch report.** When the caller supplies a report path under its local `.tmp/` run directory, write the findings there, confirm the write, and return that path. If no path is supplied or the write fails, return findings inline. Never write product files.
 - **Report technical content, not personal content.** Sessions contain everything: credentials, frustration, half-formed opinions. Use judgment about what belongs in a technical summary and what does not.
 
 ## Time budget

@@ -25,13 +25,14 @@ If no relevant entries are found, proceed to Phase 1 without memory context.
 
 ### Phase 1: Research
 
-You classify the learning and draft its body in this context, because both depend on the conversation, which only this context holds. A fresh subagent sees only what you paste into its prompt. The Related Docs Finder runs as a subagent alongside, because its corpus search reads many docs this context does not need to keep. Each Phase 1 subagent writes its full output to a per-run scratch artifact and returns only the artifact path to the orchestrator.
+You classify the learning and draft its body in this context using conversation evidence. For the context-pressure Full handoff in `references/modes.md`, the delegate instead exports and reduces the passed source session first; that source, not a parent-written predigest, is its primary evidence. Exclude only the delegate's own current session, never the source. The Related Docs Finder runs as a native subagent alongside, because its corpus search reads many docs this context does not need to keep. Each Phase 1 subagent writes its full output to a per-run scratch artifact and returns only the artifact path to the orchestrator.
 
 **Run ID and run dir (before dispatching the finder):** generate a unique run identifier and create the run directory. This scopes every Phase 1 artifact file to the same directory so the orchestrator can Read them back in Phase 2.
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+WORKSPACE_ROOT=$(jj root) || exit 1;
+cd "$WORKSPACE_ROOT" || exit 1;
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/ce-compound";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;

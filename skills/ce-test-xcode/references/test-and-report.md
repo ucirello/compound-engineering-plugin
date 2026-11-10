@@ -7,7 +7,7 @@ This reference owns evidence collection after the app launches.
 Derive the key screens and flows from the user's request and the changed iOS surface. For each one:
 
 - Navigate through the running app and record what was exercised.
-- Capture a descriptively named screenshot of the resulting state.
+- Capture a descriptively named screenshot of the resulting state in the local evidence directory retained from setup. Save exported logs and temporary diagnostics there too, including on error or fallback paths; do not use OS-global temporary storage.
 - Check that expected content and controls render without visible error or broken layout.
 - Read the captured simulator logs for crashes, exceptions, error-level messages, and failed network requests attributable to the flow.
 
@@ -38,7 +38,7 @@ For a failed screen or flow, preserve its screenshot, relevant logs, and reprodu
 
 ## Cleanup and summary
 
-Stop the log capture started by this run. Leave a simulator that was already booted as found; a simulator booted only for this run may be shut down after evidence is saved.
+Stop the log capture started by this run and save its relevant output in the local evidence directory before releasing the capture handle. Leave a simulator that was already booted as found; a simulator booted only for this run may be shut down after evidence is saved. Retain the evidence directory and include its path in the report.
 
 Report these fields, omitting no field even when its value is `None` or `0`:
 

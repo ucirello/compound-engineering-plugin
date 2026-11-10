@@ -19,17 +19,17 @@ Return:
 - `requested_effort`: the reasoning effort requested for the external worker, or `null` when none was requested or execution was native
 - `fallback_reason`: `null` when none, otherwise the observed route-unavailable or substitution reason
 - `run_id`: durable external run identifier, or `null` for native execution
-- `source_kind` and `source_digest`: what the controller recorded as the implementation source (`plan` plus its digest for a plan; `prompt` for a bare prompt or work statement)
-- `unit_receipts`: route, model, detached-process, integration, verification, canonical-commit, and cleanup state for each attempted unit
+- `source_kind` and `source_digest`: what the native host recorded as the bounded implementation source (`plan` plus its digest; `prompt` for a bare prompt or work statement)
+- `unit_receipts`: route, requested/actual model with receipt status, native task terminal state, integration, verification, canonical commit, and guarded cleanup for each attempt
 - `plan_checkpoint`: the disclosed checkpoint commit when the selected plan was the only canonical dirt, otherwise `null`
 - `blockers`: every named blocker, or an empty list when none remain. Stop before every in-scope unit is complete only for a named blocker; a finished intake or a progress point is not one.
-- `recovery_path`: the run/workspace location the controller preserved and checked, when recovery remains; otherwise `null`
+- `recovery_path`: the local `.tmp` run/workspace location the host preserved and checked, when recovery remains; otherwise `null`
 - `settled_decision_conflicts`: conflicts with `session-settled:`-labeled KTDs or Key Decisions encountered during implementation — each entry names the labeled entry, the evidence, and how it was routed (proceeded-and-flagged vs blocker); empty when none
 - `behavior_change`: whether behavior-bearing code changed
 - `simplified_through`: present only when a phase-boundary `ce-simplify-code` pass ran; the commit SHA its latest pass covered, as `references/implementation-loop.md` records it. Omit the field otherwise.
 - `standalone_shipping_skipped: true`
 
-When native execution was selected without a binding or fallback, the route fields still appear, with fixed values: `actual_route` is `native`; `implementation_engine_binding`, `requested_route`, `requested_model`, `requested_effort`, `fallback_reason`, `run_id`, `source_digest`, `unit_receipts`, and `plan_checkpoint` are `null`. Write them in one line without explanation. Do not compute a digest or build receipts for such a run; those come only from the cross-model controller.
+For ordinary native execution without a binding or fallback, `actual_route` is `native`; `implementation_engine_binding`, `requested_route`, `requested_model`, `requested_effort`, `fallback_reason`, `run_id`, `source_digest`, `unit_receipts`, and `plan_checkpoint` are `null`. Cross-model selection still uses native dispatch but supplies the durable binding and receipts from `cross-model-execution.md`; do not omit them merely because the route is native.
 
 Return `status: complete` only when behavior-bearing work has verification evidence or a deliberate exception. Before returning it, re-open the plan and re-check its active units, Verification Contract, and Definition of Done against the diff, because context may have been compacted to a summary that dropped detail. Remove code left over from approaches that did not pan out. If a previous return-to-caller run implemented code but omitted evidence, a later same-plan return-to-caller run should use the idempotency check to inspect the existing work, complete the evidence, and return without reimplementing.
 

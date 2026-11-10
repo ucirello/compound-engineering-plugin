@@ -24,9 +24,9 @@ When Spiral is unauthed or absent, offer setup once. First check the opt-out so 
 ### Check the opt-out
 
 <!-- ce-config-layers:start -->
-**Resolve ordinary CE yaml keys from the two repo files.**
+**Resolve ordinary configuration YAML keys from the two repo files.**
 
-- **Read** `<repo-root>/.compound-engineering/config.local.yaml`, then `config.yaml` (`<repo-root>` = `git rev-parse --show-toplevel`). Missing files are skipped. Gitignore does not change resolution.
+- **Read** `<repo-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<repo-root>` = the absolute path returned by `jj root`). Run repository commands with that root as the actual working directory. Missing files are skipped. Ignore rules do not change resolution.
 - **Win** with the first active (non-commented) value. For scalars, empty is unset; an invalid value continues to the next layer, then the skill default. For lists and maps, a present key — including an empty list or map — replaces the whole key.
 - **Do not** use this rule for `docs_root` — that key is `config.yaml` only.
 <!-- ce-config-layers:end -->
@@ -64,14 +64,16 @@ There is deliberately no separate "don't ask again" option: **dismissing is itse
 
 ### Record the opt-out (best-effort)
 
-Resolve the repo root, then add `ce_promote_spiral_optout: true` as a top-level key to `<root>/.compound-engineering/config.local.yaml`, using the native file-write/edit tool:
+Resolve the repo root, then add `ce_promote_spiral_optout: true` as a top-level key to `<root>/.rocketclaw/config.local.yaml`, using the native file-write/edit tool:
+
+Before any write, inspect `jj file list` from that absolute root. If the local config is already tracked, do not modify it or untrack it as part of this drafts-only action; continue drafting and explain that the opt-out was not saved. Keep any scratch output under `<root>/.tmp/`. Do not invoke Git directly, including for ignore or metadata checks.
 
 - **File already exists:** ensure an **uncommented** `ce_promote_spiral_optout: true` line is present — add one (or uncomment the example) unless an uncommented one already exists. A commented `# ce_promote_spiral_optout: true` (from `ce-setup`'s template) does **not** count as present; leaving only the comment would let the comment-ignoring read path re-prompt next run.
-- **File absent:** create it (and its `.compound-engineering/` directory) with the key, AND make sure the machine-local config won't be committed. Check whether the root-relative path `<root>/.compound-engineering/config.local.yaml` is already ignored (`git check-ignore -q <path>`); if it isn't, append `.compound-engineering/*.local.yaml` to git's **local exclude file** — resolve that file's path with `git rev-parse --git-path info/exclude` (this is correct in worktrees too, where `.git` is a *file* and `info/exclude` lives in the common git dir; do **not** hardcode `<root>/.git/info/exclude`). Use the local exclude, **not** `.gitignore`: it keeps the rule local and avoids dirtying a tracked file on what was a drafts-only action. `ce-setup` is the canonical place that adds the shared `.gitignore` entry for teammates. Without any ignore, a user who runs `/ce-promote` before `/ce-setup` could accidentally commit machine-local opt-out state.
+- **File absent:** first make sure the machine-local config will not be tracked. From the absolute workspace root, resolve repository metadata with `jj git root`; use the returned metadata directory's `info/exclude`, never assume `<root>/.git` is a directory. With native file tools, preserve existing contents and append `.rocketclaw/*.local.yaml` if not already present. Use this local exclude, **not** `.gitignore`: it keeps the rule local and avoids dirtying a tracked file on what was a drafts-only action. Only then create the config (and its `.rocketclaw/` directory) with the key. Inspect `jj file list` and `jj status` to ensure the config is not tracked; ignore rules cannot hide an already tracked file. If the metadata or protection cannot be verified, do not persist the opt-out; continue drafting and disclose that it was not saved. `ce-setup` is the canonical place that adds the shared `.gitignore` entry for teammates.
 
 If the root can't be resolved or any write fails, proceed to Path B anyway; the opt-out is a convenience, never a blocker.
 
-After recording, confirm it in one line so the write isn't silent and the user knows how to undo it — e.g. "Got it — I won't bring up Spiral here again (saved to `.compound-engineering/config.local.yaml`, kept out of git). Want it back later? Just ask, or remove the `ce_promote_spiral_optout` key." Keep it to a single line; don't belabor it.
+After successfully recording and reading back the value and verifying it remains untracked, confirm it in one line so the write isn't silent and the user knows how to undo it — e.g. "Got it — I won't bring up Spiral here again (saved to `.rocketclaw/config.local.yaml`, kept out of version control). Want it back later? Just ask, or remove the `ce_promote_spiral_optout` key." On a failed write or verification, say it was not saved instead. Keep it to a single line; don't belabor it.
 
 ## Generate
 

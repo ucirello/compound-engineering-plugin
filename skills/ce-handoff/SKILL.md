@@ -8,7 +8,7 @@ argument-hint: "[create [focus] | resume [source or keywords]]"
 
 Preserve enough session context for a fresh agent to orient quickly, then keep the user in control of what happens next.
 
-Creation and resume are deliberately open at their edges. The managed store and `ce-handoff/v1` metadata are defaults that make CE-created handoffs easy to find; they do not restrict where a handoff may be created or what a user may resume from. A resume source may come from any person, agent, or system and may use any readable format.
+Creation and resume are deliberately open at their edges. The managed store and `ce-handoff/v1` metadata are defaults that make handoffs easy to find; they do not restrict where a handoff may be created or what a user may resume from. A resume source may come from any person, agent, or system and may use any readable format.
 
 ## Route the invocation
 
@@ -25,9 +25,11 @@ Create one immutable handoff at the destination the user requested, or use the m
 
 Point at plans, issues, commits, diffs, documentation, and files rather than reproducing them, and redact secrets, credentials, and unrelated personal information. Keep the handoff pointer-first: for each reference the next agent depends on, name what specifically matters there — not only the path. Prefer repository-relative paths for repository files; use absolute paths only for machine-local state and label them as machine-local.
 
-Creation is complete only after confirming the destination contains the handoff. Then report its final path or URL, retention or access limits, and continuity warnings together. Give a succinct, context-specific summary of what the generated handoff captures, so the user can verify its substance without opening it. Managed `/tmp` storage is OS-managed and not permanent. If continuity depends on a fragile worktree, warn the user without mutation: do not commit, stash, copy, preserve, or tear down anything automatically.
+Creation is complete only after confirming the destination contains the handoff. Then report its final path or URL, retention or access limits, and continuity warnings together. Give a succinct, context-specific summary of what the generated handoff captures, so the user can verify its substance without opening it. Managed workspace-local `.tmp` storage is disposable and not permanent. If continuity depends on a fragile workspace, warn the user without mutation: do not commit, shelve, copy, preserve, or tear down anything automatically.
 
-**User-runnable invocation rendering.** For the copyable resume command below, default to `/ce-handoff resume <source>`; use `$ce-handoff resume <source>` only when the active host is Codex or explicitly documents dollar-prefixed skill invocation. Render it as the fenced command below and output one form only.
+**User-runnable invocation rendering.** Use the OpenCode-native `/ce-handoff resume <source>` command. Render it as the fenced command below and output one form only. A handoff is a document, not an instruction to launch another harness. Preserve any user-requested or configured model/provider/tier as continuity intent; do not silently change it or embed another harness's dispatcher. Once the current user authorizes continuation, use native `opencode.models` discovery and permitted native subagents/shell when delegation is actually requested. Delegation permission and model-override permission are separate: use a suitable inherited model when overrides are forbidden, disclose unmet fixed-model or cross-model requirements, and never claim missing coverage. Respect genuine delegation prohibitions; distinguish missing tools, permission denial, model-argument rejection, and depth/capacity errors from actual runtime evidence without bypassing them through shell or another harness.
+
+For intentional host compatibility only, render `$ce-handoff resume <source>` instead when the active host is Codex or explicitly documents dollar-prefixed skill invocation; this does not authorize dispatching to that host. Output one form only.
 
 End the creation response with one fenced, copyable command using the final path or URL and the rendering rule above:
 

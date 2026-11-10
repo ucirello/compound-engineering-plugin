@@ -72,7 +72,7 @@ On collision, record the no-op in the completion report so the user sees the dup
 
 ## Concurrent edit safety
 
-Document edits happen via the platform's edit tool (Edit in Claude Code, or equivalent). Before every append, re-read the document from disk to reduce the window for user-in-editor concurrent-write collisions. If the document's mtime or content has changed unexpectedly between a prior read and the append attempt, abort the append and report the situation via the failure path below. The user may be editing in their editor during the review session and simultaneous writes would corrupt the document.
+Document edits happen via the native edit tool. Before every append, re-read the document from disk to reduce the window for user-in-editor concurrent-write collisions. If the document's mtime or content has changed unexpectedly between a prior read and the append attempt, abort the append and report the situation via the failure path below. The user may be editing in their editor during the review session and simultaneous writes would corrupt the document.
 
 The orchestrator only holds the most recent read in memory, not a persistent lock. Interactive review does not need lock coordination; it needs a fresh read before each write.
 

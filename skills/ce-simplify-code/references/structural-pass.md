@@ -4,7 +4,7 @@
 
 ## Before dispatching
 
-Gather two kinds of evidence for the scope, and keep the output in OS temp:
+Gather two kinds of evidence for the scope, and keep the output under the target workspace's local `.tmp/`:
 
 - **What changes together:** pairs of files that often change in the same commits, especially pairs in different directories.
 - **What imports what:** the import graph for the scope, with how often each file changes in that same history.
@@ -31,7 +31,7 @@ A grouping is kept only when all three of these hold after its change: pieces th
 
 A grouped change still follows Step 3. It must preserve outputs, errors, side effects, and ordering, and it must stay inside the scope. That holds for every exported function and other public interface on its own, not only for the code paths the tests exercise: code you cannot see may call it directly. So a redesign may move logic behind an export, but the export keeps its signature and does what it did before. When it cannot, do not apply it; list it as not applicable. A change that would correct a bug is reported as a possible defect, not applied as a simplification.
 
-Keep the groupings and their reasons in a file in OS temp while you work, so they survive if the context is compacted.
+Keep the groupings and their reasons in a file under the target workspace's local `.tmp/` while you work, so they survive if the context is compacted. Use that same local directory for error logs and fallback evidence; never use global temporary directories.
 
 ## In the report
 

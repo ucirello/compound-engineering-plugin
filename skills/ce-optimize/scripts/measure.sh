@@ -117,7 +117,15 @@ CENSOR_STATUS_FILE=""
 if [[ -n "$CENSOR_AFTER" ]] && awk -v a="$CENSOR_AFTER" -v t="$TIMEOUT" 'BEGIN { exit !(a ~ /^[0-9]+(\.[0-9]+)?$/ && t+0 == t && a+0 > 0 && a+0 < t+0) }'; then
   TIMEOUT="$CENSOR_AFTER"
   CENSORING=1
-  CENSOR_STATUS_FILE=$(mktemp "${TMPDIR:-/tmp}/ce-optimize-censor-XXXXXX")
+  # Discover from the measurement cwd without changing where the command runs.
+  # Subsequent JJ calls, if needed, must run from this absolute workspace root.
+  SCRATCH_ROOT=$(jj workspace root 2>/dev/null) || SCRATCH_ROOT="$PWD"
+  if [[ "$SCRATCH_ROOT" != /* ]]; then
+    echo "Error: workspace root is not absolute: $SCRATCH_ROOT" >&2
+    exit 1
+  fi
+  mkdir -p "$SCRATCH_ROOT/.tmp/ce-optimize"
+  CENSOR_STATUS_FILE=$(mktemp "$SCRATCH_ROOT/.tmp/ce-optimize/censor-XXXXXX")
 fi
 
 # Run the measurement command with timeout

@@ -15,7 +15,9 @@ Dispatch is tiered by task shape, never hardcoded to a model name:
 
 If the user's or project's active instructions or the live prompt name a model for this subagent, use that model instead of the default tier above. They can name it by the subagent's tier, by its prompt-asset name, or for the subagents being dispatched. Without such an instruction, a model configured for this subagent's role takes precedence over the default tier.
 
-**Degradation rule.** When the platform's subagent primitive cannot select per-agent models, dispatch scouts on the inherited model and keep their read budgets. When the platform has no subagent primitive at all, run the scout work inline with the same budgets. When a dispatch fails, treat a concurrency or active-agent-limit error as backpressure — retry after a slot frees; a launch that fails for a reason that survives correcting the invocation runs that scout's work inline with the same budgets, disclosed in one line.
+This skill requests scout delegation; it does not independently authorize model overrides. Discover available models through native `opencode.models` when selecting an override, and honor host permissions. Explicit user/project and role-configured choices remain authoritative subject to those permissions. If an override is unavailable or rejected, inherit a suitable model and disclose the substitution; if a required model is essential to the request, report the missing coverage instead of claiming it was met.
+
+**Degradation rule.** Distinguish capacity backpressure (retry after a slot frees) from a delegation-depth limit, permission denial, missing subagent tool, and model-argument rejection. When per-agent selection alone is unsupported, inherit a suitable model and keep the budgets. When no subagent primitive exists or depth prevents dispatch, run the scout inline with the same budgets and disclose why. Honor denial: never evade it through shell dispatch or another harness, and return a blocker if inline work is also prohibited. Correct invalid invocation arguments where appropriate; do not treat model rejection as a depth error or claim independent scout coverage for inline work.
 
 A generic subagent is one whose whole brief is the prompt you send it. When the host's subagent tool makes you name an agent, use only a name you have seen the host list, and list its agents before the first dispatch if you have not. Pick the plain one that adds no role of its own, which still counts as a generic subagent. Never pick a specialist, such as a reviewer or worker agent, whose own role prompt, output format, or tool limits would replace or narrow your prompt.
 
@@ -24,6 +26,8 @@ A generic subagent is one whose whole brief is the prompt you send it. When the 
 The skill body carries the ownership-checked block that creates `$RUN_DIR`; run it from there so this file cannot drift from it.
 
 ## Grounding by input shape
+
+For repository evidence, resolve the target absolute workspace root with `jj root` and run commands from that root, not with `-R` as a substitute for changing directory. Use native `jj log`, `jj show`, and `jj diff` for history and changes; never invoke Git directly, even for read-only queries or fallbacks. Verify requested revisions and range semantics before interpreting a Git-style input token. For repository-scoped `gh` calls, export `GIT_DIR=$(jj git root)` from the target root. Keep all scratch and error output in local `.tmp/`.
 
 **Repo-touching inputs** (a concept with footprint in this repo, a diff, a recap): use the project's active instructions already in context and go directly to the diff, call-sites, current source, or commits. Read `CONCEPTS.md` when canonical vocabulary matters. If the topic cannot be scoped from the input and existing context, allow one targeted root or workspace probe.
 

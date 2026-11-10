@@ -1,5 +1,7 @@
 # Code Review Output Template
 
+Before composing any applied-fix change description, read `references/finish-report.md`'s full composition contract and execute its runtime full-guide and verified-history comparison. The report skeleton below is not a commit-message template.
+
 This is the **canonical skeleton** for *which sections appear and in what order* — copy the section structure; the example below shows one good rendering, not the only permitted layout. Shape each finding for the reader's next action per *Presentation direction* in `references/finish-report.md` (Stage 6) (what & where / why it matters / what response it needs / how sure; let the shape serve the finding type). Findings are grouped by severity, not by reviewer.
 
 **Hard constraints (non-negotiable; the rest is judgment):** ASCII-safe only — no box-drawing or per-item horizontal-rule separators (`────`), no Unicode arrows or middot; use `->`. Don't paste file contents or re-print the diff — cite `file:line`. Stable `#` numbering, reused wherever a finding reappears. The Verdict and Actionable list are present, last, and self-sufficient.
@@ -27,7 +29,7 @@ This is the **canonical skeleton** for *which sections appear and in what order*
 | 7 | `orders_controller.rb:88` (+test) | Tightened export file perms `0644 -> 0600` (security-posture — verify in diff) | security |
 
 Validation: export tests 11 -> 13; suite 214 pass, lint clean.
-Committed: `fix(review): cover empty-format branch + tighten export perms` (working tree was clean before review).
+JJ fix change described in the repository's observed style (working change was empty and conflict-free before review).
 
 ### Triage Groups
 
@@ -141,7 +143,7 @@ This fails because of the **box-drawing `────` separators between items*
 - **Header includes** scope, intent, and reviewer team with per-conditional justifications
 - **Mode line** -- include `markdown report-only`, `markdown local-apply`, or `agent report-only`
 - **Triage Groups section (when groups exist)** -- pipe table `| Group | Findings | Context | Preferred Resolution | Why |` rendered after Applied and before the severity tables. The `Findings` cell lists stable `#`s (e.g. `#2, #3`); every referenced `#` must appear in a severity table below. Groups are a triage lens over the findings -- they never replace the severity tables, merge findings, or renumber them. Omit when `grouping:off` is active or no groups survived Stage 5b/5c pruning.
-- **Applied section (explicit local apply only)** -- when Stage 5c was authorized and applied fixes, list them first, before the severity tables, as `# | File | Fix | Reviewer` followed by a one-line validation outcome (e.g. "suite 214 pass, lint clean") and the **commit status** — committed as an isolated review-labeled fix commit (`fix(review): …`, or the repo's nearest convention when `review` isn't an allowed scope) when the working tree was clean before the review, or left uncommitted (for the user's commit) when it was already dirty. A fix spanning multiple files is **one row with one `#`** (e.g. `controller.rb:88 (+test)`) -- never duplicate the number across rows. Flag green-but-unverifiable edits (auth/contract/concurrency) inline in the `Fix` cell, e.g. `(security-posture — verify in diff)`. Applied findings keep their stable `#` and appear only here, not in the severity tables. Omit when local apply was not authorized or nothing was applied
+- **Applied (explicit local authority only)** -- list before severity tables as `# | File | Fix | Reviewer`, then one-line validation and JJ description/checkpoint status. Empty/conflict-free pre-review working changes may hold an isolated described fix in actual repository style; existing user work stays uncommitted/undescribed by review. Compose only under `finish-report.md`'s full Go-guide and recent full-history requirements, never a fixed message template. A multi-file fix is one row/`#` (e.g. `controller.rb:88 (+test)`). Flag auth/contract/concurrency edits that remain green-but-unverifiable in the Fix cell. Applied findings appear only here; omit when nothing was authorized/applied.
 - **Actionable Findings section** -- include when the actionable queue is non-empty (findings for the caller to handle)
 - **Pre-existing section** -- separate table, no confidence column (these are informational)
 - **Learnings & Past Solutions section** -- results from the `learnings-researcher` local prompt asset, with links to <root>/solutions/ files

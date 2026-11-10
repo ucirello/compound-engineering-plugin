@@ -7,9 +7,21 @@
 
 set -e
 
+# Discover the workspace before running JJ; inherited Git context is not trusted.
+unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX GIT_CEILING_DIRECTORIES GIT_DISCOVERY_ACROSS_FILESYSTEM
+workspace_root=$(pwd -P)
+while [ ! -d "$workspace_root/.jj" ]; do
+    [ "$workspace_root" != / ] || { echo "Error: target JJ workspace not found." >&2; exit 1; }
+    workspace_root=$(dirname "$workspace_root")
+done
+cd "$workspace_root"
+GIT_DIR=$(jj git root)
+case "$GIT_DIR" in /*) [ -d "$GIT_DIR" ] ;; *) false ;; esac
+export GIT_DIR
+
 if [ $# -lt 2 ]; then
     echo "Usage: reply-to-pr-thread PR_NUMBER ROOT_COMMENT_ID [OWNER/REPO] < reply-body.md"
-    echo "Example: reply-to-pr-thread 123 456789 EveryInc/cora < reply-body.md"
+    echo "Example: reply-to-pr-thread 123 456789 OWNER/REPO < reply-body.md"
     exit 1
 fi
 

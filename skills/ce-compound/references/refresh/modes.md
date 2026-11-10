@@ -1,5 +1,7 @@
 # Interactive and non-interactive modes
 
+Before composing any refresh or bootstrap commit description, read `references/refresh/commit.md` in full and execute its runtime full-guide and verified-history comparison. This applies in both modes.
+
 Strip `mode:refresh`, `mode:non-interactive`, its deprecated alias `mode:headless`, and any `depth:` token, which has no meaning in a refresh. The remainder is a scope hint. Run **non-interactive** if either non-interactive token was present; otherwise run **interactive**.
 
 **Interactive:** apply unambiguous actions directly; ask the user only on genuine judgment calls (the Decide section of `references/refresh/classify.md` lists them).

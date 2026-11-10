@@ -121,3 +121,6 @@ File updated:
 | Creating a new doc when an existing doc covers the same problem | Check overlap assessment; update the existing doc when overlap is high |
 | Asserting code behavior or merge-state from conversation memory | Read the defining source line before asserting; cite PR numbers over SHAs; soften unverifiable claims (Phase 1 extractor rules, re-checked in Phase 2.45) |
 | Batching several learnings through one run and stitching cross-references between drafts | One learning per run; run the skill sequentially for each additional learning |
+# Delegated Full reporting
+
+For a context-pressure handoff, identify the source session ID, source export/reduced evidence paths, and any evidence gaps. The delegate's own session alone is excluded. Return the report and written document path to the parent; the parent relays them and handles interactive discoverability and pack consent without running Full again. A Lightweight fallback must name the actual unavailable tool, denial, or depth/capacity error and recommend retrying Full in the same source session later. Explicit non-interactive depth selection remains authoritative.

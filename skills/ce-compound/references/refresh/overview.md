@@ -57,7 +57,7 @@ Edits apply silently in every mode. The report's `CONCEPTS.md` line records what
 
 ## Commit
 
-Skip if nothing changed. Otherwise stage **only** the files this refresh modified, and commit in the repo's convention. **Read `references/refresh/commit.md`** for the per-mode branch decision and the git-failure fallback.
+Skip if nothing changed. Otherwise select **only** the files this refresh modified. **Read `references/refresh/commit.md` in full before composing** for runtime guidance/history comparison, repository syntax, the per-mode bookmark decision, and safe publication-failure handling. Never stage files or use a direct-Git fallback.
 
 ## Discoverability Check
 

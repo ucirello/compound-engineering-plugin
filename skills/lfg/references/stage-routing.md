@@ -4,6 +4,12 @@ A carrier is the prefix string that passes a stage assignment (which model or ha
 
 LFG is otherwise hands-off and never stops to ask. The single question it may ask is the one in scope rule 3 below, and only on an interactive host.
 
+## Native dispatch contract (authoritative)
+
+All execution stays in OpenCode through native subagents or shell; never start another harness, a dispatch bridge, or a shell workaround for denied delegation. Legacy harness names below identify requested intent for compatibility, not executable routes. Resolve operational model aliases through native `opencode.models` and pass the exact available provider/model identity to a native subagent only when the host permits model overrides. Configuration remains authoritative subject to that permission. A model family does not require its vendor's harness: encode model-only assignments with `target:opencode` and the resolved model pin. An explicit requirement to execute in another harness is unsupported and blocks; a preference may fall back natively only with requested/actual identity and reason disclosed. Do not claim a different harness ran.
+
+This skill requests delegation, which is sufficient task-level authorization when host policy allows user-OR-skill delegation. That is distinct from permission to override a model. Use an inherited-model subagent when suitable. Report separately delegation denial, unavailable tools, depth/capacity exhaustion, model-override denial, and rejected model arguments; never relabel one as another or evade it through shell. If required independent or cross-model coverage is unavailable, disclose the exact missing coverage and block a requirement-strength route rather than claiming completion. Preserve receipts, recovery identity, integration evidence, and verification regardless of route.
+
 ## What is routable
 
 Interpret whether the invoking conversation expresses **semantic intent to assign a pipeline stage** — planning or implementation — to a specific model or harness. This is judgment, not keyword or prompt-token matching: an explicit instruction such as "plan with fable" or "use Codex for implementation" creates an assignment, while a plain mention of Codex, Composer, Fable, or another model/harness in feature content, quoted material, comparison text, or a filename does not. Two pipeline stages are routable, each with its own carrier:
@@ -28,7 +34,7 @@ When implementation resolves to one candidate, retain one transient `implementat
 - `model`: the explicit model pin, otherwise `null`
 - `source`: a caller-visible string saying where the binding came from, identifying the current LFG instruction
 
-A directive that names a bare **model** with no harness (e.g. "use fable", "with opus") is a model *pin*, not a target: encode it as the harness that serves that model family with the alias in `model`. A Claude-family model (`fable`, `opus`, `sonnet`, `haiku`) is `{"target":"claude","model":"<alias>"}`. Never put a model name in `target`. If you cannot map the named model to one of the harnesses above, that is a routing-carrier blocker, not a `null` binding that silently drops the user's instruction.
+A directive that names a bare **model** with no harness (e.g. "use fable", "with opus") is a model *pin*, not a target: resolve it using `opencode.models` and encode `{"target":"opencode","model":"<resolved-provider/model>"}`. Never put a model name in `target`. If the model cannot be resolved or a required override is not permitted, report a routing-carrier blocker rather than silently dropping the instruction.
 
 When the implementation instruction instead names an ordered fallback list, do not truncate it to the scalar carrier (the single-candidate object above). Instead, retain the whole ordered assignment as current-task implementation intent and pass no `implementation_engine:` object. When LFG invokes `ce-work`, that still-active current-task assignment outranks configuration, and `ce-work` normalizes and preflights the candidates in order. This is context scoped to the implementation stage, not plan content. If the host cannot preserve that context across its skill invocation, stop with a routing-carrier blocker rather than silently dropping later candidates.
 

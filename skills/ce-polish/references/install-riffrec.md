@@ -13,7 +13,7 @@ Live mode with the seeing interviewer (clicks announced, `look_at_screen`, no zi
 Three edits, together, in the project root the detect script inspected:
 
 1. **Dependency.** Use the package manager the detect output named (`package_manager`; when null the project has no `package.json` and live mode cannot host riffrec — report that and offer traditional). Let the manager update its lockfile; do not edit the lockfile by hand.
-   - **Registry install:** one command, the manager's own add verb followed by the registry range: `<add verb> riffrec@^2.2.1`, where the add verb is `npm install`, `pnpm add`, `yarn add`, or `bun add` for the manager the detect output named. Quote the spec in shells that expand `^`. An existing `riffrec` entry that allows anything older than `RIFFREC_MIN_VERSION` (an older range, or a git spec such as `kieranklaassen/riffrec#<sha>` or `#main`) is replaced by the range.
+   - **Registry install:** one command, the manager's own add verb followed by the registry range: `<add verb> riffrec@^2.2.1`, where the add verb is `npm install`, `pnpm add`, `yarn add`, or `bun add` for the manager the detect output named. Quote the spec in shells that expand `^`. An existing `riffrec` entry that allows anything older than `RIFFREC_MIN_VERSION` (an older range, or a repository spec pinned to an older revision) is replaced by the range.
    - **Check the build.** Re-run the detect script: `installed` and `live_build` must both be true. `live_build` requires the installed `dist/index.d.ts` to name both `RiffrecLiveConfig` (the live provider) and `LOOK_AT_SCREEN_TOOL` (the page-side handler for the screen tool the endpoint advertises to the interviewer); an older live-capable build has the first without the second and would leave the interviewer's screen requests unanswered, so it fails this check and is replaced by the range like any other stale entry. If `live_build` is false the install did not resolve to `RIFFREC_MIN_VERSION` or later (a lockfile still holding an older resolution, a manager cache); fix the resolution and reinstall rather than building inside `node_modules`. Still false after that: stop, report the command output, and offer traditional. The detect script's `version` is informational (it reads the installed `package.json`, not a registry); the probe in `references/live-start.md` (the consent screen appears) is what proves live mode is present.
 2. **Mount.** Wrap the root of the React tree once in the provider, imported from `riffrec`:
 
@@ -28,7 +28,50 @@ Follow riffrec's own README when it names a different mount point for the framew
 
 ## Commit
 
+Read this entire section before composing a setup or final polish description, then invoke `ce-commit` with the same runtime contract. Set `workspace_root` to the verified absolute target workspace root.
+
 Commit the dependency change, the lockfile, and the mount edit as one setup commit on the current branch through `ce-commit`, with a message that says it adds riffrec live mode for polish sessions. Keep its hash: the live-mode report names it, including when the riffer later declines the consent screen and no session runs (the commit stays; riffrec remains in the app after the session, as disclosed).
+
+The message's meaning above is a semantic requirement, not a fixed subject template. At runtime, `ce-commit` must read the full https://go.dev/wiki/CommitMessage guide and inspect recent full subjects and bodies from the actual verified history head: `(cd "$workspace_root" && jj log --no-graph -r '::<verified-history-head>' -n 10 -T 'description ++ "\n"')`. Replace the placeholder with the verified revision, not an assumed default bookmark. Compare several examples for repository syntax, which takes precedence over Go guidance. Apply this contract to the final polish commits too. Do not append attribution or sign-off trailers.
+
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards.
+
+Verbatim source guidance, subordinate to actual repository syntax and not a mandatory template:
+
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+
+```text
+net/http: handle foo when bar
+
+[longer description here in the body]
+
+Fixes #12345
+```
+
+> Notably, for the subject (the first line of description):
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+
+> For the body (the rest of the description):
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
+
+Additional Go source guidance:
+
+> the verb after the colon is lowercase
+>
+> there is no trailing period
+>
+> there is **no** Markdown in the commit message.
+>
+> similarly, we **do not** use `Co-authored-by` and `Assisted-by` lines. Don’t add them.
+
+Do not turn Go's package-prefix example into a mandatory repository template. Preserve accurate issue references and explain what changed and why.
 
 ## When it fails
 

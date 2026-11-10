@@ -28,6 +28,8 @@ If any is missing, **stop and say so**, naming what to build. Do not fall back t
 
 State the target model and the harness you found before continuing.
 
+Run JJ from the target workspace's absolute root; never invoke Git directly. Repository-scoped `gh` calls require `GIT_DIR=$(jj git root)` in that root. Keep all scratch and temporary output, including fallback/error files, beneath that workspace's `.tmp/` (ensure `.tmp/` is ignored); without a JJ repository use local `.tmp/`. Keep durable measurement evidence in the project's documentation location. All new isolated corpus copies, including Phase 2's identical arms and throwaway control, follow the creation, colocation verification, naming, session-adoption, and guarded cleanup protocol in `references/cut-passes.md`; detect existing isolation before creating any.
+
 ## The phases
 
 They run in order, and each names the reference it cannot start without. Read `references/workflow-shapes.md` before dispatching any phase: the wrong orchestration shape is the common failure. Fan out by disjoint file ownership, never by item. Items cross files, and agents that share a file lose each other's edits.

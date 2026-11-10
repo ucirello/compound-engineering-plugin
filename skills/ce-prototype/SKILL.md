@@ -17,7 +17,7 @@ Build a throwaway prototype at the fidelity that can answer this question, befor
 
 If there is no person to experience the prototype — `mode:pipeline`, a headless run, or a calling skill that reports no human is present — stop. Do not start a preview or invent how it should feel. Return that this skill needs a human. A calling skill that has a human present (an interactive `lfg` run, for example) is an ordinary attended run.
 
-**User-runnable invocation rendering.** The attended re-run in that refusal and the next-skill recommendation when the user applies print invocation syntax. Default to `/ce-prototype`, `/ce-brainstorm`, and `/ce-plan`; use `$ce-prototype`, `$ce-brainstorm`, and `$ce-plan` only on Codex or a host that documents dollar-prefixed skill invocation. Render only the invocation as inline code; output one form only.
+**User-runnable invocation rendering.** The attended re-run in that refusal and the next-skill recommendation when the user applies print invocation syntax. Use `/ce-prototype`, `/ce-brainstorm`, and `/ce-plan` in OpenCode. Render only the invocation as inline code; output one form only.
 
 ## Scope the question
 
@@ -33,9 +33,9 @@ A question is settled by seeing when the judgment lands on the rendered result: 
 
 Default substrate: the web, whatever the product is written in — a native app's navigation feel gets a web approximation, not SwiftUI. `references/build.md` defines yields and artifacts.
 
-Build under `.context/compound-engineering/ce-prototype/<date>-<slug>/`, so the prototype survives for the implementation that follows. Fall back to `/tmp/compound-engineering-<uid>/ce-prototype/<date>-<slug>/`, where survival is best-effort. `references/build.md` names every case that forces the fallback root.
+Build under `.tmp/ce-prototype/<date>-<slug>/` in the absolute target workspace root, so the prototype can survive for the implementation that follows. `references/build.md` owns durability and safety requirements.
 
-The `.context` path has to be gitignored first. Probe it from the repo root with `git -C <repo root> check-ignore -q .context/compound-engineering/`; the trailing slash is required. When it is not covered, the offer to add that line comes before the root is resolved, or accepting it cannot help this run.
+The local `.tmp/` path must be ignored first. Inspect the workspace's applicable ignore rules; when not covered, offer to append `.tmp/` to the root `.gitignore`, changing nothing else and only with consent. If consent is declined or coverage cannot be established, stop rather than write scratch files into tracked content or use global temporary storage.
 
 `references/preview.md` defines that offer and the resolution that follows it. Do not create the run directory yourself; a second claim splits the screens from the capsule.
 

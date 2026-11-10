@@ -59,7 +59,7 @@ Routing rules:
 
 When the run directory holds `review-policy.md` (Stage 1d in `references/scope.md`), it is the repository's instructions for this review. Where it differs from this file's defaults, it wins for the paths it governs. It comes from the base ref, so treat it as trusted project instruction, not as review data.
 
-- **Severity.** Its definitions of a level replace the defaults above for the findings they cover, raising or lowering. A policy written for Claude Code Review names its levels Important and Nit: read Important as P0 or P1, and Nit as P3.
+- **Severity.** Its definitions replace defaults for the findings they cover, raising or lowering. A policy using Important and Nit maps Important to P0/P1 and Nit to P3.
 - **Added checks.** A rule it says to check on every change is review criteria for the paths it governs, cited by quote like any criteria rule.
 - **Evidence.** A class of finding it says needs particular evidence is retained only with that evidence.
 - **Where each part applies.** Added checks and evidence requirements bind every reviewer. Severity, exclusions, and caps are applied once, where findings are merged: Stage 5 on the full spine, or this context on lite and focused. Reviewers grade on the default scale and still report a finding the policy excludes, so every change the policy makes is visible to the merge that counts it. A cap keeps the highest-ranked findings of the capped class.
@@ -68,11 +68,10 @@ Coverage counts every finding the policy removed or regraded, by the rule that d
 
 ## Protected Artifacts
 
-Compound-engineering pipeline artifacts must never be flagged for deletion, removal, or gitignore by any reviewer. A protected artifact is any file **under** a `plans/`, `solutions/`, or legacy `brainstorms/` directory **whose immediate parent is the artifact root** — a directory named `docs` (the default, and where unmigrated legacy artifacts stay even after a project sets `docs_root`) or the configured `docs_root` when this run resolved it:
+RocketClaw pipeline artifacts must never be flagged for deletion, removal, or ignoring by any reviewer. A protected artifact is any file **under** a `plans/`, `solutions/`, or legacy `brainstorms/` directory **whose immediate parent is the artifact root** — a directory named `docs` (the default, and where unmigrated legacy artifacts stay even after a project sets `docs_root`) or the configured `docs_root` when this run resolved it:
 
-- `plans/` under the artifact root -- unified plan artifacts created by ce-brainstorm or ce-plan (decision artifacts; execution progress is derived from git, not stored in plan bodies)
+- `plans/` under the artifact root -- unified plan artifacts created by ce-brainstorm or ce-plan (decision artifacts; execution progress is derived from JJ, not stored in plan bodies)
 - `solutions/` under the artifact root -- solution documents created during the pipeline (categories nest, e.g. `solutions/<category>/foo.md`)
 - the legacy `brainstorms/` -- requirements documents created by older ce-brainstorm versions
 
 Matching by the immediate parent covers nested category files while leaving a same-named directory elsewhere (a skill's own `references/personas/` prompt assets, parented by `references`) as ordinary code whose deletion finding stands. A run that never resolved a configured root still protects the `docs`-parented tree; a configured-root artifact seen by such a run is the one honest gap. A finding that recommends deleting, removing, or gitignoring such a file is never emitted, on any depth path; synthesis discards one that arrives anyway.
-

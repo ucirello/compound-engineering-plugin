@@ -1,6 +1,6 @@
 # Project review docs (Step 10)
 
-This step needs a writable git checkout of the repository; without one, say so and write nothing.
+This step needs a writable JJ workspace; without one, say so and write nothing. Resolve its absolute root with `jj root`, then run all repository commands there. Before repository-scoped `gh`, export `GIT_DIR=$(jj git root)`. Read history with `jj log` and changes with `jj show`/`jj diff`; never launch Git directly.
 
 **Outcome:** the repository has a `CODING_STANDARDS.md` and `REVIEW.md` drawn from its own history and current with it. Its root agent-instructions file points to them, and so does the file each AI code reviewer it uses reads. Teams rarely write these files from a blank page, so setup offers a draft for the user to correct rather than asking them to author one. Nothing is written until the user approves the drafts.
 

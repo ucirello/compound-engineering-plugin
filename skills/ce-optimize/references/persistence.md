@@ -20,15 +20,9 @@ Read this before Phase 0 and follow it for the whole run. The body states the in
 
 ### The State Root
 
-`<state-root>` is the directory that holds the run's ledger. Resolve it once, in Phase 0, by the body's Execution Surface rule: when the harness names a durable state root, `<state-root>` is `<that location>/ce-optimize/<spec-name>/`, placed where that location's own conventions keep working state rather than user-facing documents; otherwise it is `.context/compound-engineering/ce-optimize/<spec-name>/` in the repo checkout, which is gitignored and survives a local resume only on this machine. A run's root is wherever its log already is: never move a ledger mid-run, and a resume that finds the log at one root uses that root even when the other is now available. Give every subagent and worker the resolved path, not the rule.
+`<state-root>` is the directory that holds the run's ledger. Resolve it once, in Phase 0: new runs use the absolute `$(jj workspace root)/.tmp/ce-optimize/<spec-name>/`, which is ignored and survives a local resume only on this machine. New scratch, prompts, measurement files and errors also belong under the workspace root's `.tmp/`, never OS-global temporary storage. A harness-named durable state location may retain a reference or receipt to this local ledger according to its capabilities, not replace the new-run location. A run's root is wherever its log already is: check the recorded location, legacy `.context/ce-optimize/<spec-name>/`, and any previously used harness durable location before creating a new ledger. Verify run identity and ownership; if multiple logs are ambiguous, stop rather than merge or overwrite them. Never move a ledger mid-run; resume uses its existing root even when another location is now available. Give every subagent and worker the resolved absolute path, not the rule.
 
-Examples of what the three capabilities look like on some harnesses. This table is not a tool list; the body's rule decides.
-
-| Harness | Durable state root | Wake after turn end | Detached worker |
-|---|---|---|---|
-| A coordinator harness with a persistent agent store (for example Cursor Projects' Agent Store) | The store path named in your context | Event subscriptions or a timer subscription that re-invokes the agent | A cloud-agent launch that returns a receipt and lands its work as a pushed branch or a store file |
-| Grok (CLI/TUI) | None named; `.context/` | `scheduler_create --durable` | None; `worktree` |
-| Claude Code, Codex, Cursor CLI sessions | None named; `.context/` | Whatever scheduling or wake tool the session lists; when it lists none, cron running the resume invocation is the user's escalation | None; `worktree` (or `codex` when the spec says so) |
+Discover capabilities from the active OpenCode tool list. A named durable store and a supported wake tool are optional; never invent either. Native subagents use independent verified JJ workspaces and recorded receipts. Without a wake capability, checkpoint and provide the exact resume invocation. Keep scratch/prompts/errors under the workspace's local `.tmp/ce-optimize/`; a pre-existing durable ledger stays at its recorded location.
 
 When the harness shows the user a status surface for this run, write a one-line run status there at CP-4 and at each stop, in addition to the log.
 

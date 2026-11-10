@@ -6,11 +6,13 @@ Use fresh contexts that receive neither the coordinator's preferred answer nor s
 
 Name the independent authors **Baker A**, **Baker B**, and so on in dispatch labels and payloads. Use “bakers” for the workers in progress updates and “candidates” for their proposed solutions.
 
-Honor explicit candidate model choices or mixes, otherwise the caller's resolved model preference. Without a model preference, seek different model families across the bakers. Prefer native host access to serve the selected models, then try available authorized model CLIs for families the host cannot serve. If those routes are unavailable or fail, use fresh agents on the host's own model and disclose the fallback. An explicit restriction on models or providers still applies; do not silently substitute for a required model.
+Honor explicit candidate model choices or mixes, otherwise the caller's resolved model preference and applicable `.rocketclaw/config.yaml` / `config.local.yaml` model routes and tiers. Preserve their precedence and treat those choices as intent, not permission to override the host. Without a model preference, prefer different model families across the bakers when permitted. Discover exact provider/model IDs through `opencode.models`, then dispatch fresh native `subagents` with the common payload. Never invent IDs or turn a configured route into a different route silently.
 
-Bake-off owns candidate dispatch. Use the host's actual capabilities and each available CLI's current help to establish supported model selection, a fresh context, read scope, output collection, and cancellation. Keep CLI calls direct and scoped; do not invoke the peer-job Python framework or build a new dispatch system for this task. Do not invent model IDs or flags, install tools, or change credentials. A failed route should lead to the next usable route within budget, not repeated setup or troubleshooting. Cancel any outstanding attempt before replacing it, and count actual candidate launches against the run's allowance.
+Bake-off owns candidate dispatch. This skill explicitly requests candidate and judge delegation: under a user-OR-skill delegation rule, no second user request is needed. An unconditional prohibition or actual denial still applies. Delegation permission is separate from model-selection permission: if an optional `model` argument requires an explicit user model request, omit it when that request is absent. Use inherited-model fresh agents when suitable, disclose unmet preferred diversity, and report incomplete coverage when a required fixed route or different-model requirement cannot be met. Same-model fresh contexts establish contextual independence, not cross-model evidence.
 
-Before external dispatch, briefly name the recipient and material it will inspect unless already disclosed. Stay within existing authority and read scope. CLI availability or authentication does not authorize a new recipient. Model diversity is a preference, not a completion requirement; fresh contexts remain required even when all bakers use the same model. Every baker is a read-only author returning its artifact to the coordinator, which owns persistence. Without enough fresh contexts through any permitted route, report incomplete rather than perform same-context roleplay.
+Use native `subagents` for dispatch, results, progress and cancellation; use `shell` only for scoped evidence reading and local receipt/artifact persistence, not another harness's dispatcher or a new dispatch framework. Establish supported arguments and lifecycle from the actual tools. Do not install tools, change credentials, or evade a prohibition through shell. Classify launch errors from actual evidence: missing tool, permission denial, depth/capacity exhaustion, or rejected model argument are different failures. Queue independent work when capacity permits; do not bypass nesting limits. Do not retry denied operations. A permitted recovery may correct an unsupported argument, use a suitable inherited model, or replace a failed attempt within budget; cancel any outstanding attempt before replacing it and count actual candidate launches against the allowance. A rejected pre-launch request is recorded separately, not counted as a completed or launched baker.
+
+Before dispatch to a new external model recipient, briefly name the recipient and material it will inspect unless already disclosed. Stay within existing authority and read scope; catalog availability or authentication does not authorize a new recipient. Model diversity is a preference unless explicitly required; fresh contexts remain required even when all bakers use the same model. Every baker is a read-only author returning its artifact to the coordinator, which owns persistence. Without enough fresh contexts through the permitted native route, report incomplete rather than perform same-context roleplay.
 
 Give each candidate the common brief, source pointers and complete relevant grounding, settled decisions, active project constraints, permitted read scope, fidelity, and remaining time. Convey the read-only author contract in every payload: return the artifact in the response, without file writes or child dispatch. Scope each to its own candidate and forbid reading sibling scratch. These are cooperative boundaries unless the host enforces them. Do not claim filesystem isolation merely because paths differ.
 
@@ -21,17 +23,20 @@ Ask each candidate to return an approach sketch at the requested fidelity, with 
 Create private run scratch once:
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
-if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
-(umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
-if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
-chmod 700 "$SCRATCH_ROOT" || exit 1;
-(umask 077; mkdir -p "$SCRATCH_ROOT/ce-bakeoff") || exit 1;
-SCRATCH_DIR=$(mktemp -d "$SCRATCH_ROOT/ce-bakeoff/run-XXXXXX") || exit 1;
-echo "$SCRATCH_DIR";
+workspace_root=$(jj workspace root) || exit 1
+cd "$workspace_root" || exit 1
+for directory in "$workspace_root/.tmp" "$workspace_root/.tmp/rocketclaw" "$workspace_root/.tmp/rocketclaw/ce-bakeoff"; do
+  [ ! -L "$directory" ] || exit 1
+  (umask 077; mkdir -p "$directory") || exit 1
+  [ -O "$directory" ] && [ -w "$directory" ] || exit 1
+done
+SCRATCH_ROOT="$workspace_root/.tmp/rocketclaw/ce-bakeoff"
+SCRATCH_DIR=$(umask 077; mktemp -d "$SCRATCH_ROOT/run-XXXXXX") || exit 1
+echo "$SCRATCH_DIR"
 ```
 
-Use separate candidate artifacts in this run directory, written by the session orchestrator from actual returns. Keep shared input separate from candidate outputs. When an elevation adapter creates a private handoff bundle, let it own that bundle; carry the same evidence into each candidate without exposing sibling results.
+Outside a JJ repository, resolve the absolute project directory and use its local `.tmp/rocketclaw/ce-bakeoff` with the same ownership and symlink checks; never fall back to global temporary storage. Ensure repository `.tmp/` is ignored before writing. No candidate workspace is needed for read-only authors.
+
+Use separate candidate artifacts in this run directory, written by the session orchestrator from actual returns. Keep shared input separate from candidate outputs and carry the same evidence into each candidate without exposing sibling results. Keep a run ledger containing the common-brief version, candidate label, requested route/tier, actual native agent/session ID, observed model identity (or unverified), launch/completion status, artifact path and failure/cancellation evidence. Persist actual returns before judging; do not fabricate receipts from planned launches. Recovery gets the same brief and source evidence, not sibling outputs, rankings or the preferred solution. Record any targeted missing dimension and count it against the one recovery launch. Resume from receipts rather than relaunching completed candidates; verify pending lifecycle state before replacement.
 
 Inspect actual completion receipts and returned artifacts before counting candidates. Record launch failures, dropouts, and model attribution as observed; missing model receipts stay unverified. Do not count a dispatch announcement or promised file as a completed candidate. Cancel or reap outstanding workers through the owning lifecycle before closing the run.

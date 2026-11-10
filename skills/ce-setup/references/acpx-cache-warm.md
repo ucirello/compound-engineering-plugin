@@ -1,8 +1,8 @@
 # Warm the npm cache for cross-model peers
 
-Cross-model peers resolve acpx within tested version bounds, preserving npm's release-age and date-cutoff policies. Warming downloads an eligible transport and the adapters associated with the newest validated release. An older policy-selected transport may fetch different adapter packages on its first run.
+This optional compatibility-cache maintenance downloads packages within tested version bounds, preserving npm's release-age and date-cutoff policies. It is not native peer dispatch, not a prerequisite for OpenCode models, and does not authorize launching another harness. Resolve models with `opencode.models` and dispatch native subagents under the permission/depth rules in SKILL.md.
 
-Ask once. Say first what it gets the user: skills that consult another model, such as Codex or Claude, usually start without a download on first use. Then say in plain words what it does: it downloads now, into the user's npm cache, the npm packages those skills use to reach the other model, instead of on first use. Say too that npm runs any install scripts those packages declare, as it would on that first use. Name a package such as acpx only alongside that description. Run it only after the user approves; if they decline, fetch nothing.
+Ask once. Explain that this downloads optional compatibility packages into the npm cache, not models, and native OpenCode peer dispatch does not need them. Disclose that npm runs package install scripts. Run only after approval; if declined, fetch nothing. All temporary working directories stay under the absolute JJ workspace's `.tmp/`; without one, skip rather than use global temporary storage.
 
 On approval, run the health script with `--warm-acpx` in place of `--version VERSION`, using the same `SKILL_DIR` as Step 2:
 

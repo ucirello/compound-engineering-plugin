@@ -37,7 +37,7 @@ When triage selects Return-to-Caller Mode, read `references/return-to-caller.md`
 
 2. **Resolve the engine, then strategy.** After bounded plan intake and task derivation, but before selecting a unit for execution, writing, dispatching, or committing, read `references/execution-engines.md` and complete its route selection. It applies with or without a typed binding; native execution is eligible only when that reference selects it or exhausts an allowed fallback. The engine choice never changes which reference governs how the run ends.
 
-   If cross-model execution is selected, read `references/cross-model-execution.md` before any content or authority crosses to the other model. It defines controller initialization, the post-init engine lock, bounded egress, transactions, recovery, and receipts.
+   If cross-model execution is selected, read `references/cross-model-execution.md` before any content or authority crosses to the other model. It defines native dispatch, bounded disclosure, durable binding, integration, recovery and receipts.
 
    On native execution, work that is one unit, or units that each depend on the one before, runs inline in this context without that reference. Otherwise, before choosing inline, serial, or parallel execution, and before dispatching any worker, read `references/execution-strategy.md`. It decides scheduling, worker packets, and integration. The host orchestrator keeps authoritative verification and makes the canonical commits.
 
@@ -45,7 +45,7 @@ When triage selects Return-to-Caller Mode, read `references/return-to-caller.md`
 
 Before the first implementation write, including on the Trivial route, read `references/implementation-loop.md`. It decides evidence, verification, per-unit commits, and simplification.
 
-The commit rule from this file stays in force throughout: every implementation commit names only that unit's owned files. A bare `git commit` can absorb the user's pre-existing index, so it is forbidden.
+The commit rule stays in force throughout: every implementation commit names only that unit's owned files. Use path-limited JJ commits from the absolute target workspace root; never absorb pre-existing user changes or launch Git directly. Follow `references/workspace-setup.md` for workspace and repository-scoped GitHub CLI guards.
 
 Keep going until every in-scope unit is done. A progress update does not end the run; stop before that only for a named blocker.
 

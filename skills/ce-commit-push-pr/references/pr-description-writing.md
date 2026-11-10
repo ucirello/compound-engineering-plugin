@@ -23,7 +23,7 @@ Before composing, resolve PR-body requirements from the project's active instruc
 
 Two modes:
 
-- **Current-branch mode** (default) — describe HEAD vs the repo's default base.
+- **Current-workspace mode** (default) — describe the verified intended JJ head versus the repository's verified default base.
 - **PR mode** — describe a specific PR when the caller passes a PR ref.
 
 For PR mode, fetch metadata first:
@@ -34,26 +34,20 @@ gh pr view <ref> --json baseRefName,headRefOid,url,body,state,isCrossRepository,
 
 If `state` is not `OPEN`, report and stop. Use `baseRefName` as `<base>` and `headRefOid` as `<head>`.
 
-For current-branch mode, resolve `<base>` in priority order: `git rev-parse --abbrev-ref origin/HEAD` (strip `origin/`) → `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'` → try `main`/`master`/`develop` via `git rev-parse --verify origin/<candidate>`. If none resolve, ask the user. `<head>` is `HEAD`.
+For current-workspace mode, resolve the actual base via `gh repo view --json defaultBranchRef`, then verify its selected remote bookmark in JJ. Never guess a default. Resolve the intended head from JJ graph/bookmarks; empty `@` above that head is not another commit. Ask or stop when unresolvable.
 
-**Base remote:** `origin` for current-branch mode and same-repo PRs. For fork PRs, match the PR's base owner/repo against `git remote -v`. If no local remote matches, skip to the `gh` fallback — do not diff against `origin` (wrong base).
+**Base remote:** match actual repository owner/repo against `jj git remote list`. For forks, match the base repository, not the head remote. If no remote matches, use the gh API fallback, never a wrong base. Run from the absolute target workspace root with exported `GIT_DIR=$(jj git root)` for gh.
 
 ```bash
-git fetch --no-tags <base-remote> <base>
-git fetch --no-tags <base-remote> <head>   # PR mode only: <head> is headRefOid and may not be local
-git log  --oneline "<base-remote>/<base>..<head>"
-git log  --format=fuller "<base-remote>/<base>..<head>"   # full commit messages for related-reference discovery
-git diff           "<base-remote>/<base>...<head>"
+jj git fetch --remote <base-remote> --bookmark <base>
+jj log --no-graph -r '<verified-base>..<verified-head>' -T 'description.first_line() ++ "\n"'
+jj log --no-graph -r '<verified-base>..<verified-head>' -T 'description ++ "\n"'
+jj diff --from <verified-common-ancestor> --to <verified-head>
 ```
 
 If the commit list is empty, report "No commits to describe" and stop.
 
-**Fallback** — use `gh pr diff <ref>` and `gh pr view <ref> --json commits` when local git can't reach the refs (fork PR with no matching remote, shallow clone, offline, merge-base on unrelated histories). For GHES that reject SHA fetch but allow `refs/pull/`:
-
-```bash
-git fetch --no-tags <base-remote> "refs/pull/<number>/head"
-PR_HEAD_SHA=$(awk '/refs\/pull\/[0-9]+\/head/ {print $1; exit}' "$(git rev-parse --git-dir)/FETCH_HEAD")
-```
+**Fallback** — use `gh pr diff <ref>` and `gh pr view <ref> --json commits` when JJ cannot reach the verified refs, including PR-only fork heads. No underlying Git fetch or FETCH_HEAD parsing. Verify a unique common ancestor before local range comparison; stop if neither local nor API evidence covers the range.
 
 Note in the user-facing summary when the API fallback was used.
 
@@ -100,7 +94,7 @@ A project PR-body contract sets the structural floor; this table sizes the conte
 
 ## Step B: Compose the title
 
-`type: description` or `type(scope): description`. Type by intent using the same `fix:`/`feat:` default as the skill's Step 2. Scope (optional): narrowest useful label. Description: from the scope map's umbrella outcome, not one cluster or mechanism; with program context, the title may name this PR's contribution under the program without restating the whole series — it must not make another material outcome sound incidental. Imperative, lowercase, under 72 chars, no trailing period. Match recent-commit conventions. **Never use `!` or `BREAKING CHANGE:` without explicit user confirmation.**
+Read the full runtime Go/history contract in `commit-and-push.md` before composing. Match actual repository title syntax, not a fixed conventional template. Express the scope map's umbrella outcome rather than one cluster; with program context name this contribution without making peers incidental. Keep it concise and imperative where repository style supports that. **Never add a breaking-change marker without explicit user confirmation.**
 
 ---
 
@@ -144,10 +138,10 @@ Decide whether the change introduces a concept (pattern, technique, library, dom
 **Check each candidate against the base ref, never the working tree** (the working tree contains this PR's own code):
 
 ```bash
-git grep -il -e "<term>" "<base-remote>/<base>" | head -5
+jj file list -r <verified-base>
 ```
 
-One call per candidate (cap two). Empty output → absent from the base. Teachable only when new *and* transferable. Never teach: established patterns, ordinary refactors/renames/dep bumps, project-internal plumbing. When in doubt, omit. On the `gh`-fallback path, judge from diff context alone and lean conservative.
+For each candidate (cap two), inspect relevant base files with `jj file show -r <verified-base> <path>` and search their text. A file list alone does not prove absence. Teachable only when new and transferable; never established patterns, ordinary refactors/renames/dep bumps, or internal plumbing. When uncertain omit; on the API fallback judge conservatively from diff context.
 
 - Bad: teaching "dependency injection" for one new constructor arg in a DI-heavy codebase.
 - Good: teaching infinite scroll on the PR that first replaces pagination with it.
@@ -170,7 +164,7 @@ The why belongs inside that one idea when it is the reason the outcome takes its
 
 **Session-settled provenance:** when a plan is already in hand (caller path or conversation) whose key technical decisions carry a `session-settled:` label, one static sentence naming settled decisions and classes (e.g. "Session-settled decisions carried from planning: X (user-directed, over Y); Z (user-approved)."). Add proceed-under-conflict clauses only when the caller flagged them. Never an outstanding-items ledger; never hunt for plans when none is in hand.
 
-**Contributor credit:** applies only when this PR ships work by someone other than its author. For an existing PR the author is the PR's author; for a new PR it is the person shipping, whose identity is the configured `git config user.name` and `user.email` (they may also commit under another email). The evidence is a Pre-A commit authored by such a person, a `Co-authored-by` trailer naming one, or this work continuing or replacing another PR. Model, harness, and bot attributions never count. Otherwise add nothing.
+**Contributor credit:** applies only when this PR ships another human's work. Resolve the author from PR metadata or `jj config get user.name` and `jj config get user.email`. Evidence is an actual commit author, existing human co-author trailer, or continued/replaced PR. Never invent identity or add model, harness, or bot credit. Otherwise add nothing.
 
 When it applies, name those contributors in the body, and link the PR this work continues or replaces when there is one. On rewrite, keep existing contributor credit.
 
@@ -182,19 +176,9 @@ A squash merge keeps one author per PR, so other contributors survive it only as
 
 ---
 
-## Step D: Generic Compound Engineering branding
+## Step D: Preserve user content without promotional additions
 
-For a **new PR body**, append the following only when the resolved branding gate is on; otherwise omit it.
-
-```markdown
----
-
-[![Compound Engineering](https://img.shields.io/badge/Built_with-Compound_Engineering-6366f1)](https://github.com/EveryInc/compound-engineering-plugin)
-```
-
-Do not add model or harness attribution **to this branding block**. If the project's PR-body contract requires model/harness disclosure, fill *that* section per the project contract (see "Project PR-body contract").
-
-For an **existing PR body**, preserve an existing branding block verbatim (including legacy model/harness badges). Never add one when absent, and never refresh, normalize, or remove it unless the user explicitly asks to remove or replace that exact content. Branding alone never creates rewrite intent.
+Do not append promotional branding, badges, or model/harness attribution. Preserve unrelated user-authored prose, links and genuine human contributor credit; maintenance is not authorization for a wholesale rewrite. Do not manufacture rewrite intent from a branding-only difference.
 
 ---
 

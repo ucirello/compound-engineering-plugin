@@ -8,7 +8,7 @@ The detection stub in SKILL.md routes here for anything that isn't clearly softw
 
 - **Is this actually a software task?** The key distinction is task-type, not topic-domain. A study guide about Rust is non-software (producing educational content). A Rust library refactor is software (modifying code). If this is actually software, return to Phase 0.2 in the main SKILL.md.
 - **Is this a trivial single-fact lookup?** Only a question answerable from one fact with no research, retrieval, or judgment skips planning — answer it directly and stop, in the user's terms. Do not narrate that it "isn't a planning task" or explain the routing; that is process exhaust (see Veil of value below). Examples: "zsh: command not found: brew", "what's the capital of France." A question that needs multiple steps, any retrieval, or synthesis to answer well does **not** qualify: it is an answer-seeking task (see Disposition below), not a quick-help exit. When unsure, do not exit.
-- **Pipeline mode?** If invoked from `lfg` or any `disable-model-invocation` context: tell the user this is a non-software task, `lfg` requires the software-only `ce-work` path, and they should invoke `ce-plan` directly for non-software planning. For this user-runnable output, default to `/ce-plan`; use `$ce-plan` only on Codex or a host explicitly documented as dollar-prefixed. Render only the invocation as inline code and output one form only, then stop.
+- **Pipeline mode?** If invoked from `lfg` or any `disable-model-invocation` context: tell the user this is a non-software task, `lfg` requires the software-only `ce-work` path, and they should invoke `/ce-plan` directly for non-software planning. Render only the invocation as inline code, then stop.
 - **Unified artifact guard.** Universal-planning outputs are not software implementation plans. Do not label them `artifact_contract: ce-unified-plan/v1` and do not produce an implementation launch block unless the deliverable itself is a complete software implementation plan with Product Contract, Planning Contract, Implementation Units, Verification Contract, and Definition of Done.
 
 Once past these checks, commit to the task — do not bail because it looks like a "lookup" or "research question." The user invoked the planning tool on purpose. Then choose the disposition below.
@@ -82,7 +82,7 @@ Evaluate two things before planning:
 | Research need | Signals | Action |
 |--------------|---------|--------|
 | **None** | Generic, timeless, or conceptual plan (study curriculum methodology, project management approach, personal goal breakdown) | Skip research. Model knowledge is sufficient. After structuring the plan, offer: "I based this on general knowledge. Want me to search for [specific thing research would improve]?" — e.g., sourced recipes, current product recommendations, expert frameworks. Only if the user accepts. |
-| **Recommended** | Plan references specific locations, venues, dates, prices, schedules, seasonal availability, or current events — anything where stale information would break the plan (closed restaurants, changed prices, cancelled events, wrong seasonal dates). | Research before planning. Decompose into 2-5 focused research questions and dispatch parallel web searches. In Claude Code, use the Agent tool with `model: "haiku"` for each search to reduce cost. Collate findings before structuring the plan. |
+| **Recommended** | Plan references specific locations, venues, dates, prices, schedules, seasonal availability, or current events — anything where stale information would break the plan (closed restaurants, changed prices, cancelled events, wrong seasonal dates). | Research before planning. Decompose into 2-5 focused research questions and dispatch native OpenCode subagents. Suggested low-cost tier: haiku, only when available and authorized; explicit/configured model choices remain authoritative. Otherwise inherit a suitable session model and disclose reduced coverage. Collate findings before structuring the plan. |
 
 If the user's or project's active instructions or the live prompt name a model for this subagent, use that model instead of the default tier above. They can name it by the subagent's tier, by its prompt-asset name, or for the subagents being dispatched. Without such an instruction, a model configured for this subagent's role takes precedence over the default tier.
 
@@ -158,7 +158,7 @@ After structuring the plan, ask the user how they want to receive it using the h
 1. **Save to disk** — Write the plan as a markdown file. Ask where:
    - `<root>/plans/` (only show if this directory exists)
    - Current working directory
-   - `/tmp`
+   - `.tmp/` beneath the current absolute workspace root
    - A custom path
    - Use filename convention: `YYYY-MM-DD-HHMM-<descriptive-name>-plan.md`, taking `HHMM` from the local wall-clock time at write; reserve the path atomically and, on collision, retry with the smallest available numeric suffix before the extension rather than overwriting
    - Start the document with a `# Title` heading, followed by `Created: YYYY-MM-DD` on the next line. No YAML frontmatter.

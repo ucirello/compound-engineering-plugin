@@ -12,7 +12,62 @@ argument-hint: "[path to optimization spec YAML, or describe the optimization go
 
 **Done when:** a stopping criterion was met, every declared required target is met or another stop was met first, the final state is written and verified on disk, and the user has been given the post-completion options. If the run instead stopped at a check it could not pass, say what blocked it.
 
-Invoking this skill authorizes reading the repo, building the harness, and (after the Phase 1 approval gate) isolated experiments and keep/revert commits on `optimize/<spec-name>`. Ask when spend is uncapped, when a new dependency appears, when wrap-up would push or open a PR, or when only the user can choose among the post-completion options. Do not ask again to run the next experiment inside those limits.
+Invoking this skill authorizes reading the repo, building the harness, native subagent delegation, and (after the Phase 1 approval gate) isolated experiments and keep/revert revisions on `optimize/<spec-name>`. Read `references/workspaces.md` before any repository/workspace operation; it governs every phase, including callers and cleanup. Ask when spend is uncapped, when a new dependency appears, when wrap-up would push or open a PR, or when only the user can choose among the post-completion options. Do not ask again to run the next experiment inside those limits.
+
+**Delegation.** Use native OpenCode subagents and `opencode.models` to resolve configured choices, authoritative within host permissions. Delegation permission is separate from model-override permission. Inherit the current model when suitable; disclose missing required cross-model coverage. Queue capacity-limited work. Depth exhaustion, permission denial, missing tools, and model-argument rejection are distinct blockers; never evade them through shell or another harness. Explicitly migrate legacy external backend selections to permitted native subagents with equivalent isolation/receipts or report unsupported.
+
+**Description composition, all phases.** Read the full https://go.dev/wiki/CommitMessage at runtime and recent full subjects/bodies from the actual verified history head: `(cd "$workspace_root" && jj log --no-graph -r '::<verified-history-head>' -n 10 -T 'description ++ "\\n"')`. Compare several examples; actual repository syntax wins over Go guidance. Do not impose conventional-message templates. Explain the measured hypothesis and evidence accurately and preserve valid issue references; no attribution or Signed-off-by trailers. Use `jj describe -r <verified-revision> -m '<repository-appropriate description>'` after composition for experiment, result, integration and report revisions.
+
+Set `workspace_root` to the verified absolute target workspace root and replace the history-head placeholder with the inspected actual revision before executing the history read. Read this full composition section before composing in any phase.
+
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards.
+
+Verbatim source guidance, subordinate to actual repository syntax and not a mandatory template:
+
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+
+```text
+net/http: handle foo when bar
+
+[longer description here in the body]
+
+Fixes #12345
+```
+
+> Notably, for the subject (the first line of description):
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+
+> For the body (the rest of the description):
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
+
+Verbatim source excerpts (guidance, not a repository template):
+
+> The CL description is a public document that explains to the future what has been done and why.
+>
+> the verb after the colon is lowercase
+>
+> there is no trailing period
+>
+> there is **no** Markdown in the commit message.
+>
+> similarly, we **do not** use `Co-authored-by` and `Assisted-by` lines. Don’t add them.
+
+The source example below is **Go source guidance only**; repository history controls actual syntax:
+
+```text
+net/http: handle foo when bar
+
+[longer description here in the body]
+
+Fixes #12345
+```
 
 Independent calls and dispatches go in one response; serialize only real dependencies.
 
@@ -28,14 +83,14 @@ Use the host's blocking question tool already in the current tool list (match by
 
 ## Execution Surface
 
-Three capabilities decide where run state lives, how the loop waits, and where experiments run. A **durable state root** is a writable location the harness names that persists across turns and context resets, outside the repo checkout; without one, state lives under `.context/compound-engineering/ce-optimize/<spec-name>/`. A **wake after turn end** is a way to be re-invoked by an external event or timer without holding a tool call open; without one, the loop runs inside this session, and a wait it cannot hold ends the turn as a checkpoint with a resume invocation. A **detached worker** is a dispatch whose result arrives as a pushed ref, a store file, or a host-delivered message, not as edits in the local tree; `execution.backend: remote` needs one; without one that spec runs on `worktree`. Presence in the current tool list, or in context the harness gave you, is proof; a missing binary or environment variable proves nothing. Take a fallback without asking.
+Three capabilities decide how run state is referenced across turns, how the loop waits, and where experiments run. A **durable state root** is a writable location the harness names that persists across turns and context resets; it may retain a reference or receipt for the run, but new run state and scratch live under `$(jj workspace root)/.tmp/ce-optimize/<spec-name>/`, never OS-global temporary storage. Reuse an existing run's ledger at its recorded location without moving it automatically (`references/persistence.md`). A **wake after turn end** is a way to be re-invoked by an external event or timer without holding a tool call open; without one, the loop runs inside this session, and a wait it cannot hold ends the turn as a checkpoint with a resume invocation. A **detached worker** is a dispatch whose result arrives as a pushed ref, a store file, or a host-delivered message, not as edits in the local tree; `execution.backend: remote` needs one; without one that spec runs on `worktree`. Presence in the current tool list, or in context the harness gave you, is proof; a missing binary or environment variable proves nothing. Take a fallback without asking.
 
 ## Artifact Root
 
 <!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+**Resolve the RocketClaw artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Read** `docs_root` from `<repo-root>/.opencode/config.yaml` only (`<repo-root>` = `jj root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
 - **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->

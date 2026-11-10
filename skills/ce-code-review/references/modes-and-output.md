@@ -14,7 +14,7 @@ Parse the arguments you were invoked with for optional tokens. Strip each recogn
 | `mode:headless` | `mode:headless` | **Deprecated alias** for `mode:agent` |
 | `mode:report-only` | `mode:report-only` | **Deprecated — ignored.** Former no-artifacts mode; default behavior is review-only without checkout |
 | `apply:local` | `apply:local` | Explicitly authorize Stage 5c to apply verified findings to the reviewed local checkout. This is authority, not an output mode; bare review remains report-only. |
-| `base:<sha-or-ref>` | `base:abc1234` or `base:origin/main` | Diff base on the **current checkout** (explicit; skips auto base detection) |
+| `base:<sha-or-ref>` | `base:abc1234` or `base:main@origin` | Exact base in the **current JJ workspace** (explicit; skips auto base detection) |
 | `plan:<path>` | `plan:<root>/plans/2026-03-25-001-feat-foo-plan.md` | Plan file for requirements verification (explicit). Supports markdown and HTML unified plans. |
 | `plan_group:<label>` | `plan_group:PR2` | With `plan:`, the PR group of a multi-PR plan this diff builds, named by the label that starts its heading (`PR2` in `PR2: Report headline and summary`). Scopes plan completeness to that group (see `references/intent-and-plan.md`). |
 | `depth:full` | `depth:full` | **Force the full spine** — skip the Review depth gate's lite and focused paths. Use when a deep/thorough review is explicitly requested (the one override the gate cannot infer). Does not change conditional selection, merge, or scope on the full path. |
@@ -25,7 +25,7 @@ Parse the arguments you were invoked with for optional tokens. Strip each recogn
 
 **Grouping is presentation, not a mode.** The `grouping:` tokens change how the finding set is organized for triage — never reviewer selection, merge logic, scope rules, or the Stage 5c apply decision.
 
-**Mode alias:** `mode:headless` normalizes to `mode:agent`. `mode:agent` + `mode:headless` is not a conflict. `mode:non-interactive` is **not** an alias for `mode:agent` — that token means “suppress prompts” in other CE skills; if it appears here, treat it as an unrecognized, conflicting `mode:` token and stop rather than guessing what was meant.
+**Mode alias:** `mode:headless` normalizes to `mode:agent`; both together are not a conflict. `mode:non-interactive` is **not** an alias: it suppresses prompts in other RocketClaw skills, but is an unrecognized/conflicting mode here. Stop instead of guessing.
 
 **Conflicting arguments:** Stop without dispatching reviewers when:
 - Multiple incompatible scope selectors appear together (e.g. `base:` **and** a PR number/branch target — `base:` means "review the current checkout against this base")
@@ -44,7 +44,7 @@ Emit a one-line failure reason. In `mode:agent`, return JSON: `{"status":"failed
 |------------|-------------|
 | **Default** | Report-only markdown (pipe-delimited finding tables) + Actionable Findings summary |
 | **Explicit local apply** | The same markdown report plus verified local fixes and an Applied section |
-| **`mode:agent`** | One JSON object (see ## JSON output format below) + the same `/tmp/.../ce-code-review/<run-id>/` artifacts |
+| **`mode:agent`** | One JSON object (see ## JSON output format below) + the same `<absolute-workspace-root>/.tmp/ce-code-review/<run-id>/` artifacts |
 
 Default and `mode:agent` are **report-only**. `mode:agent` changes only the serialization from markdown to JSON for programmatic callers; it does not change reviewer selection, merge logic, or scope rules. `apply:local` is separate mutation authority, not an output mode. The default markdown is the human view; keep it ASCII-safe (pipe tables, `->` not middot `·`, no box-drawing) so it degrades gracefully across terminals.
 
@@ -58,7 +58,7 @@ If the invocation arguments indicate the user wants a quick, fast, or light code
 
 Sequence:
 
-1. **Run the harness's built-in code review.** Forward any review target after stripping tokens. Then stop — do not dispatch the multi-agent pipeline.
+1. **Run native built-in review only when available and compatible.** Forward the stripped target only when the host preserves JJ exact-range scope, permissions and no-direct-Git constraints. Then stop; do not also dispatch this pipeline. An incompatible built-in is unavailable for this purpose, not permission to launch another harness.
 2. **Exemption:** If no built-in review exists, continue into the full multi-agent review.
 3. **`mode:agent` bypasses this short-circuit only.** It still self-sizes through the Review depth gate and returns JSON from whichever path that gate selects.
 
@@ -66,7 +66,7 @@ Sequence:
 
 ## Review depth
 
-Decide after Stage 1 (its 1b facts and 1c mapping), before reading any later reference. This skill owns the decision; a caller may pass `depth:full` but never a depth of its own. Three paths exist: **lite** (this context alone), **focused** (this context plus one independent adversarial read), and **full** (the multi-agent spine from Stage 2).
+Decide after Stage 1 (1b facts and 1c mapping), before later references. The skill owns this decision; callers may force `depth:full`, not choose a lower depth. Three review paths: **lite** (parent), **focused** (parent plus one separately dispatched adversarial read), **full** (multi-agent spine). Review depth is distinct from host subagent nesting depth, active-agent concurrency capacity and model reasoning effort. A full request remains a requirement when delegation is denied/depth-exhausted; disclose incompleteness rather than relabeling a parent pass full. The executable non-test full floor is **200 changed lines**, unchanged by this migration.
 
 Floors that run the full spine from Stage 2, whatever the diff looks like: `depth:full`; the helper's `hard_block_full` (the helper reports facts. It never awards lite. `hard_block_full` is a floor, and it covers a named hard-block class, any file the helper could not count, and a `size_band` of `large`, which means the executable non-test changed lines reached the full floor; whole-file deletions are not counted there); a Stage 1c criteria search that failed or whose scope is uncertain; and apply authority (`apply:local` or an explicit apply request), which needs Stage 5c's verified-apply mechanics. Line counts below the floor, prose and test volume, `unclassified_lines`, and `signals` are prompts to consider, not floors.
 
@@ -91,8 +91,8 @@ Every run, lite, focused, or full, leaves its receipt (`review.json` in `mode:ag
 ```json
 {
   "run_id": "<run-id>",
-  "branch": "<git branch --show-current at dispatch time>",
-  "head_sha": "<git rev-parse HEAD at dispatch time>",
+  "branch": "<verified source bookmark at dispatch, or empty when unnamed>",
+  "head_sha": "<full reviewed-head commit ID resolved with jj log at dispatch>",
   "verdict": "<Ready to merge | Ready with fixes | Not ready>",
   "completed_at": "<ISO 8601 UTC timestamp>"
 }
@@ -116,8 +116,8 @@ Minimum shape:
   "verdict": "Ready to merge | Ready with fixes | Not ready",
   "scope": {
     "base": "<merge-base sha, pr:NNN marker, or base: ref>",
-    "branch": "<current branch name>",
-    "head_sha": "<git rev-parse HEAD>",
+    "branch": "<verified source bookmark, or empty when unnamed>",
+    "head_sha": "<verified full reviewed-head commit ID>",
     "pr_url": "<url or null>",
     "files_changed": 0
   },
@@ -145,13 +145,13 @@ Minimum shape:
 "peer": {"outcome": "folded | in-process-fallback | not-run | no-usable-output | failed", "coverage": "<the Coverage sentence for this outcome>"}
 ```
 
-On the full path, copy `outcome` and `coverage` verbatim from the `peer` record in `finish-input.json`; the focused path fills them from its own fold-in, using the same outcome names and Coverage sentences. `folded` is the only outcome in which a peer artifact was folded into this review. Every other outcome means no peer artifact was folded, and `coverage` says why and what covered the lens instead. An outcome other than `folded` never changes `status`.
+On full copy `peer.outcome`/`coverage` from `finish-input.json`; focused uses the same outcome names. Only `folded` means an artifact entered merge. Other outcomes name why and what covered the lens. Loss of optional cross-model corroboration alone does not change status when the local lens ran. Missing required lens/persona coverage does: explicitly degraded, never complete merely because a launch was attempted. Same-model/parent evidence is not verified cross-model coverage.
 
 When Stage 1d staged a review policy, every path adds `coverage.review_policy`: `sources` (the policy file paths read), `removed` and `regraded` (counts), and `not_applied` (policy files the change edited, whose new version this review did not apply).
 
 Lite fills `findings`, `actionable_findings`, `testing_gaps`, `residual_risks`, and `requirements_completeness` (`null` only when no plan was found) from its own review. The arrays owned by reviewers it did not run (`learnings`, `deployment_notes`, `pre_existing_findings`, `triage_groups`) are `[]`, and Coverage names them as not assessed. `reviewers` is `["correctness"]` and `coverage.depth` is `"lite"`. Focused fills the same fields from its merged findings, lists its two reviewers, and sets `coverage.depth` to `"focused"`; the full path's finish leaf fills every field and sets `coverage.depth` to `"full"`.
 
-Each object in `findings` uses the merged finding fields: `#`, `title`, `severity`, `file`, `line`, `confidence`, `autofix_class`, `owner`, `requires_verification`, `pre_existing`, `suggested_fix`, `first_evidence`, `why_it_matters`, `evidence`, `reviewers`, `independent_reviewers`. A finding Stage 5b left unresolved, or confirmed with an unmeasured-incidence reason, also carries `validation_status` and `validation_reason`, and carries `protected_subject` when one applies. Each object in `learnings` is a Known Pattern note: `type` (`known_pattern`), `title`, `citation` (a `<root>/solutions/` path or `(pack: <id>, <path within the pack>)`), and `note` (one line on how it bears on the change); contradicted pack rules are findings, never `learnings` entries. When Compound Packs were resolved, on any path, `coverage.compound_packs` carries `roots` as the list of pack ids (strings — never the resolver's absolute `dir` paths) plus the resolver's `warnings` and `errors` arrays verbatim, so a consumer can tell a declared pack that loaded from one that was skipped. The helper derives `independent_reviewers`; synthesis may preserve or union that list but must not infer it from `reviewers`.
+Each `findings` object uses merged fields: `#`, `title`, `severity`, `file`, `line`, `confidence`, `autofix_class`, `owner`, `requires_verification`, `pre_existing`, `suggested_fix`, `first_evidence`, `why_it_matters`, `evidence`, `reviewers`, `independent_reviewers`. Unresolved or confirmed-but-unmeasured findings also carry `validation_status`, `validation_reason`, and applicable `protected_subject`. A `learnings` note has `type: known_pattern`, `title`, `citation` (solution path or pack citation), and one-line `note`; contradicted rules are findings, never learnings. Resolved RocketClaw Packs on any path populate the compatibility field `coverage.compound_packs`: `roots` contains pack IDs, never absolute dirs; preserve resolver `warnings`/`errors` arrays verbatim to distinguish loaded/skipped declarations. The helper derives `independent_reviewers`; synthesis may preserve/union but never infer it from `reviewers`.
 
 An incoming finding may carry an optional `settled_conflict` field naming a `session-settled:` KTD. The marker supplies context for settlement reconciliation; it does not exempt the finding from admission or authorize a change.
 
@@ -159,6 +159,6 @@ An incoming finding may carry an optional `settled_conflict` field naming a `ses
 
 Each object in `triage_groups` carries `{ "title", "findings": [<stable #s>], "context", "preferred_resolution", "why" }`: the finalized groups from Stage 5 step 6 after Stage 5b step 5 pruning. Every referenced `#` must exist in `findings` (the full set), **not** necessarily in `actionable_findings`. Groups are a triage **lens over all findings, not an apply queue**: a group (and its `preferred_resolution` ordering) can reference advisory or `human`/`release`-owned findings that the caller must not apply. So a caller batching related fixes by theme must first intersect each group's `findings` with `actionable_findings` and act only on that subset; the apply handoff stays `actionable_findings`, never `triage_groups`. Empty array when `grouping:off` is active or no groups were built.
 
-On failure before review completes, set `"status": "failed"` and `"reason": "<one sentence>"`. When all reviewers fail, use `"status": "degraded"` with a reason. When a PR skip rule applies (closed/merged/trivial), use `"status": "skipped"` with the skip reason. Do not emit markdown tables when `mode:agent` is active.
+On failure before completion, use `"status": "failed"` with a reason. When required reviewer coverage is lost (including all reviewers failing), use `"status": "degraded"` and name the missing passes and observed denial/depth/tool/capacity/model cause. `coverage.depth` names the selected path, not a claim it finished. Validator infrastructure failure still follows the protected-subject/P0/P1 unresolved-gate rules, never false confirmation. PR skip rules use `"status": "skipped"` and their reason. No markdown tables in agent mode.
 
 After Stage 6 on the full path, the review ends with the actionable summary, the run artifacts, and the point where the run stops. `references/finish-report.md` defines that ending for the full spine.

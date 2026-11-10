@@ -17,16 +17,16 @@ This is **diff-scoped**, not whole-app exploration. You test what *this branch* 
 
 ## Boundaries
 
-- Drive one browser for the whole run. Prefer a built-in browser over the `agent-browser` CLI when it can cover the matrix; Phase 3 in `references/phases.md` says how to find and choose one. Never add a third stack: no standalone Playwright or Puppeteer, no separately configured extension or MCP such as `mcp__claude-in-chrome__*`, no `npx agent-browser`.
+- Drive one browser for the whole run. Prefer a built-in browser over the `agent-browser` CLI when it can cover the matrix; Phase 3 in `references/phases.md` says how to find and choose one. Never add a third stack: no standalone Playwright or Puppeteer, no separately configured extension or MCP, no `npx agent-browser`.
 - Never dogfood the trunk on a branch-name or blank target — there is no diff. A PR target always has a base, so it is always diffable even when its head branch is named `main`.
 - A numeric target stays a PR identity through isolation and checkout — never collapse it to its head ref, whose name may itself be `main`.
 - Never switch the primary checkout out from under the user. Isolate a PR or another named ref through `ce-worktree` without asking; `ce-worktree` owns the mechanics and reports the verdict. A blank or current-branch target runs in place.
-- Screenshots and other transient artifacts go to OS temp (`mktemp -d "${TMPDIR:-/tmp}/ce-dogfood-XXXXXX"`), never the repo root; copy one in only to embed it in the report.
+- Screenshots and other transient artifacts go under the target workspace's `.tmp/` (`mkdir -p "$workspace_root/.tmp"; mktemp -d "$workspace_root/.tmp/ce-dogfood-XXXXXX"`); copy one into the report location only to embed it.
 - Auto-fix only what is small, well-understood, and low-risk. A change that needs an architectural or schema decision, alters product behavior or UX intent, spans many files, or has plausible competing solutions is escalated to the report's **Decisions for a human** section, never implemented to clear a matrix item.
 
 ## Prerequisites
 
-**User-runnable invocation rendering.** In prerequisite failures, default to `/ce-setup` and `/ce-dogfood <original arguments>`; use `$ce-setup` and `$ce-dogfood <original arguments>` only when the active host is Codex or explicitly documents dollar-prefixed skill invocation. On oh-my-pi (`omp`), keep `/ce-setup` and use `/skill:ce-dogfood <original arguments>`. Render only each invocation as inline code and output one form only.
+**User-runnable invocation rendering.** In prerequisite failures, use `/ce-setup` and `/ce-dogfood <original arguments>`. Render each invocation as inline code.
 
 - A local dev server you can start (`bin/dev`, `rails server`, `npm run dev`, etc.).
 - A browser per the Boundaries. When the run needs `agent-browser` and it is not installed, stop and tell the user to install it: print the rendered `ce-setup` invocation for the current install command, followed by the rendered `ce-dogfood <original arguments>` invocation to retry.
@@ -36,16 +36,18 @@ This is **diff-scoped**, not whole-app exploration. You test what *this branch* 
 Reports live under `<root>/dogfood-reports/` and personas under `<root>/personas/`. Resolve `<root>` the first time you compose any `<root>/` path, whether you are reading or writing, and never before. A run that composes none skips it.
 
 <!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+**Resolve the RocketClaw artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only (`<repo-root>` = the absolute `jj root`). Run repository commands from this target workspace root, never using `-R` instead of changing cwd. Export `GIT_DIR=$(jj git root)` before repository-scoped `gh` calls. Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/` or `.jj/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
 
 ## Delegation
 
-`ce-dogfood` is an orchestrator: prefer an existing CE skill over re-deriving its behavior. Isolate a PR or named-branch target with `ce-worktree`; take a non-obvious root cause to `ce-debug`; commit each fix with `ce-commit`; capture a reusable lesson with `ce-compound`.
+`ce-dogfood` is an orchestrator: prefer an existing RocketClaw skill over re-deriving its behavior. Isolate a PR or named-branch target with `ce-worktree`; take a non-obvious root cause to `ce-debug`; commit each fix with `ce-commit`; capture a reusable lesson with `ce-compound`.
+
+Use native subagents only where useful and permitted: this skill's delegation request is authorization, but model overrides need separate host permission. Use the inherited model when suitable; discover permitted alternatives with native `opencode.models` rather than a harness bridge. Distinguish delegation-depth/capacity exhaustion, permission denial, missing tools, and model-argument rejection. Never bypass a restriction through shell or another harness. If delegation is unavailable, continue suitable work locally and report any required independent or cross-model coverage missing; do not claim it was performed.
 
 ## Compound Packs
 

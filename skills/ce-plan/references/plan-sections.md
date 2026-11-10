@@ -21,7 +21,7 @@ A section belongs only when it serves one of these audiences. Omit padding.
 
 ## Unified plan artifact contract
 
-`ce-plan` writes the canonical compound-engineering plan artifact. The same
+`ce-plan` writes the canonical RocketClaw plan artifact. The same
 artifact may begin as a requirements-only skeleton from `ce-brainstorm` and
 later be enriched by `ce-plan`; it is still one plan file moving through
 planning stages, not a requirements doc plus a separate implementation doc.
@@ -281,7 +281,7 @@ them apply.
   not enumerated). A record of the planning process itself (reading the
   user's prompt, glancing at obvious entry points, restating prose) → omit. Put it inline next to the
   KTD or unit it justifies, or in a dedicated section — both shapes work.
-  A constraint adopted from a Compound Pack file is cited inline as
+  A constraint adopted from a knowledge pack file is cited inline as
   `(pack: <id>, <path within the pack>)` after the requirement, KTD, constraint,
   or risk it shaped. The path is relative to the pack's own directory, so it
   is stable for path- and git-sourced packs alike. Cite the pack text; do not
@@ -406,7 +406,7 @@ plan.
 
 Plans carry **no `status` field** — a plan is a decision artifact, not a
 tracked work item. `ce-work` does not mutate the plan at ship time;
-whether a plan shipped is derived from git, not stored in the doc. Do not
+whether a plan shipped is derived from JJ, not stored in the doc. Do not
 add a `status` field or an `active → completed` lifecycle.
 
 ### Optional but well-known

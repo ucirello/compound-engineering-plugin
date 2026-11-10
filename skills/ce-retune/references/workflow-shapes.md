@@ -2,12 +2,14 @@
 
 Which orchestration shape fits each phase, and what breaks when you pick the wrong one.
 
-Two primitives are assumed, both platform-neutral:
+Use OpenCode-native subagents for dispatch and shell for mechanical work; consult `opencode.models` for permitted model selection. Configuration remains the source of requested routes and tiers, not a reason to invoke another harness's dispatcher. Two primitives are assumed:
 
 - **A dispatch primitive** that launches an independent agent with its own context window and returns a result to the orchestrator (in one host it is a subagent-spawning tool; in another a job runner). Only two properties matter: fresh context per agent, and a result the orchestrator can read.
 - **A concurrency cap** the host enforces on how many agents run at once (often around 10). Dispatches above the cap queue rather than fail, so a 31-unit fan-out is three waves, not one. Plan the wave count; do not assume flat cost.
 
-Classify a rejected dispatch by whether an agent launched. Correct a pre-launch argument rejection once, and leave capacity-limited work queued. Any other launch failure follows the phase's own failure direction. In the corpus audit, the proposal and defense contexts must be independent for the audit to mean anything, so a launch failure there is a blocker: stop the audit rather than running the missing side inline.
+These explicit dispatch instructions satisfy a host rule allowing delegation requested by the user OR an applicable loaded skill, without another approval. Unconditional higher-priority prohibitions, missing tools, and actual denials still apply. Delegation permission is separate from model-selection permission: where overrides require an explicit user model request, omit the optional `model` argument and use a suitable inherited model. Preserve configured tiers/routes as intent and disclose unmet requirements. Same-model agents provide separate contexts, not cross-model independence; an unavailable required different-model pass means incomplete coverage.
+
+Verify effective nesting capacity from active OpenCode configuration and runtime evidence, not the package default alone. Classify failures from the actual error as depth/capacity limits, permission denials, model-argument rejections, or missing tools. Correct a permitted pre-launch argument rejection once and leave queued work queued where supported; never retry a denial or evade depth limits via shell or another harness. Any other launch failure follows the phase's own failure direction. In the corpus audit, proposal and defense contexts must be independent, so a launch failure is a blocker: stop rather than running the missing side inline. Report unrun coverage explicitly.
 
 ## The shapes
 

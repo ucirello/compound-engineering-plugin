@@ -16,9 +16,46 @@ Verify that implementation work was performed: files were created or modified be
 
 Also require the fields that record which route actually ran: `implementation_engine_binding`, `requested_route`, `actual_route`, `requested_model`, `actual_model`, `fallback_reason`, `run_id`, `unit_receipts`, `plan_checkpoint`, `blockers`, and `recovery_path`. These fields are required even when native execution makes some values `null`. Together they carry where the binding came from, requested-versus-actual identity, fallback, the durable run, per-unit process/integration/verification/commit state, checkpoint disclosure, blockers, and recovery. A resumed return must carry the same `run_id`; never treat resume as permission to start a new unit or a second LFG shipping run.
 
+## Native route interpretation
+
+Apply `references/stage-routing.md`'s native dispatch contract before interpreting legacy route labels. Actual execution is native OpenCode; requested harness identity is not evidence that harness ran. Preserve requested/actual model, permission and fallback disclosures, unit receipts, recovery identity and verification. A requirement for an unavailable harness/model or missing required independence stops shipping. A disclosed preference fallback must not cause a second implementation run.
+
 ## The work must be committed
 
-`ce-code-review` leaves out untracked files, so files this run added go unreviewed until they are committed. Before step 3, confirm the return's `changed_files` are committed. If any are not, commit those files and continue. Do not stop for this.
+Before step 3, confirm the return's `changed_files` are committed in JJ history. JJ automatically tracks eligible files; inspect `jj status`, `jj diff`, ignored/untracked paths and conflicts rather than assuming Git staging semantics. Commit only owned paths with `jj commit <paths> -m <composed-description>` and continue, preserving unrelated edits. Run all repository commands from the target absolute workspace root, never using `-R` as a cwd substitute. Do not create new isolation when an existing harness-owned workspace already supplies it; delegate any needed workspace lifecycle to `ce-worktree` and its dated naming, explicit colocation, ownership and guarded removal rules. Keep scratch and error artifacts under local `.tmp/`.
+
+### Runtime commit composition (all local composition sites)
+
+Read this entire section before composing any local description. Set `workspace_root` to the verified absolute target workspace root.
+
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards.
+
+Verbatim source guidance, subordinate to actual repository syntax and not a mandatory template:
+
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+
+```text
+net/http: handle foo when bar
+
+[longer description here in the body]
+
+Fixes #12345
+```
+
+> Notably, for the subject (the first line of description):
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+
+> For the body (the rest of the description):
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
+
+Read the full https://go.dev/wiki/CommitMessage at runtime, and read several recent full subjects and bodies from actual verified repository history with `(cd "$workspace_root" && jj log --no-graph -r '::<verified-history-head>' -n 10 -T 'description ++ "\\n"')`. Verify the history head first; never assume a fixed remote bookmark. Compare multiple examples for actual repository syntax, which takes precedence over Go guidance. Describe the specific change and rationale, not a canned conventional message. Source guidance only: “The first line of the commit message is conventionally a one-line summary of the change, prefixed by the primary affected package.” Source guidance only: “The rest of the message should provide context for the change and explain what it does.” Do not add attribution or Signed-off-by trailers. Use `jj describe -m <repository-style-description>` only for the verified owned revision, or the path-limited commit above; do not rewrite unrelated history.
 
 ## Verification evidence
 

@@ -2,7 +2,7 @@
 
 Read this before dispatching the Step 2 reviewers. It covers the reviewers' model, what happens when the harness is full, how review agents are released, and the permission mode.
 
-**Model selection.** Use the platform's balanced mid-tier model for these reviewers when the current harness exposes a known override. In Claude Code this is the Sonnet class. In Codex, apply this tier only when the active dispatch primitive exposes an explicit model or custom-agent selector; task wording alone does not select a different model. Otherwise omit the override and inherit the parent model -- a working pass on the parent model beats a broken dispatch.
+**Model selection.** Prefer a balanced mid-tier model (the Sonnet class when available) only when a native model selector and host permission both allow the override. Discover exact available model IDs through `opencode.models`; never guess IDs or treat task wording as model selection. Otherwise omit the override and inherit the parent model when suitable -- a working pass on the parent model beats a broken dispatch. Configuration and explicit model choices below remain authoritative subject to host permission; disclose any required model coverage that could not be obtained.
 
 If the user's or project's active instructions or the live prompt name a model for this subagent, use that model instead of the default tier above. They can name it by the subagent's tier, by its prompt-asset name, or for the subagents being dispatched. Without such an instruction, a model configured for this subagent's role takes precedence over the default tier.
 
@@ -13,3 +13,5 @@ A generic subagent is one whose whole brief is the prompt you send it. When the 
 **Agent lifecycle.** Collect terminal outcomes, including failures, before cleanup. Close or release review-owned agents when the harness provides caller-owned cleanup, before refilling slots, advancing stages, or returning. Do not message completed agents with no remaining work. Do not infer released capacity from completion or interruption, or invent cleanup operations.
 
 **Permission mode.** Omit the `mode` parameter on the dispatch call so the user's configured permission settings apply.
+
+**Failure classification.** Distinguish temporary concurrency limits from maximum nesting depth, permission denial, a missing native tool, and model-argument rejection. Depth exhaustion is not a slot that waiting will free. Correct an unsupported argument only through the documented native interface; use inherited-model review when suitable and disclose missing required model coverage. For denied or unavailable delegation, use the same rubric inline only when permitted, and explicitly report the loss of independent review. Never bypass permission or depth limits through shell dispatch, another harness, or a helper bridge; never claim a complete independent review for substituted or missing passes.

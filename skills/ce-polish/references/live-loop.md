@@ -1,5 +1,7 @@
 # Live session loop
 
+Before composing any final polish commit description, read `references/install-riffrec.md`'s full Commit section and invoke `ce-commit` under its runtime full-guide and verified-history contract, even when no setup install was needed.
+
 Load this once the riffer has accepted the consent screen. The loop is: park a wait, receive a checkpoint batch, acknowledge it, act on it per the mode it carries, post what happened, park again. It ends at the `final` checkpoint the overlay's Done control emits, or when the session ends without one, and closes with commits, a residual list, and the session log path.
 
 ## Wait
@@ -60,7 +62,7 @@ Triage each remaining unit by its statement, anchors, and evidence into one of t
 | Ambiguous | apply the best reading now, post `applied` with `guess` stating the reading | post `ask` with one question; the unit waits in needs-info | post `ask`; hold the answer for the final pass |
 | Beyond polish | post `blocked` with the reason; residual | post `blocked` with the reason; residual | post `blocked` with the reason; residual |
 
-Under Instant, apply independent units in parallel when the harness can run work concurrently; serialize only units that touch the same file. Post `accepted` before starting an edit and `applied` once it has landed and hot reload has picked it up; a unit that cannot be applied after acceptance becomes `blocked` with a note. The endpoint tracks every unit you left at `accepted` without a later `applied` or `blocked` as the **backlog**; Collect is what fills it.
+Under Instant, apply independent units in parallel when OpenCode can run work concurrently; serialize units that touch the same file. This skill authorizes native subagent delegation, subject to host permission and depth/capacity limits. Use the inherited model when suitable; model overrides require separate permission, and authorized configured model choices remain authoritative. Use `opencode.models` to resolve a needed model. Distinguish denied permission, unavailable tools, exhausted depth/capacity, and rejected model arguments; never bypass them through shell or another harness. If delegation is unavailable, work serially and disclose missing independent or cross-model coverage, never claim a full review. Post `accepted` before starting an edit and `applied` once it has landed and hot reload has picked it up; a unit that cannot be applied after acceptance becomes `blocked` with a note. The endpoint tracks every unit you left at `accepted` without a later `applied` or `blocked` as the **backlog**; Collect is what fills it.
 
 A mode switch takes effect at the next checkpoint and covers that backlog, except a switch *to* Instant, which releases whatever is held at once as a `mode_change` wake; from then on each unit wakes you by itself (`kind: "instant"`) and page checkpoints usually carry nothing. When the riffer moves the switch off Collect, the endpoint emits a `kind: "mode_change"` batch at once with the backlog in `units[]` (those units were released earlier, so no later page checkpoint would carry them again): acknowledge it and apply every unit it carries under `mode_at_checkpoint`, exactly as if they had just been triaged as clear edits, posting `applied` or `blocked` for each. A batch stamped Collect holds anything not yet applied.
 
@@ -90,7 +92,7 @@ A page that goes away without Done does not end the session by itself: the endpo
 
 Close-out, in order:
 
-1. Invoke `ce-commit` for the polish edits on the current branch. The setup commit from install, if any, is already there.
+1. Invoke `ce-commit` for the polish edits in the current isolated JJ workspace, applying the runtime Go-guide and verified repository-history message contract in `references/install-riffrec.md` under "Commit". The setup commit from install, if any, is already there.
 2. Write the residual list to `$LIVE_ROOT/residual.md`: every unit that ended `blocked` (including those the reconciliation step blocked as "session ended before apply"), still in needs-info, or beyond polish, each with its statement, anchors (route and element), status, and reason, so the riffer can hand the file to planning as is.
 3. Tell the riffer in one line that the endpoint is still up and they can start another session from the page with the same link. For another round, park `wait` again once the riffer has started it (`wait` exits 1 until then; `status` reads `session_ended: false` once it has): it serves the next session, whose log starts fresh in `state/log/` while this one moves to `state/log-ended-<stamp>/`. When the riffer is done, run `stop --root "$LIVE_ROOT"`, which retires both tokens; it keeps `state/log/`, which holds the full-evidence session log the page posted at the end (transcript, units with the riffer's confirmations, annotations, frames, the evidence profile used). The helper's `replay` can re-emit that log to another endpoint under a different profile later.
 4. Report: the commit(s), the still-running app URL, the residual list path, and the session log path `$LIVE_ROOT/state/log/`.

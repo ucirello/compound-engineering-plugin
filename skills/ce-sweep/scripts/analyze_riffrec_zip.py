@@ -4,7 +4,7 @@ Analyze a product feedback source.
 
 Supported sources: Riffrec zip or unpacked capture directory, standalone
 video, standalone audio, and meeting notes text/markdown. The script extracts
-transcript, high-signal video frames when available, and CE-friendly markdown
+transcript, high-signal video frames when available, and RocketClaw-friendly markdown
 artifacts.
 """
 
@@ -57,6 +57,74 @@ RIFFREC_DIRECTORY_MARKERS = {"session.json", "events.json"}
 
 class SourceInputError(ValueError):
     pass
+
+
+class SnapshotPromotionError(SourceInputError):
+    """Promotion failed; retain local staging and any rollback evidence."""
+
+
+def snapshot_scratch_dir() -> Path:
+    cwd = Path.cwd().resolve()
+    result = subprocess.run(
+        ["jj", "workspace", "root"], cwd=cwd, capture_output=True, text=True
+    ) if shutil.which("jj") else None
+    if result is not None and result.returncode == 0:
+        root = Path(result.stdout.strip())
+        if not root.is_absolute() or not root.is_dir() or root.resolve() != root:
+            raise SourceInputError(f"Invalid JJ workspace root: {root}")
+    else:
+        if any((parent / ".jj").exists() for parent in (cwd, *cwd.parents)):
+            raise SourceInputError("Cannot verify JJ workspace root for local snapshot storage")
+        root = cwd
+    current = root
+    for part in (".tmp", "rocketclaw", "feedback-snapshots"):
+        current = current / part
+        if current.is_symlink():
+            raise SourceInputError(f"Snapshot scratch directory must not be a symlink: {current}")
+        current.mkdir(mode=0o700, exist_ok=True)
+        if not current.is_dir() or current.stat().st_uid != os.getuid() or current.resolve() != current:
+            raise SourceInputError(f"Snapshot scratch directory is not locally owned and contained: {current}")
+    return current
+
+
+def promote_snapshot(staging_dir: Path, destination: Path) -> None:
+    scratch = snapshot_scratch_dir()
+    destination = destination.absolute()
+    if any(parent.is_symlink() for parent in (destination, *destination.parents)):
+        raise SnapshotPromotionError(f"Snapshot output path contains a symlink: {destination}")
+    if (staging_dir.is_symlink() or staging_dir.parent != scratch
+            or not staging_dir.is_dir() or staging_dir.stat().st_uid != os.getuid()
+            or ".staging-" not in staging_dir.name):
+        raise SnapshotPromotionError(f"Unverified snapshot staging directory: {staging_dir}")
+    previous_dir = scratch / staging_dir.name.replace(".staging-", ".previous-", 1)
+    if previous_dir.exists() or previous_dir.is_symlink():
+        raise SnapshotPromotionError(f"Temporary snapshot path already exists: {previous_dir}")
+    had_previous = destination.exists()
+    try:
+        if had_previous:
+            os.replace(destination, previous_dir)
+    except OSError as exc:
+        raise SnapshotPromotionError(
+            f"Cannot atomically back up {destination}; old output unchanged. "
+            f"Staging retained at {staging_dir}: {exc}. No copy fallback."
+        ) from exc
+    try:
+        os.replace(staging_dir, destination)
+    except BaseException as exc:
+        if had_previous:
+            try:
+                os.replace(previous_dir, destination)
+            except OSError as rollback_exc:
+                raise SnapshotPromotionError(
+                    f"Promotion to {destination} failed ({exc}); rollback failed ({rollback_exc}). "
+                    f"Recover old output from {previous_dir}; staging retained at {staging_dir}."
+                ) from exc
+        raise SnapshotPromotionError(
+            f"Cannot atomically promote to {destination}; old output preserved. "
+            f"Staging retained at {staging_dir}: {exc}. No copy fallback."
+        ) from exc
+    if had_previous:
+        shutil.rmtree(previous_dir, ignore_errors=True)
 
 
 def parse_args() -> argparse.Namespace:
@@ -154,22 +222,7 @@ def validate_raw_destination(raw_dir: Path) -> None:
 
 def promote_raw_snapshot(staging_dir: Path, raw_dir: Path) -> None:
     validate_raw_destination(raw_dir)
-    previous_dir = raw_dir.parent / staging_dir.name.replace(".staging-", ".previous-", 1)
-    if previous_dir.exists() or previous_dir.is_symlink():
-        raise SourceInputError(f"Temporary raw snapshot path already exists: {previous_dir}")
-
-    had_previous = raw_dir.exists()
-    if had_previous:
-        os.replace(raw_dir, previous_dir)
-    try:
-        os.replace(staging_dir, raw_dir)
-    except BaseException:
-        if had_previous:
-            os.replace(previous_dir, raw_dir)
-        raise
-
-    if had_previous:
-        shutil.rmtree(previous_dir, ignore_errors=True)
+    promote_snapshot(staging_dir, raw_dir)
 
 
 def validate_frames_destination(frames_dir: Path) -> None:
@@ -186,22 +239,7 @@ def validate_frames_destination(frames_dir: Path) -> None:
 
 def promote_frames_snapshot(staging_dir: Path, frames_dir: Path) -> None:
     validate_frames_destination(frames_dir)
-    previous_dir = frames_dir.parent / staging_dir.name.replace(".staging-", ".previous-", 1)
-    if previous_dir.exists() or previous_dir.is_symlink():
-        raise SourceInputError(f"Temporary frames snapshot path already exists: {previous_dir}")
-
-    had_previous = frames_dir.exists()
-    if had_previous:
-        os.replace(frames_dir, previous_dir)
-    try:
-        os.replace(staging_dir, frames_dir)
-    except BaseException:
-        if had_previous:
-            os.replace(previous_dir, frames_dir)
-        raise
-
-    if had_previous:
-        shutil.rmtree(previous_dir, ignore_errors=True)
+    promote_snapshot(staging_dir, frames_dir)
 
 
 def default_output_dir(source_path: Path) -> Path:
@@ -366,11 +404,13 @@ def prepare_source(source_path: Path, raw_dir: Path, source_kind: str | None = N
     source_kind = source_kind or classify_source(source_path)
     raw_dir.parent.mkdir(parents=True, exist_ok=True)
     staging_dir = Path(
-        tempfile.mkdtemp(prefix=f".{raw_dir.name}.staging-", dir=raw_dir.parent)
+        tempfile.mkdtemp(prefix=f".{raw_dir.name}.staging-", dir=snapshot_scratch_dir())
     )
     try:
         source = populate_source_snapshot(source_path, staging_dir, source_kind)
         promote_raw_snapshot(staging_dir, raw_dir)
+    except SnapshotPromotionError:
+        raise
     except BaseException:
         if staging_dir.exists() and not staging_dir.is_symlink():
             shutil.rmtree(staging_dir, ignore_errors=True)
@@ -656,7 +696,7 @@ def extract_frames(recording_path: Path | None, frames_dir: Path, moments: list[
     frames_dir.parent.mkdir(parents=True, exist_ok=True)
     validate_frames_destination(frames_dir)
     staging_dir = Path(
-        tempfile.mkdtemp(prefix=f".{frames_dir.name}.staging-", dir=frames_dir.parent)
+        tempfile.mkdtemp(prefix=f".{frames_dir.name}.staging-", dir=snapshot_scratch_dir())
     )
     try:
         if not recording_path or not recording_path.exists():
@@ -692,6 +732,8 @@ def extract_frames(recording_path: Path | None, frames_dir: Path, moments: list[
                     moment["screenshot"] = None
                     moment["screenshot_status"] = compact_text(result.stderr or result.stdout, 300)
         promote_frames_snapshot(staging_dir, frames_dir)
+    except SnapshotPromotionError:
+        raise
     except BaseException:
         if staging_dir.exists() and not staging_dir.is_symlink():
             shutil.rmtree(staging_dir, ignore_errors=True)
@@ -833,7 +875,7 @@ def write_analysis_md(
     lines.append("- Open each selected screenshot and name the exact visible control or state.")
     lines.append("- Tie transcript language to the closest click or visible UI state.")
     lines.append("- Promote only confirmed product problems into requirements.")
-    lines.append("- Use repo-relative screenshot paths when moving evidence into a CE requirements document.")
+    lines.append("- Use repo-relative screenshot paths when moving evidence into a RocketClaw requirements document.")
     output_path.write_text("\n".join(lines) + "\n")
 
 
@@ -1297,7 +1339,7 @@ def main() -> int:
     print("Analysis complete. Ready to brainstorm the findings.")
     print(f"Source materials: {display_path(source_materials_md, repo_root)}")
     print(f"Problem statements: {display_path(problem_analysis_md, repo_root)}")
-    print(f"Brainstorm handoff: $compound-engineering:ce-brainstorm {display_path(kickoff_md, repo_root)}")
+    print(f"Brainstorm handoff: /ce-brainstorm {display_path(kickoff_md, repo_root)}")
     print("Brainstorm should first confirm whether the captured requirements are complete and correctly grouped, then write the durable unified plan under the plans artifact directory.")
     return 0
 

@@ -10,7 +10,7 @@ This name still works, so existing prompts and schedules keep running. The refre
 
 **Done:** the notice was shown before and after the refresh, and the refresh ran with the scope and mode it was asked for.
 
-Render the invocations in the notice for the active host: `/skill-name` by default, and `$skill-name` on Codex or another host that documents dollar-prefixed invocation. Output one form only.
+Render invocations in the notice as OpenCode commands: `/skill-name`. Output one form only.
 
 Do these in order:
 
@@ -20,5 +20,5 @@ Do these in order:
 
    If your arguments contain `mode:non-interactive` or `mode:headless`, end the notice with this instead, because nobody is present and the plain word would run a capture: Next time, use `/ce-compound mode:refresh mode:non-interactive`.
 
-2. Invoke the `ce-compound` skill with `mode:refresh` followed by every argument you received, unchanged. `mode:refresh` must be present: without it, an unattended run does a capture rather than a refresh.
+2. Load the `ce-compound` skill through OpenCode's native skill tool and follow it with `mode:refresh` followed by every argument you received, unchanged. `mode:refresh` must be present: without it, an unattended run does a capture rather than a refresh. This alias does not launch a separate harness or override the delegated skill's permission, model, or depth requirements.
 3. When that finishes, print the notice again as your last line. A refresh report is long, and a scheduled run may show only its final message.

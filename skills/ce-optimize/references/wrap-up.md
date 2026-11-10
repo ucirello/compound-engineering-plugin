@@ -27,9 +27,9 @@ The summary must contain:
 ### 4.3 Preserve and Offer Next Steps
 
 The optimization branch (`optimize/<spec-name>`) is preserved with all commits from kept experiments.
-The experiment log and strategy digest remain under `<state-root>` for resume and audit; they do not travel with the branch from either root (`.context/` is gitignored, and a durable store is outside the checkout).
+The experiment log and strategy digest remain under the resolved `<state-root>` for resume and audit until final cleanup below; they do not travel with the bookmark. New runs use the workspace root's ignored `.tmp/ce-optimize/<spec-name>/`; existing ledgers retain their recorded location without automatic relocation. Preserve any harness durable reference or receipt needed to find the retained ledger. Before removing a workspace that contains retained state, follow the guarded evidence-preservation rules below; do not create OS-global temporary storage.
 
-**Export the report.** Write the 4.2 summary to `<root>/optimize/<spec-name>-report.md` (`<root>` from the body's Artifact Root rule) and commit it on the optimization branch, so a PR from the branch carries its evidence and the summary outlives the ledger. Report the path to the user together with the summary; the user may name a different tracked path instead.
+**Export the report.** Write the 4.2 summary to `<root>/optimize/<spec-name>-report.md` (`<root>` from the body's Artifact Root rule). Before composing its commit description, read SKILL.md's full Description composition section and apply its runtime full-guide and verified-history contract. Commit it on the optimization bookmark, so a PR carries its evidence and the summary outlives the ledger. Report the path to the user together with the summary; the user may name a different tracked path instead.
 
 Present these options after the summary. When the stop was reached on an unattended wake, presenting them is the point where this turn ends: `run_state.status` stays `waiting` on the user's choice, and CP-5 is written only after that choice, as the body states.
 
@@ -48,7 +48,7 @@ Option 4 (continue) re-enters Phase 3 with the current state, state re-read from
 
 Once CP-5 is written the run is over, so leave behind only what someone will still read. Remove the working files this run created under `<state-root>`: the strategy digest, the judge cache, result markers, and any scratch payloads or decision files you wrote there. Keep `experiment-log.yaml` and `spec.yaml`, tell the user where they are, and remove them too only if the user asks. A run that is not final (`waiting` or `blocked`) keeps everything, because a resume reads it.
 
-Remove files the way this host and the user's own rules prefer, such as moving them to the trash rather than deleting them permanently when that is available. Remove only files you can name that this run created inside `<state-root>`; never compose a path to delete from a pattern or an unresolved placeholder, and leave anything you are unsure about in place and name it in the final message. Remove experiment worktrees only through `scripts/experiment-worktree.sh cleanup`, which checks what it removes.
+Remove only specifically named run-created files inside `<state-root>` with authorization; leave uncertain files in place and report them. Remove experiment workspaces only through `references/workspaces.md`'s guarded native lifecycle, including stopped workers/session move, exact ownership/authorization, integration/recovery evidence copied/read back outside the target and tracked/conflicted/ignored/untracked inspection. Warnings or remaining directories block cleanup success. `forget` is unregister-only and preserves files.
 
 Do NOT delete the experiment log if the user may resume or wants an audit trail. The exported report in 4.3 is the durable shared artifact; the ledger is not. Unregister any wake still registered for this run.
 Do NOT delete experiment worktrees that are still being referenced.

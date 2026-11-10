@@ -1,5 +1,7 @@
 # Lightweight mode
 
+For interactive context pressure, first attempt the fresh native Full handoff in `references/modes.md`. This fallback is permitted only after an actual unavailable/denied dispatch or depth/capacity error, which the report names; recommend retrying Full in the same source session later. Explicit `mode:non-interactive depth:lightweight` continues to select Lightweight directly.
+
 ### Lightweight Mode
 
 <critical_requirement>
@@ -52,7 +54,7 @@ a one-line mention helps agents find the shared vocabulary.
 
 Note: This was created in lightweight mode. For richer documentation
 (cross-references, detailed prevention strategies, specialized reviews,
-semantic grounding validation), re-run <rendered invocation> in a fresh session.
+semantic grounding validation), retry <rendered invocation> in the same source session later.
 ```
 
 **No subagents are launched. No parallel tasks. The chosen form, plus at most one learning, is the deliverable** (Phase 2.4's update-only vocabulary capture may also change an existing `CONCEPTS.md`).

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate cited claims in a solution doc against the git tree.
+"""Validate cited claims in a solution doc against the JJ workspace.
 
 Usage:
     python3 validate-doc-claims.py <doc-path>
@@ -47,7 +47,7 @@ decides per flag: fix, annotate as historical, or confirm intentional.
 Only the summary exit code distinguishes "clean" from "needs a look".
 
 The script never touches the network (no fetch); classification uses
-whatever refs exist locally. Run a best-effort `git fetch --quiet` first
+whatever refs exist locally. Run a best-effort `jj git fetch` first
 when freshness matters. Pure stdlib (no third-party deps).
 """
 import os
@@ -101,10 +101,10 @@ def usage_fail(msg: str) -> "NoReturn":
     sys.exit(2)
 
 
-def git(args: list[str], cwd: str) -> tuple[int, str]:
+def jj(args: list[str], cwd: str) -> tuple[int, str]:
     try:
         result = subprocess.run(
-            ["git", *args],
+            ["jj", *args],
             cwd=cwd,
             capture_output=True,
             text=True,
@@ -192,7 +192,7 @@ def cites_a_commit(prefix: str) -> bool:
     ("the git history shows session 7e6861b4") describes the surroundings,
     not the token. Digits are word characters so a hash named after its
     algorithm ("SHA256") stays one non-cue word, and command flags drop out
-    first so `git show --format=%H <sha>` reads like `git show <sha>`.
+    first so command options do not obscure a revision citation.
     """
     if REPO_PIN_RE.search(prefix):
         return True  # owner/repo@<sha> pins a commit
@@ -263,25 +263,22 @@ def main(argv: list[str]) -> int:
     flags: list[str] = []
 
     # --- Repo context -----------------------------------------------------
-    code, repo_root = git(["rev-parse", "--show-toplevel"], doc_dir)
+    code, repo_root = jj(["root"], doc_dir)
     in_git = code == 0 and bool(repo_root)
     upstream: str | None = None
     if in_git:
-        code, ref = git(["rev-parse", "--abbrev-ref", "origin/HEAD"], repo_root)
-        if code == 0 and ref:
+        code, ref = jj(["log", "--no-graph", "-r", "trunk()", "-T", "commit_id"], repo_root)
+        # In a local-only repository trunk() may fall back to JJ's synthetic
+        # root. It is not an upstream branch and cannot ground remote claims.
+        if code == 0 and re.fullmatch(r"[0-9a-f]{40,64}", ref) and set(ref) != {"0"}:
             upstream = ref
         else:
-            for candidate in ("origin/main", "origin/master"):
-                code, _ = git(
-                    ["rev-parse", "--verify", "--quiet", candidate], repo_root
-                )
-                if code == 0:
-                    upstream = candidate
-                    break
+            infos.append("INFO: trunk() unavailable; upstream classification degraded")
         if upstream:
-            code, behind = git(
-                ["rev-list", "--count", f"HEAD..{upstream}"], repo_root
+            code, behind = jj(
+                ["log", "--no-graph", "-r", f"@..{upstream}", "-T", 'commit_id ++ "\\n"'], repo_root
             )
+            behind = str(len(behind.splitlines())) if code == 0 else ""
             if code == 0 and behind.isdigit() and int(behind) > 0:
                 infos.append(
                     f"INFO: worktree is {behind} commits behind {upstream} — "
@@ -302,14 +299,14 @@ def main(argv: list[str]) -> int:
     def upstream_has_path(path: str) -> bool:
         if not (in_git and upstream):
             return False
-        code, _ = git(["cat-file", "-e", f"{upstream}:{path}"], repo_root)
-        return code == 0
+        code, files = jj(["file", "list", "-r", upstream, "--", path], repo_root)
+        return code == 0 and bool(files)
 
     def head_has_path(path: str) -> bool:
         if not in_git:
             return False
-        code, _ = git(["cat-file", "-e", f"HEAD:{path}"], repo_root)
-        return code == 0
+        code, files = jj(["file", "list", "-r", "@-", "--", path], repo_root)
+        return code == 0 and bool(files)
 
     # --- 1. Cited repo paths ----------------------------------------------
     checked_paths = 0
@@ -392,8 +389,8 @@ def main(argv: list[str]) -> int:
                 seen_shas[sha] = (line_no, True)
         for sha in order:
             line_no, cited = seen_shas[sha]
-            code, _ = git(["cat-file", "-e", f"{sha}^{{commit}}"], repo_root)
-            resolved = code == 0
+            code, found = jj(["log", "--no-graph", "-r", sha, "-T", "commit_id"], repo_root)
+            resolved = code == 0 and bool(found)
             loc = f" (line {line_no})"
             if not resolved:
                 if not cited:
@@ -415,12 +412,11 @@ def main(argv: list[str]) -> int:
                 continue
             checked_shas += 1
             in_head = (
-                git(["merge-base", "--is-ancestor", sha, "HEAD"], repo_root)[0] == 0
+                bool(jj(["log", "--no-graph", "-r", f"{sha} & ::@", "-T", "commit_id"], repo_root)[1])
             )
             in_up = (
                 upstream is not None
-                and git(["merge-base", "--is-ancestor", sha, upstream], repo_root)[0]
-                == 0
+                and bool(jj(["log", "--no-graph", "-r", f"{sha} & ::{upstream}", "-T", "commit_id"], repo_root)[1])
             )
             if in_head and (in_up or upstream is None):
                 continue

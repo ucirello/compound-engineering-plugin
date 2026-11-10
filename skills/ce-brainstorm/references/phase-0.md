@@ -2,7 +2,7 @@
 
 #### 0.1 Resume Existing Work When Appropriate
 
-This resume scan needs `<root>/plans/`, so it applies only to a repo-backed run. If there is no git repository, or resolving `<root>` fails (a bad `docs_root`), skip the scan and continue — do not fail the run here, since Phase 0.1b may route non-software work to `references/universal-brainstorming.md`, whose contract does not write a unified plan under `<root>/plans/`.
+This resume scan needs `<root>/plans/`, so it applies only to a repo-backed run. If there is no JJ workspace, or resolving `<root>` fails (a bad `docs_root`), skip the scan and continue — do not fail the run here, since Phase 0.1b may route non-software work to `references/universal-brainstorming.md`, whose contract does not write a unified plan under `<root>/plans/`.
 
 Only when that check passes — a repo-backed run whose `<root>` resolved — evaluate this resume condition; never resolve `<root>` here on a run the check told you to skip. When it applies, if the user references an existing brainstorm topic or document, or there is an obvious recent matching unified plan in `<root>/plans/` with `artifact_contract: ce-unified-plan/v1` and `product_contract_source: ce-brainstorm`, whose contents are still a Product Contract without implementation planning:
 - Read the document
@@ -83,7 +83,7 @@ Product-tier triggers additional Phase 1.2 questions and additional Product Cont
 
 #### 0.4 Surface the Workflow Spine
 
-For **Standard and Deep** scope, use the platform's task-tracking capability when available (`TaskCreate`/`TaskUpdate`/`TaskList` in Claude Code, `update_plan` in Codex, or the equivalent on other harnesses). Skip it entirely for Lightweight and on the Phase 0.1b non-software route. Create it here, not earlier — 0.1b and 0.1c exit before this point, and the tier is unknown until 0.3.
+For **Standard and Deep** scope, use OpenCode's native task-tracking capability when available. Skip it entirely for Lightweight and on the Phase 0.1b non-software route. Create it here, not earlier — 0.1b and 0.1c exit before this point, and the tier is unknown until 0.3.
 
 If the harness exposes no task-tracking capability — including `ToolSearch` or its equivalent returning no match — continue normally without simulating a task list in chat.
 

@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import re
+import stat
 import subprocess
 import sys
 import tempfile
@@ -182,11 +183,47 @@ def prepared_content(record: dict) -> dict:
     }
 
 
+def workspace_root() -> Path | None:
+    invocation = Path.cwd().resolve()
+    return next((path for path in (invocation, *invocation.parents)
+                 if (path / ".jj").is_dir()), None)
+
+
+def repository_environment() -> dict[str, str]:
+    environment = os.environ.copy()
+    for key in ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE",
+                "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_PREFIX",
+                "GIT_CEILING_DIRECTORIES", "GIT_DISCOVERY_ACROSS_FILESYSTEM"):
+        environment.pop(key, None)
+    return environment
+
+
+def local_scratch() -> Path:
+    scratch = (workspace_root() or Path.cwd()) / ".tmp"
+    scratch.mkdir(mode=0o700, exist_ok=True)
+    info = scratch.lstat()
+    require(stat.S_ISDIR(info.st_mode) and not scratch.is_symlink(), "local .tmp must be a real directory, not a symlink")
+    require(info.st_uid == os.getuid(), "local .tmp must be owned by the current user")
+    require(not info.st_mode & 0o022, "local .tmp must not be group/world writable")
+    return scratch
+
+
+def destination_ready(path: Path, scratch: Path) -> None:
+    require(path.parent.is_dir(), "handoff parent directory does not exist")
+    require(os.access(path.parent, os.W_OK | os.X_OK, effective_ids=True),
+            "handoff parent directory is not writable/searchable")
+    require(path.parent.stat().st_dev == scratch.stat().st_dev,
+            "handoff destination and local .tmp must be on the same filesystem for atomic checkpoint replacement")
+
+
 def write_record(path: Path, raw: bytes, *, checkpoint: bool) -> None:
     if checkpoint:
+        scratch = local_scratch()
+        destination_ready(path, scratch)
+        require(not path.is_symlink(), "checkpoint destination must not be a symlink")
         temporary = None
         try:
-            with tempfile.NamedTemporaryFile(dir=path.parent, prefix=".pending-feedback-", delete=False) as temp:
+            with tempfile.NamedTemporaryFile(dir=scratch, prefix=".pending-feedback-", delete=False) as temp:
                 temporary = Path(temp.name)
                 temp.write(raw)
                 temp.flush()
@@ -205,9 +242,18 @@ def write_record(path: Path, raw: bytes, *, checkpoint: bool) -> None:
 
 
 def github_json(host: str, endpoint: str) -> dict:
+    root = workspace_root()
+    require(root is not None, "GitHub inspection requires a target JJ workspace")
+    environment = repository_environment()
+    discovery = subprocess.run(["jj", "git", "root"], cwd=root, env=environment,
+                               capture_output=True, text=True, check=False)
+    require(discovery.returncode == 0, discovery.stderr.strip() or "JJ Git root discovery failed")
+    git_dir = Path(discovery.stdout.strip())
+    require(git_dir.is_absolute() and git_dir.is_dir(), "JJ returned an invalid Git directory")
+    environment["GIT_DIR"] = str(git_dir)
     result = subprocess.run(
         ["gh", "api", "--hostname", host, "--method", "GET", endpoint],
-        capture_output=True, text=True, check=False,
+        cwd=root, env=environment, capture_output=True, text=True, check=False,
     )
     require(result.returncode == 0, result.stderr.strip() or f"GitHub GET failed: {endpoint}")
     return object_value(json.loads(result.stdout), "GitHub response")
@@ -257,11 +303,14 @@ def main() -> None:
             command_parser.add_argument("--input", required=True)
     args = parser.parse_args()
     if args.command == "preflight":
-        path = Path(args.path).absolute() if args.path else Path(tempfile.mkdtemp(prefix="ce-pending-feedback-")) / "pending.json"
+        scratch = local_scratch()
+        path = Path(args.path).absolute() if args.path else Path(tempfile.mkdtemp(dir=scratch, prefix="ce-pending-feedback-")) / "pending.json"
         require(not os.path.lexists(path), "handoff destination already exists")
-        require(path.parent.is_dir(), "handoff parent directory does not exist")
-        with tempfile.TemporaryFile(dir=path.parent):
-            pass
+        destination_ready(path, scratch)
+        with tempfile.TemporaryFile(dir=scratch) as probe:
+            probe.write(b"pending-feedback preflight\n")
+            probe.flush()
+            os.fsync(probe.fileno())
         print(json.dumps({"handoff": str(path)}))
         return
     path = Path(args.path).absolute()

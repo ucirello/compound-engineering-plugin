@@ -1,10 +1,18 @@
 ---
 name: ce-setup
-description: "Check Compound Engineering's tools and repo config and fix what it finds, scaffold a Compound Pack with `pack:<id>`, or draft and refresh coding standards and review docs from pull request history. Use when setting up or diagnosing Compound Engineering, or when creating or updating CODING_STANDARDS.md or REVIEW.md, including on a schedule."
+description: "Check RocketClaw tools and repo config, scaffold a pack with `pack:<id>`, or draft and refresh coding standards and review docs from pull request history. Use when setting up or diagnosing RocketClaw or updating CODING_STANDARDS.md or REVIEW.md, including on a schedule."
 argument-hint: "[pack:<id> | standards] [mode:non-interactive]"
 ---
 
-# Compound Engineering Setup
+# RocketClaw Setup
+
+## OpenCode installation and native dispatch
+
+Discover the actual global configuration directory with `opencode debug paths` (or `opencode debug paths config` where supported). Merge `experimental.subagent_depth` into the existing user-global `opencode.json` or existing JSONC configuration there; the usual path is `~/.config/opencode/opencode.json`. Set it to at least integer `3`, preserving any higher integer, all sibling experimental settings, unrelated settings, and JSONC comments. Do not create a competing configuration file. Show the exact proposed merge and obtain approval before host changes; unattended runs report it without writing. The installed package config is not automatically merged into the consuming project. Check effective higher-precedence configuration so it does not lower this value. Deep delegation needs this user-global installation step.
+
+Resolve configured peer/model preferences through native `opencode.models`, then use native subagents only. Configuration choices remain authoritative subject to host permission. A user request OR this skill's delegation instruction authorizes delegation; model override permission is separate. Use the inherited model when suitable. Distinguish exhausted depth/capacity, explicit denial, absent tools, and rejected model arguments; never evade a restriction through shell transports or another harness. Disclose omitted independent/cross-model coverage rather than claiming a complete review. Cache warming is optional support, not a dispatch prerequisite.
+
+Run all JJ operations from the target absolute workspace root (`jj root`), never use `-R` as a cwd substitute. Repository-scoped `gh` commands must export `GIT_DIR=$(jj git root)` there. Keep all scratch and fallback paths under that workspace's `.tmp/`.
 
 ## Non-interactive runs
 
@@ -16,7 +24,7 @@ In an interactive run, ask each question below with the host's blocking question
 
 ## Pack Scaffold
 
-When the invocation names a Compound Pack to add, create, or scaffold (the `pack:<id>` argument, or the same request in words), read `references/pack-scaffold.md` from this skill's directory and follow it in place of Phases 1-2: it writes the pack and its config entry only after the user approves, runs the health check itself, and reports into Phase 3 (Summary).
+When the invocation names a pack to add, create, or scaffold (the `pack:<id>` argument, or the same request in words), read `references/pack-scaffold.md` from this skill's directory and follow it in place of Phases 1-2: it writes the pack and its config entry only after the user approves, runs the health check itself, and reports into Phase 3 (Summary).
 
 ## Review Docs
 
@@ -24,12 +32,12 @@ When the invocation asks to draft, refresh, or update coding standards or review
 
 ## Artifact Root Resolution
 
-Every Compound Engineering skill that reads or writes a CE-owned artifact tree (`solutions`, `plans`, and others) resolves its root by this rule. Step 2 reports the resolved root.
+Every RocketClaw skill that reads or writes an owned artifact tree (`solutions`, `plans`, and others) resolves its root by this rule. Step 2 reports the resolved root.
 
 <!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only (`<repo-root>` = the absolute `jj root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
 - **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
@@ -38,7 +46,7 @@ Every Compound Engineering skill that reads or writes a CE-owned artifact tree (
 
 ### Step 1: Determine Plugin Version
 
-Detect the installed compound-engineering plugin version by reading the plugin metadata or manifest when the platform exposes it. If the version cannot be determined, skip this step.
+Detect the installed RocketClaw plugin version by reading the plugin metadata or manifest when the platform exposes it. If the version cannot be determined, skip this step.
 
 If a version is found, pass it to the check script via `--version`. Otherwise omit the flag.
 
@@ -47,7 +55,7 @@ If a version is found, pass it to the check script via `--version`. Otherwise om
 Before running the script, display:
 
 ```text
-Compound Engineering -- checking your environment...
+RocketClaw -- checking your environment...
 ```
 
 Run the bundled check script. Set `SKILL_DIR` to the absolute directory you loaded this `ce-setup` SKILL.md from — the Bash tool's CWD is the user's project, not the skill dir, so a bare `scripts/` path will not resolve:
@@ -61,7 +69,7 @@ Use the same command without `--version VERSION` if Step 1 could not determine a
 
 If the script is unavailable, run the inline equivalent listed in `references/repo-fixes.md`.
 
-Display the diagnostic output to the user. The health report includes the resolved artifact root and which config layer supplied it (per Artifact Root Resolution above); show that line so the operator can confirm where CE artifacts will be written. Missing `config.yaml` is a reported absence, not a project issue.
+Display the diagnostic output to the user. The health report includes the resolved artifact root and which config layer supplied it (per Artifact Root Resolution above); show that line so the operator can confirm where artifacts will be written. Missing `config.yaml` is a reported absence, not a project issue.
 
 ### Step 3: Decide Whether Fixes Are Needed
 
@@ -69,7 +77,7 @@ Repo-local fixes the health report names apply only to the checkout that report 
 
 After the health report, decide Phase 2 from writable-checkout availability:
 
-- If this session has a writable git checkout, run Phase 2 locally, including when `project_issues` is 0. Phase 2 always refreshes the example and always offers to create `config.yaml` when that file is missing.
+- If this session has a writable JJ workspace, run Phase 2 locally, including when `project_issues` is 0. Phase 2 always refreshes the example and always offers to create `config.yaml` when that file is missing.
 - If this session has no writable checkout, but the user named a repository and the harness exposes a remote repo-work surface with a writable checkout, run Phase 2 on that surface instead and report the remote repo-local fixes in Phase 3.
 - Otherwise skip Phase 2 and go to Phase 3, saying repo-local writes were skipped because no writable checkout is available.
 
@@ -79,7 +87,7 @@ Phase 2 remediates every project issue the report names, each in its own step of
 
 ## Phase 2: Fix Repo-Local Issues
 
-Read `references/repo-fixes.md` from this skill's directory before making any repo-local change. It remediates every project issue the report names and carries Steps 4-10: removing the obsolete `compound-engineering.local.md`, refreshing the example config, refreshing out-of-date config files with their settings kept, offering to create `config.yaml`, repairing invalid `work_engine_preferences` and `docs_root`, the two `.gitignore` offers, and the agent-instructions offers (a knowledge-store mention, the compounding directive, and the chat-register directive for `ce-noslop`), and the offer to draft the project's review docs.
+Read `references/repo-fixes.md` from this skill's directory before making any repo-local change. It remediates every project issue the report names and carries Steps 4-10: removing the obsolete `rocketclaw.local.md`, refreshing the example config, refreshing out-of-date config files with their settings kept, offering to create `config.yaml`, repairing invalid `work_engine_preferences` and `docs_root`, the two `.gitignore` offers, and the agent-instructions offers (a knowledge-store mention, the compounding directive, and the chat-register directive for `ce-noslop`), and the offer to draft the project's review docs.
 
 Every change to a user-owned file is offered and applied only if the user approves.
 

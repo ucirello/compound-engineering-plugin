@@ -17,7 +17,7 @@ For code-review invocations, search the full learning corpus described below, th
 
 ## Search Roots
 
-The caller may pass a **search-root list**: `<root>/solutions/` plus zero or more Compound Packs, each as an `id` and an absolute directory. Packs are prescriptive rule sets, not retrospective learnings. Treat each pack as an additional root with these rules:
+The caller may pass a **search-root list**: `<root>/solutions/` plus zero or more RocketClaw Packs, each as an `id` and an absolute directory. Packs are prescriptive rule sets, not retrospective learnings. Treat each pack as an additional root with these rules:
 
 - Skip the grep pre-filter for a pack root and read the frontmatter of every top-level markdown file in it. Apply the pre-filter only past 25 files. Subdirectories and non-markdown files are pack assets — never rules, never listed as skipped.
 - Treat `applies_when:` as a primary match field alongside `title` and `tags`.
@@ -72,7 +72,7 @@ The caller's context determines which dimensions carry weight. A code-bug query 
 
 ### Step 2: Probe Discovered Subdirectories
 
-Use the native file-search/glob tool (e.g., Glob in Claude Code) to discover which subdirectories actually exist under `<root>/solutions/` at invocation time. Do not assume a fixed list — subdirectory names are per-repo convention and may include any of:
+Use native file-search/glob to discover which subdirectories actually exist under `<root>/solutions/` at invocation time. Do not assume a fixed list — subdirectory names are per-repo convention and may include any of:
 
 - Bug-shaped: `build-errors/`, `test-failures/`, `runtime-errors/`, `performance-issues/`, `database-issues/`, `security-issues/`, `ui-bugs/`, `integration-issues/`, `logic-errors/`
 - Knowledge-shaped: `architecture-patterns/`, `design-patterns/`, `tooling-decisions/`, `conventions/`, `workflow/`, `workflow-issues/`, `developer-experience/`, `documentation-gaps/`, `best-practices/`, `skill-design/`, `integrations/`
@@ -82,14 +82,14 @@ Narrow the search to the discovered subdirectories that match the caller's Domai
 
 ### Step 3: Content-Search Pre-Filter (Critical for Efficiency)
 
-**Use the native content-search tool (e.g., Grep in Claude Code) to find candidate files BEFORE reading any content.** Run multiple searches in parallel, case-insensitive, returning only matching file paths:
+**Use native content search to find candidate files BEFORE reading any content.** Run multiple searches in parallel, case-insensitive, returning only matching file paths:
 
 ```
 # Search for keyword matches in frontmatter fields (run in PARALLEL, case-insensitive).
 # Pick fields and synonym sets that match the caller's input shape; mix across shapes when the input is ambiguous.
 content-search: pattern="title:.*(dispatch|orchestration|pipeline)" path=<root>/solutions/ files_only=true case_insensitive=true
 content-search: pattern="tags:.*(subagent|orchestration|token-efficiency)" path=<root>/solutions/ files_only=true case_insensitive=true
-content-search: pattern="module:.*(compound-engineering|skill-design)" path=<root>/solutions/ files_only=true case_insensitive=true
+content-search: pattern="module:.*(rocketclaw|skill-design)" path=<root>/solutions/ files_only=true case_insensitive=true
 content-search: pattern="problem_type:.*(architecture_pattern|design_pattern|tooling_decision)" path=<root>/solutions/ files_only=true case_insensitive=true
 ```
 

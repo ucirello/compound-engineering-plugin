@@ -12,7 +12,7 @@ Work the tasks in dependency order. Mark a task completed only after each of the
 
 Then mark the task completed in the task tracker and decide whether to commit it (Incremental Commits, below).
 
-When the selected engine is cross-model execution, this loop still decides unit order, the evidence strategy, inspection of what actually changed, authoritative verification, and incremental canonical commits; the worker's authoring follows the serial external-unit protocol in `references/cross-model-execution.md`. A detached worker process finishing proves only that authoring finished; do not mark the task complete until the controller records the host-owned canonical commit. A unit whose workspace was preserved, or whose restoration is blocked, stops this loop before any fallback, retry, or next unit.
+For cross-model execution this loop still owns unit order, evidence, actual-change inspection, authoritative verification and canonical commits. Follow the native dispatch/receipt contract in `cross-model-execution.md`. Native task completion alone is not integration: require the host-owned canonical commit and verification receipt. Blocked restoration stops fallback, retry and dependent units.
 
 **Build what was asked.** The plan's units and scope, or the request itself when there is no plan, define what gets built. Add a mechanism neither asked for, such as a guard, retry, fallback, validation layer, option, mode, abstraction, or support on another interface, only when an existing contract requires it or one of these holds:
 
@@ -60,25 +60,69 @@ After completing each task, decide whether to commit. Never commit while its tes
 
 If the plan has Implementation Units, use them as a starting guide for commit boundaries — but adapt based on what you find during implementation. A unit might need multiple commits if it's larger than expected, or small related units might land together. Use each unit's Goal to inform the commit message.
 
-**Message convention:** match project commit conventions already in context; else match the recent log pattern; else conventional commits (`type(scope): description`). User override wins.
+**Message convention:** at each composition, read the full current https://go.dev/wiki/CommitMessage and recent full subjects/bodies from the actual verified history head:
 
-Preserve the full resolved message as data through the selected engine's canonical commit owner. If that owner cannot accept the full message, stop and report the blocker rather than truncate it or bypass the owner's protocol. Cross-model commits follow the controller integration contract in `references/cross-model-execution.md`.
+```sh
+(cd "$workspace_root" && jj log --no-graph -r '::<verified-history-head>' -n 10 -T 'description ++ "\n"')
+```
 
-For native host-owned Git commits, write the full resolved message to a file outside the repo with your file-write tool. Pass that file to Git so the shell never interprets message text.
+Set `workspace_root` to the verified absolute target workspace root. Replace the placeholder with the verified history revision, never a hardcoded remote/default. Compare several examples for actual repository syntax; repository conventions win over Go syntax. Use a concise outcome-focused subject and explanatory body describing what and why, with accurate issue references; use imperative tense where compatible with repository syntax. User constraints win.
 
-**Native Git commit workflow:**
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards.
+
+Verbatim source guidance, subordinate to actual repository syntax and not a mandatory template:
+
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+
+```text
+net/http: handle foo when bar
+
+[longer description here in the body]
+
+Fixes #12345
+```
+
+> Notably, for the subject (the first line of description):
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+
+> For the body (the rest of the description):
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
+
+Additional Go source guidance (not a repository message template):
+> the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> the verb after the colon is lowercase
+> there is no trailing period
+> there is no Markdown in the commit message.
+> we do not use Signed-off-by lines. Don’t add them. Our Gerrit server & GitHub bots enforce CLA compliance instead.
+> similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
+> The CL description is a public document that explains to the future what has been done and why.
+
+Source example only: `net/http: handle foo when bar`. Do not hardcode a conventional-commit prefix or copy the example as a template. Never add generated branding or attribution.
+
+Preserve the full message as data through the host-owned canonical commit. If it cannot be accepted intact, report a blocker rather than truncate it. Cross-model commits follow the native integration receipt contract in `cross-model-execution.md`.
+
+For native host-owned JJ commits, write the full resolved message to a local `.tmp` file. Treat it as data, never shell syntax.
+
+**Native JJ commit workflow:**
 ```bash
 # 1. Verify tests pass (use project's test command)
 # Examples: bin/rails test, npm test, pytest, go test, etc.
 
-# 2. Stage only files related to this logical unit (not `git add .`)
-git add <files related to this logical unit>
-
-# 3. Commit with the resolved message, limited to those same paths
-git commit -F <message-file> -- <files related to this logical unit>
+# 2. Inspect ownership, conflicts and actual paths before committing
+jj status
+jj diff
+# 3. Commit only the unit-owned paths with the full resolved description
+jj commit --message "$(cat "$message_file")" -- <unit-owned-paths>
 ```
 
-**Note:** Incremental commits add no plugin-generated attribution. The final Phase 4 handoff passes `branding:on` so `ce-commit-push-pr` can add generic Compound Engineering branding to the PR.
+**Note:** Neither incremental commits nor the final shipping handoff add generated branding or attribution; never pass a branding opt-in.
 
 **Workers:** worker commits follow the **No canonical commits** rule in `references/execution-strategy.md`; only the orchestrator makes canonical commits.
 
@@ -92,7 +136,7 @@ If **`ce-simplify-code`** is available, invoke it with `mode:pipeline` at phase 
 
 When the plan carries `session-settled:`-labeled KTDs or Key Decisions, pass the plan path as context for which structures must stay as they are, not as the simplification scope, with the one-line constraint that labeled entries are settled decisions the simplification must preserve (e.g., deliberate duplication stays duplicated).
 
-In return-to-caller mode, commit the pass's edits once its checks pass, then record that commit's SHA (HEAD when the pass changed nothing) as `simplified_through`. The caller's own simplify step then covers only what came after it. A later pass replaces the recorded SHA. Reviewing the files yourself records nothing.
+In return-to-caller mode, commit the pass's edits after checks pass and record its immutable commit id (the verified implementation head when unchanged) as `simplified_through`. The caller's simplify covers subsequent changes. A later pass replaces that id; self-review records nothing.
 
 4. **UI Verification** (if applicable)
 

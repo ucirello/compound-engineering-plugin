@@ -25,7 +25,7 @@ Parse the arguments you were invoked with for optional tokens. Strip each recogn
 
 **Grouping is presentation, not a mode.** The `grouping:` tokens change how the finding set is organized for triage — never reviewer selection, merge logic, scope rules, or the Stage 5c apply decision.
 
-**Mode alias:** `mode:headless` normalizes to `mode:agent`. `mode:agent` + `mode:headless` is not a conflict. `mode:non-interactive` is **not** an alias for `mode:agent` — that token means “suppress prompts” in other CE skills; if it appears here, treat it as an unrecognized, conflicting `mode:` token and stop rather than guessing what was meant.
+**Mode alias:** `mode:headless` normalizes to `mode:agent`; both together are not a conflict. `mode:non-interactive` is **not** an alias here: other skills use it to suppress prompts. Treat it here as an unrecognized conflicting mode token and stop, never guess.
 
 **Conflicting arguments:** Stop without dispatching reviewers when:
 - Multiple incompatible scope selectors appear together (e.g. `base:` **and** a PR number/branch target — `base:` means "review the current checkout against this base")
@@ -44,7 +44,7 @@ Emit a one-line failure reason. In `mode:agent`, return JSON: `{"status":"failed
 |------------|-------------|
 | **Default** | Report-only markdown (pipe-delimited finding tables) + Actionable Findings summary |
 | **Explicit local apply** | The same markdown report plus verified local fixes and an Applied section |
-| **`mode:agent`** | One JSON object (see ## JSON output format below) + the same `/tmp/.../ce-code-review/<run-id>/` artifacts |
+| **`mode:agent`** | One JSON object (see ## JSON output format below) + the same `<absolute-workspace-root>/.tmp/rocketclaw/code-review/<run-id>/` artifacts |
 
 Default and `mode:agent` are **report-only**. `mode:agent` changes only the serialization from markdown to JSON for programmatic callers; it does not change reviewer selection, merge logic, or scope rules. `apply:local` is separate mutation authority, not an output mode. The default markdown is the human view; keep it ASCII-safe (pipe tables, `->` not middot `·`, no box-drawing) so it degrades gracefully across terminals.
 
@@ -91,8 +91,9 @@ Every run, lite, focused, or full, leaves its receipt (`review.json` in `mode:ag
 ```json
 {
   "run_id": "<run-id>",
-  "branch": "<git branch --show-current at dispatch time>",
-  "head_sha": "<git rev-parse HEAD at dispatch time>",
+  "branch": "<verified task bookmark identity at dispatch>",
+  "head_sha": "<captured exact reviewed head commit ID>",
+  "base_sha": "<captured exact base commit ID>",
   "verdict": "<Ready to merge | Ready with fixes | Not ready>",
   "completed_at": "<ISO 8601 UTC timestamp>"
 }
@@ -112,12 +113,13 @@ Minimum shape:
 
 ```json
 {
-  "status": "complete",
+  "status": "complete | incomplete",
   "verdict": "Ready to merge | Ready with fixes | Not ready",
   "scope": {
     "base": "<merge-base sha, pr:NNN marker, or base: ref>",
     "branch": "<current branch name>",
-    "head_sha": "<git rev-parse HEAD>",
+    "head_sha": "<captured exact reviewed head commit ID>",
+    "base_sha": "<captured exact base commit ID or null when unresolved>",
     "pr_url": "<url or null>",
     "files_changed": 0
   },
@@ -145,7 +147,7 @@ Minimum shape:
 "peer": {"outcome": "folded | in-process-fallback | not-run | no-usable-output | failed", "coverage": "<the Coverage sentence for this outcome>"}
 ```
 
-On the full path, copy `outcome` and `coverage` verbatim from the `peer` record in `finish-input.json`; the focused path fills them from its own fold-in, using the same outcome names and Coverage sentences. `folded` is the only outcome in which a peer artifact was folded into this review. Every other outcome means no peer artifact was folded, and `coverage` says why and what covered the lens instead. An outcome other than `folded` never changes `status`.
+Copy peer outcome/coverage verbatim from finish-input on full; focused derives the same fields from its native fold-in. Folded means a usable artifact was included, not that model independence was attested. Other outcomes name why no artifact was folded and any permitted lens fallback. Optional peer failure alone need not change status, but missing exact scope, mandatory reviewer coverage or mandatory independence makes status incomplete (or the documented failed result for infrastructure failure), with Not ready verdict and explicit coverage gaps. Never call partial coverage complete; preserve both captured endpoint IDs in review.json, metadata and human Coverage, separate from any logical PR marker.
 
 When Stage 1d staged a review policy, every path adds `coverage.review_policy`: `sources` (the policy file paths read), `removed` and `regraded` (counts), and `not_applied` (policy files the change edited, whose new version this review did not apply).
 

@@ -18,7 +18,7 @@ Also require the fields that record which route actually ran: `implementation_en
 
 ## The work must be committed
 
-`ce-code-review` leaves out untracked files, so files this run added go unreviewed until they are committed. Before step 3, confirm the return's `changed_files` are committed. If any are not, commit those files and continue. Do not stop for this.
+Before step 3, confirm the return's `changed_files` are tracked, included in the exact review scope, and committed as required by the implementation return. JJ may auto-track new files; ignored or explicitly untracked files are not thereby covered. Inspect owned paths with `jj status`, `jj file list` and `jj diff` from the absolute target root. If owned files still need committing, use the message-composition standards and owned-path commit procedure in `references/shipping.md`, preserving unrelated changes, then continue. Do not silently omit added files or claim partial coverage complete.
 
 ## Verification evidence
 

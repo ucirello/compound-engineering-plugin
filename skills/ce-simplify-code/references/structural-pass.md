@@ -4,20 +4,20 @@
 
 ## Before dispatching
 
-Gather two kinds of evidence for the scope, and keep the output in OS temp:
+Gather two kinds of evidence for the scope, and keep all output and fallback scratch under the target workspace's absolute local `.tmp/rocketclaw/` directory, never OS temp:
 
 - **What changes together:** pairs of files that often change in the same commits, especially pairs in different directories.
 - **What imports what:** the import graph for the scope, with how often each file changes in that same history.
 
-The bundled script gathers both for JavaScript, TypeScript, and Python. Run it directly from the repository, passing the scope paths; do not read it first:
+The bundled script gathers both for JavaScript, TypeScript, and Python. Verify the actual task history head (including the parent beneath an empty working-copy change), capture its exact commit ID once with `jj log`, and pass it as `--history-head`. Do not substitute an unrelated default bookmark. Run directly with cwd equal to the absolute target workspace root, passing the scope paths; do not read it first:
 
 ```
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
 PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c '' >/dev/null 2>&1 && { echo "$c"; break; }; done)"; [ -n "$PY" ] || { echo "no working Python 3 interpreter on PATH" >&2; exit 1; };
-"$PY" "$SKILL_DIR/scripts/structure-evidence.py" <scope paths>
+"$PY" "$SKILL_DIR/scripts/structure-evidence.py" --repo "<absolute target workspace root>" --history-head "<captured verified task history commit ID>" <scope paths>
 ```
 
-It prints JSON. `imports_not_parsed` counts files in other languages; build their import evidence yourself. If the script fails, gather the evidence with short commands of your own.
+It prints JSON. `imports_not_parsed` counts files in other languages; build their import evidence yourself. If the script fails, gather equivalent evidence with JJ and source inspection from the absolute target root; never invoke Git directly or call incomplete evidence complete.
 
 When the scope is too large for one reviewer to read in full, also make an outline of it: each file's exports and function signatures, without bodies. Every reviewer gets the outline in place of the full file set, and opens the files it needs.
 
@@ -31,7 +31,7 @@ A grouping is kept only when all three of these hold after its change: pieces th
 
 A grouped change still follows Step 3. It must preserve outputs, errors, side effects, and ordering, and it must stay inside the scope. That holds for every exported function and other public interface on its own, not only for the code paths the tests exercise: code you cannot see may call it directly. So a redesign may move logic behind an export, but the export keeps its signature and does what it did before. When it cannot, do not apply it; list it as not applicable. A change that would correct a bug is reported as a possible defect, not applied as a simplification.
 
-Keep the groupings and their reasons in a file in OS temp while you work, so they survive if the context is compacted.
+Keep the groupings and their reasons in a file under the target workspace's absolute local `.tmp/rocketclaw/` directory while you work, so they survive if the context is compacted.
 
 ## In the report
 

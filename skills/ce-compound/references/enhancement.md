@@ -10,6 +10,8 @@ This phase is interactive-only: a non-interactive caller has no human-in-the-loo
 
 Based on problem type, optionally dispatch generic subagents seeded with local prompt assets from `references/agents/` to review the documentation. Do not dispatch standalone agents by type/name.
 
+This skill's explicit reviewer dispatch satisfies the host's user-or-skill delegation exception; do not seek redundant approval, but respect actual higher prohibitions/tool denial. Model permission is separate: use `opencode.models` to resolve configured model/tier intent, inherit the model where suitable, and omit optional model selection when the host requires an explicit user model request. Disclose unmet routes; same-model is not cross-model independence. Classify actual nesting-depth, permission, model, and tool errors without retrying denied operations or switching harnesses. Inline read-only review is allowed by this optional contract, but report reduced coverage and never claim unmet independence complete.
+
 - **performance_issue** → `references/agents/performance-oracle.md`
 - **security_issue** → `references/agents/security-sentinel.md`
 - **database_issue** → `references/agents/data-integrity-guardian.md`

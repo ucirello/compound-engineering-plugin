@@ -51,7 +51,7 @@ A case a stated condition already covers is not a finding; answer it with the co
 The authoring statement is "Temp directories" in `docs/solutions/skill-design/portable-agent-skill-authoring.md`; review checks:
 
 - A directory that something must rediscover without being handed its path (a later invocation that resumes state, attaches to a live session, or polls a job it did not start) is created under the scratch-root preamble copied from a shipped skill. Only a known root makes it findable.
-- A directory whose absolute path is passed to everything that uses it, including a worker the run starts and later polls, may be a unique `mktemp -d "${TMPDIR:-/tmp}/<name>-XXXXXX"`. It is created private (0700) and atomically, so moving it under the scratch root adds no privacy. Asking for that move is not a finding.
+- Every temporary directory, including a worker's explicitly passed scratch path, is created privately and atomically under the target workspace's absolute `.tmp/` root. For example, after verifying that local parent, use `mktemp -d "$workspace_root/.tmp/<name>-XXXXXX"`. Without a JJ repository use a local `.tmp/` parent; never fall back to OS-global temporary storage.
 - No skill creates a temp directory with a fixed name or a name from an optional tool such as `openssl`. Two runs then share a path, or a missing tool collapses every run onto one.
 
 ## Edits that move or shrink text

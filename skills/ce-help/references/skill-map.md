@@ -31,7 +31,7 @@ Recommend one skill. Bring in a second when the situation falls between two skil
 | Commit, push, and open a PR, or write a PR description | `ce-commit-push-pr` |
 | Address feedback already left on a PR | `ce-resolve-pr-feedback` |
 | Watch a PR, fix comments and CI, and judge whether an old PR still belongs | `ce-babysit-pr` |
-| Work in an isolated git worktree | `ce-worktree` |
+| Work in an isolated colocated JJ workspace | `ce-worktree` |
 | Run browser tests for the current change | `ce-test-browser` |
 | Test an iOS app on the simulator | `ce-test-xcode` (manual) |
 | Refine the UX of a working feature with live feedback | `ce-polish` (manual) |
@@ -44,7 +44,7 @@ Recommend one skill. Bring in a second when the situation falls between two skil
 | Turn a Riffrec recording, video, or notes into feedback | `ce-riffrec-feedback-analysis` |
 | Check tools and repo config, or scaffold a pack or review docs | `ce-setup` |
 | Retune a skill collection for a new model | `ce-retune` (manual) |
-| Get oriented in CE | `ce-help` (manual) |
+| Get oriented in RocketClaw | `ce-help` (manual) |
 
 ## Skills that sound alike
 

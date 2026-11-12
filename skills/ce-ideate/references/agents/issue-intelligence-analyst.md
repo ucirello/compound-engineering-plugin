@@ -15,6 +15,8 @@ These are a floor plus a goal, not an algorithm. You are smart enough to read th
 
 ## Tracker access — capability probe (both modes)
 
+Run JJ commands with cwd equal to the absolute target workspace root. Discover remotes with `jj git remote list`, never a direct Git executable. For repository-scoped GitHub CLI calls, set `GIT_DIR=$(jj git root)` in that target workspace so `gh` resolves the intended repository independently of the caller's environment.
+
 Detect the reachable access method by **category**, never by assuming a specific binary exists:
 
 - **GitHub** — the `gh` CLI, or a GitHub MCP server (tools matching `mcp__github__*`).

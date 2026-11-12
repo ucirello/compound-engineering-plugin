@@ -20,24 +20,24 @@ const scriptPath = fileURLToPath(import.meta.url)
 const DEFAULT_HOST = "127.0.0.1"
 const DEFAULT_URL_HOST = "localhost"
 const SCHEMA_VERSION = "live/1"
-const IDLE_TIMEOUT_MS = Number(process.env.CE_LIVE_IDLE_TIMEOUT_MS) || 30 * 60 * 1000
-const LIFECYCLE_CHECK_MS = Number(process.env.CE_LIVE_LIFECYCLE_CHECK_MS) || 60 * 1000
-const WAIT_TIMEOUT_MS = Number(process.env.CE_LIVE_WAIT_TIMEOUT_MS) || 30 * 1000
-const PAGE_LOST_GRACE_MS = Number(process.env.CE_LIVE_PAGE_LOST_GRACE_MS) || 15 * 1000
-const MINT_TIMEOUT_MS = Number(process.env.CE_LIVE_MINT_TIMEOUT_MS) || 10 * 1000
+const IDLE_TIMEOUT_MS = Number(process.env.ROCKETCLAW_LIVE_IDLE_TIMEOUT_MS) || 30 * 60 * 1000
+const LIFECYCLE_CHECK_MS = Number(process.env.ROCKETCLAW_LIVE_LIFECYCLE_CHECK_MS) || 60 * 1000
+const WAIT_TIMEOUT_MS = Number(process.env.ROCKETCLAW_LIVE_WAIT_TIMEOUT_MS) || 30 * 1000
+const PAGE_LOST_GRACE_MS = Number(process.env.ROCKETCLAW_LIVE_PAGE_LOST_GRACE_MS) || 15 * 1000
+const MINT_TIMEOUT_MS = Number(process.env.ROCKETCLAW_LIVE_MINT_TIMEOUT_MS) || 10 * 1000
 const BODY_LIMIT = 64 * 1024
 // How long after a stream delivery the response is ended so buffering
 // intermediaries release it; a burst inside this window shares one response.
-const STREAM_FLUSH_MS = Number(process.env.CE_LIVE_STREAM_FLUSH_MS) || 300
+const STREAM_FLUSH_MS = Number(process.env.ROCKETCLAW_LIVE_STREAM_FLUSH_MS) || 300
 const FRAME_BODY_LIMIT = 2 * 1024 * 1024
-const ARCHIVE_BODY_LIMIT = Number(process.env.CE_LIVE_ARCHIVE_LIMIT_BYTES) || 400 * 1024 * 1024
-const DISK_CAP_BYTES = Number(process.env.CE_LIVE_DISK_CAP_BYTES) || 500 * 1024 * 1024
+const ARCHIVE_BODY_LIMIT = Number(process.env.ROCKETCLAW_LIVE_ARCHIVE_LIMIT_BYTES) || 400 * 1024 * 1024
+const DISK_CAP_BYTES = Number(process.env.ROCKETCLAW_LIVE_DISK_CAP_BYTES) || 500 * 1024 * 1024
 // Above the image cap, a ceiling on the whole session log: past it every
 // envelope is refused, not only frames, so a session that keeps sending
 // small events (or a page that keeps posting) cannot grow the log without
 // bound. Normal sessions never reach it; the page treats the refusal as
 // buffering and replays once accepted again.
-const DISK_HARD_CAP_BYTES = Math.max(DISK_CAP_BYTES, Number(process.env.CE_LIVE_DISK_HARD_CAP_BYTES) || DISK_CAP_BYTES + 64 * 1024 * 1024)
+const DISK_HARD_CAP_BYTES = Math.max(DISK_CAP_BYTES, Number(process.env.ROCKETCLAW_LIVE_DISK_HARD_CAP_BYTES) || DISK_CAP_BYTES + 64 * 1024 * 1024)
 // An archive upload streams into `archive.<ext>.<uuid>.part` and is renamed
 // once complete; a `.part` found at startup is an upload the previous process
 // did not finish.
@@ -48,7 +48,7 @@ const OUT_OF_ORDER_CAP = 512
 const MINTS_PER_MINUTE = 5
 // Refused requests logged to agent.ndjson per window; the last slot in a
 // window is the one line saying the rest of that window is suppressed.
-const REJECTION_LOG_PER_WINDOW = Number(process.env.CE_LIVE_REJECTION_LOG_PER_MINUTE) || 60
+const REJECTION_LOG_PER_WINDOW = Number(process.env.ROCKETCLAW_LIVE_REJECTION_LOG_PER_MINUTE) || 60
 const REJECTION_LOG_WINDOW_MS = 60 * 1000
 const OPENAI_BASE_URL = (process.env.OPENAI_BASE_URL || "https://api.openai.com").replace(/\/+$/, "")
 const REALTIME_MODEL = process.env.OPENAI_REALTIME_MODEL || "gpt-realtime"
@@ -504,7 +504,7 @@ function inspectServerProcess(options, pid) {
   const isHelper = tokens.some((token) => path.basename(token) === path.basename(scriptPath))
   // Flattened command line (`ps`): argv boundaries are gone, so the root must
   // be followed by the next flag or the end of the line. A root that is this
-  // one plus more words (`--root /tmp/root other`) is ambiguous and reads as
+  // one plus more words (`--root /workspace/.tmp/root other`) is ambiguous and reads as
   // foreign rather than owned.
   const rootArgument = new RegExp(`(^|\\s)--root\\s+${escapeRegExp(options.root)}(\\s+--|\\s*$)`)
   const forThisRoot = rootArgument.test(args)

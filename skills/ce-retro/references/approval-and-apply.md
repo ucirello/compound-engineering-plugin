@@ -27,13 +27,13 @@ For each approved item `ce-retro` owns:
 
 1. Make the edit.
 2. Verify it with the check that proved the candidate: the path now resolves, the command now runs, the instruction is gone, the new check fails on the old shape and passes on the current tree.
-3. Commit it alone, staging and committing only that item's files, with a message that says what friction it removes. Do not push.
+3. Commit it alone with JJ, including only that item's files and explaining what friction it removes. Before composing, read the full https://go.dev/wiki/CommitMessage and several recent full subjects AND bodies from the actual verified task history head. Run JJ with cwd equal to the absolute target workspace root: verify the task bookmark/revision and capture its full commit ID (do not substitute an unrelated default branch or empty working-copy head), then run `jj log --no-graph -r 'ancestors(<verified-task-history-head>, 10)' -T 'commit_id ++ "\n" ++ description ++ "\n"'`. Compare prefixes, casing, tense, body structure, wrapping and issue references; project instructions and history syntax always win, with only compatible Go quality guidance. **Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards.** Use no fixed template and no creator/model/harness attribution or Co-authored-by/Assisted-by trailers. Isolate the approved paths using the project's JJ workflow, inspect the exact owned diff, and use `jj describe -m "<message composed from the standards above>"` on that isolated change. Do not push or include another item's or pre-existing work.
 
 When verification fails, undo that item's edit, and report it as approved but not applied with the reason. When a project or user rule refuses the edit, stop that item and report it as refused. Do not make the change another way.
 
 When an approved file already had uncommitted changes before this run, do not commit it. Leave the edit in place and say so in the report.
 
-**Files outside the repo.** Before editing one, run the helper's `backup --run <this run's name> --file <path>` and keep the printed path. When `store` reported that `.context/compound-engineering/` is not gitignored at the main checkout, add `--dest-root <this run's scratch directory>` so the copy stays out of the repo. Show that item's diff and get its own approval, even when the batch was approved. Do not commit it. The report names the backup path.
+**Files outside the repo.** Before editing one, run the helper's `backup --run <this run's name> --file <path> --dest-root <this run's scratch directory>` and keep the printed path. Backups and their temporary copies stay under the absolute local workspace `.tmp/` scratch directory, never OS temporary storage. Show that item's diff and get its own approval, even when the batch was approved. Do not commit it. The report names the backup path.
 
 ## Route the rest
 

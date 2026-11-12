@@ -7,6 +7,10 @@ does not work; it prints top-level help.)
 Only the behavior that changes a decision in stack mode is listed. This file is self-contained on
 purpose: do not depend on the user having a separate `gh-stack` skill installed.
 
+## JJ compatibility boundary
+
+All commands run from the absolute target workspace root; repository-scoped `gh` inherits `GIT_DIR` obtained from `jj git root` there. Never execute Git directly or instruct a Git fallback. Before any state-changing `gh stack` command, establish that the installed CLI supports the JJ-managed colocated repository and preserves JJ bookmark/workspace state; otherwise stop with an explicit compatibility residual, retaining the requested topology and recovery refs. Do not bypass this boundary with another harness. Use JJ bookmarks, exact commit IDs, fetch, split, and rebase for local construction. The CLI exit codes and stack topology/submission contracts below remain required whenever a compatible route exists.
+
 ## Classifying a parent
 
 ```bash

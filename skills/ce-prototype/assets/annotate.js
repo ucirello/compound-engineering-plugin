@@ -35,7 +35,7 @@
   const css = document.createElement("link")
   css.rel = "stylesheet"
   // Resolved against this script's own URL, not the document base a screen may set.
-  css.href = new URL("/__ce-annotate/annotate.css", document.currentScript?.src || window.location.origin).href
+  css.href = new URL("/__rocketclaw-annotate/annotate.css", document.currentScript?.src || window.location.origin).href
   shadow.appendChild(css)
 
   const chrome = document.createElement("div")
@@ -84,7 +84,7 @@
   const error = composer.querySelector(".ce-annotate-error")
 
   const overlaySession = document.currentScript?.getAttribute("data-ce-session") || ""
-  const STATE_KEY = overlaySession ? `ce-annotate-state:${overlaySession}` : "ce-annotate-state"
+  const STATE_KEY = overlaySession ? `rocketclaw-annotate-state:${overlaySession}` : "rocketclaw-annotate-state"
   const PIN_STATUS = { held: "pending", queued: "pending", working: "working" }
   let commentToolOn = false
   let sessionEnded = false

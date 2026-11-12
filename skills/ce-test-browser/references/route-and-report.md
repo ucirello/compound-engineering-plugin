@@ -6,6 +6,8 @@ Read this before mapping changed files to routes (workflow step 3). It carries t
 
 Map each changed file to the route(s) that render it, then build the list of URLs to test. The table below is a starting point of common patterns, not an exhaustive rule set — apply judgment for the project's actual layout:
 
+Use the exact verified PR or captured JJ base/head scope from SKILL.md. Account for deleted paths and both sides of renames using the captured range's `jj diff --from <ancestor-id> --to <head-id> --summary` when needed. Run JJ from the absolute target workspace root. Record any unmappable changed file and its reason rather than silently reducing scope.
+
 | File Pattern | Route(s) |
 |-------------|----------|
 | `app/views/users/*` | `/users`, `/users/:id`, `/users/new` |
@@ -50,7 +52,7 @@ For each affected route, use the selected driver to navigate and capture fresh r
 
 **Test critical interactions:** derive locators or element references from the selected driver's latest inspected state, perform the click/fill/press action, then inspect the resulting state. Do not guess selectors or reuse stale references.
 
-**Take screenshots:** capture viewport and full-page evidence when the selected driver supports it. Materialize screenshots as local artifacts when a later workflow or report needs file paths; otherwise in-app evidence is sufficient.
+**Take screenshots:** capture viewport and full-page evidence when the selected driver supports it. Materialize screenshots as local artifacts under the verified absolute target workspace root's `.tmp/rocketclaw/browser-test/` when a later workflow or report needs file paths; otherwise in-app evidence is sufficient. Keep logs and all other scratch/error artifacts under that workspace's `.tmp/` as well.
 
 ## Human verification (when required)
 
@@ -96,9 +98,11 @@ Did it work correctly?
    ```
 
 3. **If "Fix now":** investigate, propose a fix, apply, re-run the failing test
-4. **If "Skip":** log as skipped, continue
+4. **If "Skip":** log the skipped follow-up and its reason, preserve the observed failure and reproduction evidence, and continue. Skipping a fix does not turn an observed Fail into a Pass or erase it from the failure count.
 
 ## Test summary
+
+Every mapped affected route must appear as Pass, Fail, or Skip, with a reason for every Skip. Unreachable routes remain in the summary; missing coverage is never a complete PASS. Report FAIL when an observed failure remains unresolved, PARTIAL when coverage is incomplete without an unresolved observed failure, and PASS only when all affected routes and required checks passed. If preflight prevents all testing, report the blocker and what clears it instead. Include the verified scope identity, selected driver, and evidence paths in the report.
 
 ```markdown
 ## Browser Test Results

@@ -1,6 +1,6 @@
 # Project review docs (Step 10)
 
-This step needs a writable git checkout of the repository; without one, say so and write nothing.
+Apply SKILL.md's mandatory global user OpenCode depth prerequisite first; document it without modifying host configuration. This step needs a writable JJ workspace of the repository; without one, say so and write nothing. Resolve the absolute root with `jj root` and run JJ there. Repository-scoped `gh` calls require `GIT_DIR=$(jj git root)` from that root. Read complete subjects and bodies for history evidence anchored to the verified task history head, not an unrelated empty working-copy change.
 
 **Outcome:** the repository has a `CODING_STANDARDS.md` and `REVIEW.md` drawn from its own history and current with it. Its root agent-instructions file points to them, and so does the file each AI code reviewer it uses reads. Teams rarely write these files from a blank page, so setup offers a draft for the user to correct rather than asking them to author one. Nothing is written until the user approves the drafts.
 

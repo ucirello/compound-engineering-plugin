@@ -11,15 +11,16 @@ gh stack rebase "<first-open-dependent-branch>" --upstack --no-trunk --remote <t
 gh stack push --remote <tracking-remote>
 ```
 
-Starting at the first dependent excludes the active target from the cascading rebase. Quote the branch name — git branch names may contain shell metacharacters. On conflict: `gh stack rebase --abort`, then surface a needs-human / stack-sync residual.
+Starting at the first dependent excludes the active target from the cascading rebase. Quote the bookmark name — names may contain shell metacharacters. Run from the absolute target workspace root with `GIT_DIR=$(jj git root)` for repository-scoped `gh`. Require a manager compatible with the JJ-only lifecycle; if it requires a direct Git executable or incompatible checkout, stop with a compatibility residual rather than bypassing ownership/session adoption. On conflict: `gh stack rebase --abort`, then surface a needs-human / stack-sync residual.
 
 ## Check out a layer on a fresh checkout
 
 ```bash
-gh stack checkout <PR_NUMBER>
+# Prove the installed manager supports the JJ-only owned workspace lifecycle.
+# Otherwise report a compatibility blocker; do not run a checkout fallback.
 ```
 
-Use the PR number, which pulls the stack from GitHub. A branch name only resolves stacks already known locally, and `gh pr checkout` leaves the manager unaware of the branch.
+Use the PR number with a verified compatible manager's lifecycle, preserving manager membership and harness session ownership. A bookmark name alone only resolves stacks already known locally. Never invoke a checkout helper that requires the Git executable; align the exact verified JJ head as described in `setup.md` only when that preserves the manager's lifecycle, otherwise stop with a compatibility residual.
 
 ## Discover order / next open layer
 

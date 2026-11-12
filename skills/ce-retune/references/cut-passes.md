@@ -9,7 +9,7 @@ A pass applies **one problem class** across the corpus and stops. The work fails
 1. Pick one class from the Phase 3 findings (`references/corpus-audit.md`), or one regression class from `references/halt-taxonomy.md`. One class per pass, no bundling.
 2. Write the **file-assignment manifest**: unit -> the agent that edits it -> exact paths. Every copy of a shared asset goes to a single named agent (below).
 3. If the rewrite has cross-referencing strings, author the **contract file** first, serially (below).
-4. Dispatch one agent per unit through whatever sub-agent primitive the platform provides. Each prompt carries the class, the contract path if any, its own paths, and the forbidden paths.
+4. Dispatch one native OpenCode subagent per unit under the routing, permission, capacity, and receipt rules in `references/workflow-shapes.md`. Each prompt carries the class, the contract path if any, its own paths, and the forbidden paths.
 5. **Reconcile** every block touched (below). This is the step that gets skipped.
 6. Run the project's own test suite. A pinned string that disappeared is a finding to report with its test path, never a test to edit.
 7. Collect each agent's applied/skipped report. Then measure (Phase 5) and commit the pass alone.
@@ -39,11 +39,19 @@ Disjoint paths in one tree are enough when nothing an agent runs mutates state o
 Pay for a worktree (or equivalent per-agent checkout) when any of these is true:
 
 - Agents run builds, formatters, generators, or anything that writes outside its unit, such as lockfiles, caches, generated output, or a repo-root config.
-- An agent needs to run the suite or the harness to check its own edit. Concurrent runs in one tree race on scratch and on git index state.
-- Agents commit, stage, or use branch operations. One git index shared by parallel agents corrupts staging.
+- An agent needs to run the suite or the harness to check its own edit. Concurrent runs in one tree race on scratch and shared working-copy state.
+- Agents describe changes, create revisions, or move bookmarks. Shared mutable JJ workspace state makes those operations unsafe across concurrent writers.
 - A pass may need to be abandoned wholesale, and a clean discard is worth more than a shared diff.
 
 Otherwise the isolation cost is real: N checkouts to create, N results to merge, and merge conflicts reintroduced on exactly the files the manifest was designed to keep apart.
+
+### Workspace lifecycle
+
+Detect existing isolation first, and preserve existing workspace identities and PR/source bookmarks. Use `ce-worktree` for harness-owned isolation and session adoption; do not bypass its lifecycle. Verify and capture the base revision before creation. New names, including caller-selected names, use one captured local `YYYYMMDD` plus a meaningful task/PR/revision kebab slug; normalize without a doubled date prefix. Use the same identity for the registered name and destination basename under the source workspace's absolute local `.tmp/rocketclaw/` directory. Check both registered names and destination paths for collisions and append `-2`, `-3`, etc. Capture and persist the date and identity once for retries/resumes, including across midnight; never replace them with a PID, random value, or timestamp. A harness that cannot honor naming or colocation is a compatibility blocker, not permission to bypass lifecycle.
+
+Create from the surviving absolute source workspace root with `jj workspace add --colocate --name <dated-identity> --revision <verified-base> <absolute-destination>`, then run `jj git colocation status` with cwd equal to the created absolute root. Run every JJ command with cwd equal to its target absolute workspace root, not using `-R` as a cwd substitute. Never invoke the Git executable or fall back to it. All scratch, errors, profiler output, and fallback artifacts stay under workspace-local `.tmp/`; retain mechanical profiling and measurement helpers, not harness-dispatch or workspace-bridge helpers.
+
+Cleanup is a separately authorized destructive operation, not an automatic consequence of a failed pass. Stop workers, leave the target, and move the harness session to a surviving absolute root first. Verify exact registered name/path, ownership, disposal authorization, integration, and recovery refs. Inspect tracked changes, conflicts, ignored and untracked files: a JJ snapshot does not protect ignored/untracked data. Copy required evidence outside the target into the surviving workspace's local `.tmp/` (and read it back) before removal. Never remove unrelated, ambiguous, still-referenced, or non-disposable data. From the surviving absolute root use `jj workspace remove <verified-name>` and verify both deregistration and disappearance. On warning or failure retain state and report; never force-delete or use a Git fallback. `jj workspace forget` means unregister while preserving files, never forget plus deletion. Bookmark deletion is separate; preserve recovery/best/archive refs.
 
 ## The shared-asset trap
 
@@ -125,5 +133,7 @@ A failure that moves to a later phase is progress and names the next target. A f
 ## Ship (Phase 6)
 
 Commit each pass separately with its own message so the history says which change was made and why, and so release tooling can classify intent. Keep the measurement artifacts.
+
+Before composing each message, read the full https://go.dev/wiki/CommitMessage guide. From the absolute target workspace root, verify and capture the actual task history head and read several recent full subjects **and bodies** with `jj log -r '::<verified-task-history-head>' -n 8 --no-graph -T 'commit_id ++ "\n" ++ description ++ "\n\n"'`. Compare repository prefixes, casing, tense, body structure, wrapping, and issue references. Project instructions and actual history syntax always win; apply only compatible Go quality guidance, never invent precedent or impose fixed messages, types, or scopes. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards. Use `jj describe -m "<message composed from the standards above>"` only for the owned pass; add no creator/model/harness attribution or Co-authored-by/Assisted-by trailers.
 
 Then write the finding down where the next person will hit it: the mechanism, the before and after, the measured numbers, and the hypotheses that died. **Record the ones that died.** They are what stops the next attempt from re-running a dead end, and they are the part every write-up omits.

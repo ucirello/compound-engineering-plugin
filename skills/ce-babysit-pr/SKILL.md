@@ -33,13 +33,17 @@ One PR named → `target` (ask once if a confirmed multi-layer stack exists); as
 ## Step 1: Resolve and arm
 
 1. `gh repo view` must succeed, else say GitHub-only, stop.
-2. Resolve the PR from the argument or current branch (`references/setup.md`); none → report, stop.
+2. Resolve the PR from the argument or verified task bookmark (`references/setup.md`); inspect `@-` bookmarks/remotes/PR when `@` is empty before any no-PR/no-work stop; only a verified absence stops.
 3. **Old-PR intake** (fresh invocation, before the checkout gate): read `references/intake.md`; it decides whether this PR still belongs. A user request to take the PR over: `references/takeover.md`.
 4. Chain classification comes from the snapshot, never the user; resolve posture before semantic work.
-5. **Checkout must be the PR's head branch with matching upstream** before any delegated mutation; default `gh pr checkout <ref>`; no push access or dirty checkout → stop, say so.
+5. **Verify head repository/bookmark/remote/commit and push authority** before delegated mutation. Empty `@` immediately above the exact pushed head is aligned. Clean exact head alignment and monitoring/rearming are authorized without another prompt; preserve unrelated tracked/ignored/untracked work. Dirty/conflicted/uncertain/denied/unknown authority stops safely (`references/setup.md`). Never bundle alignment/watch with optional rewrite approval; declining rewrite does not block authorized watch.
 6. **Sustain mode** (`references/setup.md`, `references/watch-loop.md`): keep monitoring until a stop condition is met, one tick per wake from one wake source: the `pr-snapshot watch` detector, or the host's own mechanism when its instructions dictate PR waits. Never collapse the loop into a script. Checkpoint mode only when the user asks or nothing can wake this agent. **Pipeline** (`mode:pipeline`): bounded synchronous ticks, structured return (`references/pipeline.md`).
 
 ## Step 2: One tick (ordering invariant)
+
+**Message composition, including delegated commits and description refresh:** read the full https://go.dev/wiki/CommitMessage before composing. From the absolute target workspace root, inspect several recent full subjects AND bodies with `jj log -r 'ancestors(<actual-verified-task-history-head>)' --limit 8 --no-graph -T 'description ++ "\n\n"'`; the anchor is the verified PR/task head, not an unrelated empty `@`. Compare repository prefixes, casing, tense, body structure, wrapping and issue references. Project instructions and observed history syntax always win; apply compatible Go quality guidance only, invent no precedent or fixed Conventional template. **Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards.** Use `jj describe -m "<message composed from the standards above>"` only for owned changes. No creator/model/harness attribution or assistant-credit trailers; preserve human authorship.
+
+Factual stale-description refresh preserves user content and issue links and is already authorized by babysitting. A description-only request remains draft-only. Optional history rewrite outside routine maintenance needs explicit apply authority or separate approval; never condition authorized alignment, refresh or monitoring on accepting it. Honor watch mode, draft opt-in, scope, opt-outs and human/final-merge decisions throughout.
 
 Snapshot first, then in this order:
 

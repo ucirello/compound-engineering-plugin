@@ -1,6 +1,6 @@
 # Refresh repo config files
 
-Read this from Step 5a of `references/repo-fixes.md`. It applies when the health report says `config.yaml` was written from an older template, a config file still sets a retired setting, or `config.local.yaml` is a full copy of the old local template.
+Read this from Step 5a of `references/repo-fixes.md`. The mandatory global user OpenCode depth prerequisite in SKILL.md applies; document it without modifying host configuration. It applies when the health report says `config.yaml` was written from an older template, a config file still sets a retired setting, or `config.local.yaml` is a full copy of the old local template. Drafts and decision files belong under the target absolute workspace root's `.tmp/rocketclaw/`, never OS temporary storage.
 
 **Outcome:** each flagged file follows the current template's layout and guidance. Every setting that still does something keeps its exact value, and every change carries a one-line reason a user can read.
 

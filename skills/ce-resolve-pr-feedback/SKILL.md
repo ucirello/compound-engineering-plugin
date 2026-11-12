@@ -2,7 +2,7 @@
 name: ce-resolve-pr-feedback
 description: Judge PR feedback centrally, apply valid fixes, and complete review conversations with publication verified. Use when addressing feedback already left on a PR, preparing local fixes for a caller to publish, or completing a saved feedback batch. Use ce-code-review for reviewing code before feedback exists.
 argument-hint: "[mode:pipeline | mode:return-to-caller | mode:resume] [PR number, comment URL, or blank for current branch's PR] [handoff:<path>]"
-allowed-tools: Bash(gh *), Bash(git *), Bash(bash *), Bash(python3 *), Read, Write
+allowed-tools: Bash(gh *), Bash(jj *), Bash(bash *), Bash(python3 *), Read, Write
 ---
 
 # Resolve PR Review Feedback
@@ -10,6 +10,12 @@ allowed-tools: Bash(gh *), Bash(git *), Bash(bash *), Bash(python3 *), Read, Wri
 Judge fresh PR review feedback centrally, then dispatch generic subagents seeded with the bundled fixer prompt only for approved fixes. Publish the fixes before replying and resolving. Resume completes saved judgments without another fix pass.
 
 **Done:** Every selected item has a verdict and verified conversation completion or a reported residual. Completed threads have a visible submitted reply with quoted context and authoritative resolution; `needs-human` threads stay open. Ordinary and pipeline runs publish valid fixes before completion. Return-to-caller preserves its local fix commit and exact pending actions in a readable validated handoff, or records actual no-change completion. Resume verifies fresh publication and returns checkpointed completion or pending saved actions with retry evidence. Pending actions are never reported as resolved.
+
+**Workspace and tools:** Use latest JJ only, never invoke the Git executable. Run commands from the verified absolute target workspace root; set `GIT_DIR=$(jj git root)` there for every repository-scoped `gh` call, including fallback and bundled-helper calls, independently in each shell invocation. Keep all temporary files, received handoffs and prepared JSON under that workspace's `.tmp/rocketclaw/`, never OS scratch. History reads use the captured verified task head, not an unrelated checkout revision: inspect full descriptions with `jj log` and line provenance with `jj file annotate`, preserving PR rationale and human authorship.
+
+**Native delegation:** This skill explicitly authorizes its fixer/reviewer dispatch; no redundant approval is required, but higher host prohibitions and actual tool denials win. Use native OpenCode subagents and, when model routing is needed, `opencode.models` to resolve configured model/tier intent. Delegation permission is not model permission: when an explicit user model request is required, omit optional model selection and inherit a suitable model, disclosing any unmet route or independence. Same-model work is not cross-model review. Classify actual depth, permission, model and tool failures separately; never retry a denied operation or switch harnesses to evade it. The documented inline fixer fallback remains allowed, but cannot satisfy mandatory independent review. Preserve any required `ce-code-review` gate before publication and report incomplete mandatory coverage as incomplete.
+
+For nested dispatch setup, require the user to locate the existing global `~/.config/opencode/opencode.json(c)` with `opencode debug paths` or `opencode debug paths config`, then merge `experimental.subagent_depth >= 3` without lowering a higher integer or changing sibling/unrelated settings. Do not create a competing file or edit host configuration yourself. Plugin/package configuration alone does not enable nesting, and higher-precedence configuration must not lower it.
 
 **Escalations never block.** Return `needs-human` with structured `decision_context` for the caller to show the user; leave its threads open with natural replies when the execution mode permits publication. Never pause mid-run to ask. A decision needing judgment rather than missing authority goes through `ce-pov` before escalation, as the rubric's "Adjudicate before escalating" section defines.
 

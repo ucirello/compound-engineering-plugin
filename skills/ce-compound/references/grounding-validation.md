@@ -9,7 +9,7 @@ Two claim categories verify against different trees:
 - **Code-behavior claims** (enum values, status semantics, limits, defaults) verify against the **local working tree**. They describe what this session's work produced and verified here.
 - **Merge-state claims** ("fixed in #1608", "landed", "shipped") verify against **remote truth**. The checkout may predate a merge, so `gh pr view` (or the tracker equivalent) is primary and local git reachability is only the fallback. The script's `INFO: worktree is N commits behind …` line tells you how much to distrust the local tree for this category.
 
-Before running the script, optionally run `git fetch --quiet` (best-effort; skip silently on failure or offline, because the network is never a correctness dependency). When remote state cannot be checked at all, keep the claim, add an as-of qualifier ("as of this writing"), and record degraded verification in the run report.
+Before running the script, optionally run `jj git fetch` from the absolute target workspace root (best-effort; skip silently on failure or offline, because the network is never a correctness dependency). Run all JJ commands with cwd equal to that root, never `-R` as a cwd substitute. Repository-scoped `gh` must run there with `GIT_DIR=$(jj git root)`. When remote state cannot be checked at all, keep the claim, add an as-of qualifier ("as of this writing"), and record degraded verification in the run report.
 
 ## Step 1: Adjudicate the mechanical flags
 
@@ -38,12 +38,16 @@ Dispatch **one generic read-only subagent** covering the written solution doc pl
 
 If the user's or project's active instructions or the live prompt name a model for this subagent, use that model instead of the default tier above. They can name it by the subagent's tier, by its prompt-asset name, or for the subagents being dispatched. Without such an instruction, a model configured for this subagent's role takes precedence over the default tier.
 
+Delegation is explicitly authorized by this skill subject to higher prohibitions, independently of model permission and nesting capacity. Resolve configured intent with `opencode.models`; use the inherited model when suitable and omit optional model arguments if the host requires an explicit user model request. Disclose unmet routing or independence. Classify actual depth/permission/model/tool failures, never retry denied operations via another harness. If the validator cannot run, report incomplete semantic coverage rather than Full success; same-model work is never cross-model independence.
+
 Build its prompt from this template:
 
 ```
 You are a grounding validator for documentation about to enter a permanent
 knowledge store. You are read-only: never edit files. Inspect with Read,
-Grep, Glob, git (non-mutating), and gh when available.
+Grep, Glob, jj (non-mutating), and gh when available. Run JJ with cwd equal
+to the absolute target workspace root, not -R. Run repository-scoped gh there
+with GIT_DIR=$(jj git root).
 
 Inputs: the doc content below, the CONCEPTS.md entries below (if any), and
 this staleness context: <INFO line from the mechanical script, or "none">.
@@ -59,8 +63,9 @@ Check every factual claim in three categories:
 
 2. MERGE-STATE CLAIMS — assertions that a change landed ("fixed in",
    "merged", "shipped in", "resolved by #N"). Primary check: gh pr view
-   <n> --json state,mergedAt,baseRefName (remote truth). Fallback: git
-   reachability from the upstream default branch. Verdict: verified,
+    <n> --json state,mergedAt,baseRefName (remote truth). Fallback: jj log
+    reachability via `commit_id(<sha>) & ancestors(<verified-upstream-head>)`.
+    Require a successful nonempty result, not merely exit 0. Verdict: verified,
    contradicted (e.g. PR open, not merged), or unverifiable (offline / no
    gh) — mark unverifiable as "degraded", do not guess.
 

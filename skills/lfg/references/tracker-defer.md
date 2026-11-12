@@ -51,6 +51,8 @@ Detection is reasoning-based. Do not maintain an enumerated checklist of files t
 
 ## Probe timing and caching
 
+Run all repository-scoped GitHub CLI probes and issue operations with cwd equal to the verified absolute target workspace root and `GIT_DIR=$(jj git root)` in that workspace. Obtain task bookmark/head evidence through JJ there, never a direct Git helper. Keep any request bodies, error captures and fallback scratch under the workspace-local absolute `.tmp/rocketclaw/` directory.
+
 Availability probes run **at most once per session** and **only when Defer execution is imminent**. Never speculatively at review start, never per-Defer, never per-walk-through-finding. The cached tuple is reused for every Defer action in the same run.
 
 Typical probe sequence:

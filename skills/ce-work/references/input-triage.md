@@ -1,5 +1,7 @@
 # Input Triage
 
+**Native lifecycle terminology:** legacy controller-operation names below describe host-owned receipt transitions in `cross-model-execution.md`, not executable helpers. Recovery inspects durable local receipts and native OpenCode sessions; never invoke removed workspace/dispatch scripts. All scratch is below the absolute workspace-local `.tmp/rocketclaw` root. Read-only discovery must preserve tracked, ignored and untracked user data; no snapshot protects ignored data.
+
 Read this before classifying the invocation, discovering a plan, or deciding whether normal implementation may begin. It covers resolving the source, parsing the mode token and its optional carriers, recognizing a recovery request, classifying plan readiness, discovering the latest plan, and deciding how a bare prompt enters. Return to the main `SKILL.md` flow: the resolved source, the execution class, which side runs the shipping steps (this skill standalone, or the caller), and any typed engine or recovery binding. Do not perform implementation writes here.
 
 ## Input Document
@@ -13,9 +15,9 @@ Invocation origin is not observable or relevant: apply the same source-resolutio
 This skill discovers plans under `<root>/plans/`. Resolve `<root>` when you first compose a `<root>/` path (per the block below), never before you need it. A write to `<root>/...` and a read of `<root>/solutions/` both count as composing a `<root>/` path, so either one triggers resolution; only a run that touches no `<root>/` path at all -- a scratch-only or no-repo flow -- skips it; pass the resolved path to any subagent, not the config.
 
 <!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only (`<repo-root>` is the absolute `jj root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
 - **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->

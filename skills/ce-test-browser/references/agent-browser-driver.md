@@ -36,8 +36,8 @@ agent-browser type @e1 "text"
 agent-browser press Enter
 
 # Capture evidence
-agent-browser screenshot out.png
-agent-browser screenshot --full out-full.png
+agent-browser screenshot <absolute-workspace-root>/.tmp/rocketclaw/browser-test/out.png
+agent-browser screenshot --full <absolute-workspace-root>/.tmp/rocketclaw/browser-test/out-full.png
 
 # Navigation and waits
 agent-browser back
@@ -45,3 +45,5 @@ agent-browser wait @e1
 ```
 
 Use the installed core documentation for console-error inspection and any command not shown here. Do not switch to another browser driver after the first route is tested.
+
+Create the evidence directory under the verified absolute target workspace root before capture. Keep all scratch and fallback/error artifacts inside that workspace's `.tmp/` tree, never the OS temporary directory.

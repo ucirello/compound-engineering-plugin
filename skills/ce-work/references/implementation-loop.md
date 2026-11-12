@@ -60,25 +60,23 @@ After completing each task, decide whether to commit. Never commit while its tes
 
 If the plan has Implementation Units, use them as a starting guide for commit boundaries — but adapt based on what you find during implementation. A unit might need multiple commits if it's larger than expected, or small related units might land together. Use each unit's Goal to inform the commit message.
 
-**Message convention:** match project commit conventions already in context; else match the recent log pattern; else conventional commits (`type(scope): description`). User override wins.
+**Message convention:** Read the full https://go.dev/wiki/CommitMessage before composing. From the absolute target workspace root inspect several recent full subjects and bodies using `jj log -r 'ancestors(<verified-task-history-head>)' --limit 10 -T 'description ++ "\n"'`. Anchor to the actual verified task history head, not an unrelated workspace. Compare prefixes, casing, tense, body structure, wrapping and issue references. Project instructions and observed history syntax always win; apply only compatible Go quality guidance and invent no precedent or fixed type/scope template. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards.
 
 Preserve the full resolved message as data through the selected engine's canonical commit owner. If that owner cannot accept the full message, stop and report the blocker rather than truncate it or bypass the owner's protocol. Cross-model commits follow the controller integration contract in `references/cross-model-execution.md`.
 
-For native host-owned Git commits, write the full resolved message to a file outside the repo with your file-write tool. Pass that file to Git so the shell never interprets message text.
+Preserve the full message as data under the absolute workspace-local `.tmp/rocketclaw` tree; never allow shell interpolation of message text. Run every JJ command with cwd equal to the absolute target workspace root.
 
-**Native Git commit workflow:**
+**Native JJ commit workflow:**
 ```bash
 # 1. Verify tests pass (use project's test command)
 # Examples: bin/rails test, npm test, pytest, go test, etc.
 
-# 2. Stage only files related to this logical unit (not `git add .`)
-git add <files related to this logical unit>
-
-# 3. Commit with the resolved message, limited to those same paths
-git commit -F <message-file> -- <files related to this logical unit>
+# 2. Split only owned paths into the unit revision, preserving unrelated WIP
+jj split <files related to this logical unit>
+# 3. Describe that verified owned revision, preserving the complete message
+jj describe -r <verified-owned-unit-revision> -m "<message composed from the standards above>"
 ```
 
-**Note:** Incremental commits add no plugin-generated attribution. The final Phase 4 handoff passes `branding:on` so `ce-commit-push-pr` can add generic Compound Engineering branding to the PR.
 
 **Workers:** worker commits follow the **No canonical commits** rule in `references/execution-strategy.md`; only the orchestrator makes canonical commits.
 

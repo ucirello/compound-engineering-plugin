@@ -1,5 +1,7 @@
 # Boundaries, authority, and envelope (full text)
 
+**JJ maintenance boundary:** use latest JJ only, from the verified absolute target workspace root; repository-scoped `gh` receives `GIT_DIR=$(jj git root)` there. No direct Git executable or checkout-helper fallback. Resolve empty `@` above a pushed PR head through `@-` bookmarks, exact remote identity and PR data before declaring no work/PR. Factual stale-description refresh preserving user content/issue links, clean exact head alignment and monitoring/rearming are already authorized by babysitting without another approval. Keep optional rewrite approval separate: declining it never blocks authorized monitoring. Description-only requests remain draft-only; dirty/conflicted/uncertain/denied/unknown push authority stops safely, preserving unrelated tracked/ignored/untracked work. Apply SKILL.md's full-guide, task-anchored full-history composition rules at every composition site.
+
 The SKILL.md boundaries are the always-loaded summary; this file is the complete statement. Read it whenever you are unsure whether a mutation is authorized.
 
 ## Non-negotiable boundaries

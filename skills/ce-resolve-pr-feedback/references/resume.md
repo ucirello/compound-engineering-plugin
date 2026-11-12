@@ -4,7 +4,7 @@ Complete only the conversation actions preserved in the handoff, then return the
 
 ## Validate the original record and prove publication
 
-Pass the supplied path directly to the bundled helper. It reads and validates the original JSON bytes; do not reconstruct a received record from chat or normalize it into another file first. Set the skill directory in each shell call because shell state does not persist:
+Pass the supplied workspace-local `.tmp/` path directly to the bundled helper. It reads and validates the original JSON bytes; do not reconstruct a received record from chat or normalize it into another file first. Run from the verified absolute target workspace root, not the skill directory, and keep prepared reply/checkpoint files under that root's `.tmp/rocketclaw/`. Set the skill directory in each shell call because shell state does not persist:
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the ce-resolve-pr-feedback SKILL.md>";

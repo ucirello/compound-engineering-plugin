@@ -89,11 +89,11 @@ Before dispatching agents, report what sections are being strengthened and why:
 Strengthening [section names] — [brief reason for each, e.g., "decision rationale is thin", "cross-boundary effects aren't mapped"]
 ```
 
-Wherever this phase dispatches a subagent, classify a rejected dispatch by whether an agent launched: correct a pre-launch argument rejection once, leave capacity-limited work queued, and otherwise follow the fallback or failed-pass handling stated for that dispatch.
+Wherever this phase dispatches a subagent, follow `reasoning-elevation.md` for native delegation permission, model discovery/selection permission, and nesting prerequisites. Classify actual depth/permission/model/tool errors separately: correct one pre-launch argument error, leave capacity-limited work queued, never retry denied operations or evade limits through another harness, and otherwise follow the stated fallback or failed-pass handling. Inherited/same-model work never counts as cross-model independence; incomplete mandatory coverage remains incomplete.
 
 For each selected section, choose the smallest useful agent set. Do **not** run every agent. Use at most **1-3 agents per section** and usually no more than **8 agents total**.
 
-The names below are skill-local prompt asset file stems under `references/agents/`, not standalone agent types. For each selected name, read `references/agents/<name>.md` and seed a generic subagent with that prompt content plus the section context described below. Do not name a persona or CE agent through `subagent_type`, typed `Agent` names, or platform-level CE agent registration; when the host requires an agent-name field, it carries the plain generic agent.
+The names below are skill-local prompt asset file stems under `references/agents/`, not standalone agent types. For each selected name, read `references/agents/<name>.md` and seed a generic subagent with that prompt content plus the section context described below. Do not name a persona or specialist agent through `subagent_type`, typed `Agent` names, or platform-level registration; when the host requires an agent-name field, it carries the plain generic agent.
 
 A generic subagent is one whose whole brief is the prompt you send it. When the host's subagent tool makes you name an agent, use only a name you have seen the host list, and list its agents before the first dispatch if you have not. Pick the plain one that adds no role of its own, which still counts as a generic subagent. Never pick a specialist, such as a reviewer or worker agent, whose own role prompt, output format, or tool limits would replace or narrow your prompt.
 
@@ -171,10 +171,12 @@ Signals that justify artifact-backed mode:
 
 If artifact-backed mode is not clearly warranted, stay in direct mode.
 
-Artifact-backed mode uses a per-run OS-temp scratch directory. Create it once before dispatching sub-agents and capture its **absolute path** — pass that absolute path to each sub-agent so they write to it directly. Do not use `.context/`; the artifacts are per-run throwaway that are cleaned up when deepening ends (see 5.3.6b), matching the repo Scratch Space convention for one-shot artifacts. Do not pass unresolved shell-variable strings to sub-agents; they need the resolved absolute path.
+Artifact-backed mode uses a private per-run directory under the absolute target workspace's `.tmp/rocketclaw/`. Verify resolved containment and ownership, rejecting escaping symlinks, before creating it. Create it once before dispatching sub-agents and capture its **absolute path** — pass that absolute path to each sub-agent so they write to it directly. Do not use `.context/`; the artifacts are per-run throwaway that are cleaned up when deepening ends (see 5.3.6b). Do not pass unresolved shell-variable strings to sub-agents; they need the resolved absolute path.
 
 ```bash
-SCRATCH_DIR="$(mktemp -d "${TMPDIR:-/tmp}/ce-plan-deepen-XXXXXX")"
+SCRATCH_ROOT="<verified absolute target workspace root>/.tmp/rocketclaw"
+(umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1
+SCRATCH_DIR="$(umask 077; mktemp -d "$SCRATCH_ROOT/plan-deepen-XXXXXX")" || exit 1
 echo "$SCRATCH_DIR"
 ```
 
@@ -192,7 +194,7 @@ If a selected section can be improved by reading the origin document more carefu
 
 **Artifact-backed mode:** For each selected prompt-seeded subagent, pass the absolute `<scratch-dir>` path captured earlier and instruct the subagent to write one compact artifact file inside that directory, then return only a short completion summary. Each artifact should contain: target section, why selected, 3-7 findings, source-backed rationale, the specific plan change implied by each finding. No implementation code, no shell commands.
 
-If an artifact is missing or clearly malformed, re-run that prompt-seeded subagent or fall back to direct-mode reasoning for that section.
+If an artifact is missing or clearly malformed, allow at most one infrastructure-only recovery before any agent meaningfully launched; do not retry a denied operation or an already-started failed model call. Otherwise fall back to direct-mode reasoning for that section where this contract permits, recording the missing independent evidence rather than calling it complete.
 
 If agent outputs conflict:
 - Prefer repo-grounded and origin-grounded evidence over generic advice
@@ -220,7 +222,7 @@ Findings against `session-settled:`-labeled KTDs are presented like any other �
 
 After all agents have been reviewed, carry only the accepted findings forward to 5.3.7.
 
-If the user accepted no findings, report "No findings accepted — plan unchanged." Then proceed directly to Phase 5.4 (skip document-review and synthesis — the plan was not modified). This interactive-mode-only skip does not apply in auto mode; auto mode always proceeds through 5.3.7 and 5.3.8. No explicit scratch cleanup needed — `$SCRATCH_DIR` is OS temp and will be cleaned up by the OS; leaving it in place preserves the rejected agent artifacts for debugging.
+If the user accepted no findings, report "No findings accepted — plan unchanged." Then proceed directly to Phase 5.4 (skip document-review and synthesis — the plan was not modified). This interactive-mode-only skip does not apply in auto mode; auto mode always proceeds through 5.3.7 and 5.3.8. Retain this run's local `$SCRATCH_DIR` for rejected-artifact debugging; it is not OS-managed temp. Any later cleanup must be limited to the verified owned run directory.
 
 If findings were accepted and the plan was modified, proceed through 5.3.7 and 5.3.8 as normal — document-review acts as a quality gate on the changes.
 

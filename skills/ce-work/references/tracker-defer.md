@@ -1,5 +1,7 @@
 # Tracker Detection and Defer Execution
 
+Run every repository-scoped `gh` command with cwd equal to the verified absolute target JJ workspace root and `GIT_DIR=$(jj git root)` from that same root. Never invoke Git directly. Store any request/error scratch under that workspace's `.tmp/rocketclaw` tree.
+
 This reference covers how residual actionable findings are filed in the project's tracker. Loaded by caller workflows (for example `ce-work` Residual Work Gate, or `lfg` residual handling), not by `ce-code-review`, which stops after the report.
 
 ---

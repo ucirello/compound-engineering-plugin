@@ -10,15 +10,15 @@ A supplied folder or collection is a discovery boundary, not a selected document
 
 ## Without an explicit source
 
-1. Search the folder or collection the user supplied; otherwise resolve the managed roots in the current shell call with this block, then enumerate candidate files beneath `$SCRATCH_ROOT/ce-handoff/` and, when it differs from `$SCRATCH_ROOT` and passes the same symlink and ownership checks, beneath the other candidate root's `ce-handoff/` as well (`/tmp/compound-engineering-$(id -u)` or `${TMPDIR:-/tmp}/compound-engineering-$(id -u)`, whichever the block did not select) — a handoff written from a sandboxed session and resumed from an unsandboxed one, or the reverse, lives under the other root. Bound the candidate set before inspecting content; prefer recent files and current repository or working-directory affinity without making repository affinity mandatory. Resolve the roots with this block:
+1. Search the folder or collection the user supplied; otherwise resolve the current verified absolute workspace root (or local project/working-directory root outside JJ), then enumerate candidate files beneath `$SCRATCH_ROOT/handoff/` using the read-only block below. Stores are workspace-local: do not scan other workspaces or OS temporary roots automatically. If a handoff lives in another workspace or sandbox, ask for its explicit source or discovery folder. Bound the candidate set before inspecting content; prefer recent files and current repository or working-directory affinity without making repository affinity mandatory.
 
    ```bash
-   SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-   [ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
-   if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
-   (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
-   if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
-   chmod 700 "$SCRATCH_ROOT" || exit 1;
+   WORKSPACE_ROOT="<verified absolute target workspace root>";
+   cd "$WORKSPACE_ROOT" || exit 1;
+   SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw";
+   if [ -L "$WORKSPACE_ROOT/.tmp" ] || [ -L "$SCRATCH_ROOT" ] || [ -L "$SCRATCH_ROOT/handoff" ]; then echo "unsafe managed-store symlink" >&2; exit 1; fi;
+   if [ ! -d "$SCRATCH_ROOT/handoff" ]; then echo "no managed handoff store" >&2; exit 1; fi;
+   if [ ! -O "$SCRATCH_ROOT" ] || [ ! -r "$SCRATCH_ROOT/handoff" ]; then echo "managed store ownership or access check failed" >&2; exit 1; fi;
    ```
 
 2. Before reading any candidate metadata or frontmatter, resolve the discovery boundary and exclude symlink candidates and candidates whose resolved path escapes that boundary. This discovery-only containment rule does not restrict an explicit selected source.

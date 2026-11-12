@@ -319,15 +319,19 @@ Qwen Code installs Claude Code-compatible plugins directly from GitHub and conve
 
 ### OpenCode
 
-Add Compound Engineering to the `plugins` array in your global or project `opencode.json`:
+RocketClaw requires OpenCode V2. Add the published RocketClaw package to the `plugins` array in your existing global or project configuration:
 
 ```json
 {
-  "plugins": ["compound-engineering@git+https://github.com/EveryInc/compound-engineering-plugin.git"]
+  "plugins": ["rocketclaw@git+https://github.com/ucirello/compound-engineering-plugin.git"]
 }
 ```
 
-On OpenCode 1.x, the config key is `plugin` (singular). Restart OpenCode after changing the config. The plugin registers the Compound Engineering skills and `/commands` directly; no Bun installer or generated skill copy is required. See [`.opencode/INSTALL.md`](.opencode/INSTALL.md) for pinning examples.
+Before using the skills, merge `"experimental": { "subagent_depth": 3 }` into your existing user-level `~/.config/opencode/opencode.json`. Use `opencode debug paths` or `opencode debug paths config` to locate the actual global configuration directory, and update the existing `opencode.json` or `opencode.jsonc` there—do not create a competing file or replace the whole configuration. Preserve unrelated settings, sibling `experimental` fields, and any existing integer depth higher than `3`.
+
+A depth of at least `3` is required for the skills' deep agentic delegation. Installing the plugin or shipping its package-local `opencode.json` alone does not enable this in consuming projects: explicitly adopt the user-level setting and ensure higher-precedence configuration does not lower it below `3`. The bundled configuration applies when this package directory itself is the OpenCode project.
+
+Restart OpenCode after changing the configuration. The V2 plugin registers the RocketClaw skills and `/commands` directly; no Bun installer or generated skill copy is required. See the [V2 plugin loading guide](https://opencode.ai/v2/docs/plugins) for package installation details.
 
 ### Pi
 

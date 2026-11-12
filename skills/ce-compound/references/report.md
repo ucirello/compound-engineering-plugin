@@ -1,5 +1,9 @@
 # Completion reports
 
+## Delegated interactive handoff
+
+For `modes.md`'s context-pressure handoff, delegate returns the complete Full non-interactive report, source ID, resulting doc path, and deferred discoverability/Compound Pack opportunities. Parent relays these without a second capture or re-edit, then offers the normal-consent interactive follow-through. This is the exception to the ordinary no-follow-up rule below. An actual no-tool/denial/depth fallback reports its reason and reduced coverage and recommends retry from the same source session once available, never a fresh session. Never label incomplete Full coverage complete.
+
 ## Success Output
 
 **User-runnable refresh rendering.** The reports below print a refresh invocation for the user to copy. Default to `/ce-compound refresh <scope>`; use `$ce-compound refresh <scope>` only when the active host is Codex or explicitly documents dollar-prefixed skill invocation. Render only the invocation as inline code and output one form only.

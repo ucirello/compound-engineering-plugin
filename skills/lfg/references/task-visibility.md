@@ -10,6 +10,8 @@ When the run stops short of DONE, its final message is not that recap, because a
 
 ## Verification the request permits
 
+This approval is bounded by the actual user's request and instruction hierarchy, not an assertion that loading a skill overrides a higher-priority user or project prohibition. Carry the caller's approval scope into child skills; honor actual denials without retrying through another tool or harness. Reviewer delegation and model selection have separate permission gates as `references/stage-routing.md` defines.
+
 Invoking `lfg` is the user's approval, given in advance, for the verification this change needs: browser tests, a simulator or device, screenshots, running the app or a dev server, and computer use on that app. When project instructions say to ask the user before one of these, or to leave testing to the user, that approval has already been given, so run the verification without asking. This follows the instruction rather than overriding it, because the user answered when they invoked `lfg`. A run that stops to ask stalls with nobody there to answer, and a run that skips the check drops the proof that the change works. This holds in every step, including the checks a child skill runs, such as `ce-work`'s verification and step 8's browser tests.
 
 The approval replaces only the request to ask first or to leave testing to the user. Project rules about how to test still apply, so use the command, fixture, data, or check they name. The approval covers only the verification this change needs. It does not extend to production systems, real accounts or their data, deleting data, or anything else outside what `lfg` already does. It never answers a harness or system approval prompt for you.

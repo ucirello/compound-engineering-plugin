@@ -18,8 +18,8 @@ Strip a `mode:pipeline` token, a `size-cutoff:<N>` token, and every `proof-test:
 Resolve the scope in this order:
 
 1. **User-named scope** is authoritative; do not widen it. In standalone mode it may be the whole repo, an area, or a path.
-2. **Otherwise, in git**, use the current branch versus its base. Without a usable base, use staged and unstaged changes (`git diff HEAD`).
-3. **Outside git or without a diff**, use files the user named or that were edited earlier in the conversation.
+2. **Otherwise, in a JJ workspace**, verify and capture the task history head and base, then use `jj diff --from <verified-base> --to @`. Without a usable base, use the working-copy change (`jj diff -r @`). Run all JJ commands with cwd equal to the absolute target workspace root, never using `-R` as a cwd substitute.
+3. **Outside a JJ workspace or without a diff**, use files the user named or that were edited earlier in the conversation.
 
 In pipeline mode the scope is what the caller passed, else the branch diff. Within it, prune only tests and comments the current work added or changed.
 
@@ -31,7 +31,9 @@ When the platform's task-tracking capability is available, show the review, appl
 
 ## Step 2: Launch review agents in parallel
 
-Dispatch each reviewer as its own generic subagent via the platform's subagent primitive (`Agent`/`Task` in Claude Code, `spawn_agent` in Codex). Run reviews inline only when the platform has no subagent primitive, or when a dispatch fails as `references/reviewer-dispatch.md` describes. For each reviewer, read its prompt asset from this skill's directory and pass the **full file content** as the subagent's prompt, together with the resolved scope (the full diff or file set), the mode, any proof test, the user's constraints, and the project standards governing the scope (or their file paths):
+Use OpenCode-native generic subagents through the host's exposed delegation tool, not another harness or a shell dispatch helper. This skill explicitly requests reviewer delegation, satisfying a host user-or-skill exception without redundant approval. Respect actual higher-priority prohibitions and tool denials. See `references/reviewer-dispatch.md` for model permission and bounded recovery.
+
+Dispatch each reviewer as its own generic native subagent. Run reviews inline only when the platform has no subagent primitive, or when a dispatch fails as `references/reviewer-dispatch.md` describes. For each reviewer, read its prompt asset from this skill's directory and pass the **full file content** as the subagent's prompt, together with the resolved scope (the full diff or file set), the mode, any proof test, the user's constraints, and the project standards governing the scope (or their file paths):
 
 - `references/personas/code-reuse-reviewer.md`
 - `references/personas/code-quality-reviewer.md`

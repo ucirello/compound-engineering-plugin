@@ -4,7 +4,7 @@ Read this before dispatching scouts. It defines how the Ground step (SKILL.md Ph
 
 ## Model Tiers
 
-Dispatch is tiered by task shape, never hardcoded to a model name:
+Dispatch uses native OpenCode subagents and `opencode.models` discovery, tiered by task shape, never hardcoded to a model name. Read `references/cross-model-panel.md` Section 2 for delegation/model permission and the global nesting prerequisite before launching scouts, even without a panel. Skill-explicit delegation satisfies a user-OR-skill exception, not a higher prohibition. If model selection needs an explicit user request, omit the optional model argument and inherit when suitable, retaining and disclosing unmet configured tier intent.
 
 - **Extraction tier** — the project-grounding scout and the precedent-&-activity scout: search-and-quote work. Use the platform's cheapest capable model when the harness exposes a known override; otherwise inherit.
 - **Generation tier** — the external-evidence researcher: web/docs retrieval and entailment checking. Use the platform's mid-tier model when a known override exists; otherwise inherit.
@@ -14,18 +14,21 @@ If the user's or project's active instructions or the live prompt name a model f
 
 **When per-agent models cannot be chosen.** If the platform's subagent mechanism cannot select a model per agent, dispatch every scout on the inherited model and keep their read budgets. Cost control then comes from the read budgets and the tier-sensitive scout count, not from tiering.
 
-When a scout dispatch is rejected, first check whether an agent launched. If the rejection was a bad argument before launch, correct it once. If the platform is out of capacity, leave the work queued. If a launch still fails after the correction, gather that scout's bounded evidence inline and lower the verdict's stated confidence.
+When a scout dispatch is rejected, first check whether an agent launched. Classify depth/capacity, delegation permission, model permission/unavailability, and missing-tool errors separately. If the rejection was a bad argument before launch, correct it once. If the platform is out of capacity, leave the work queued. Never retry denied operations or evade restrictions through another harness. Where dispatch is genuinely unavailable, gather that scout's bounded evidence inline and disclose the fallback and reduced confidence; do not claim independent or cross-model coverage. Absolute grounding floors still apply.
 
 Create the scratch dir once, and reuse the echoed path for every scout this run:
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+WORKSPACE_ROOT="<verified absolute target workspace root>";
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw";
+[ ! -L "$WORKSPACE_ROOT/.tmp" ] && [ ! -L "$SCRATCH_ROOT" ] || exit 1;
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
 chmod 700 "$SCRATCH_ROOT" || exit 1;
-SCRATCH_DIR="$SCRATCH_ROOT/ce-pov/$(openssl rand -hex 4)";
+SCRATCH_ROOT="$(cd "$SCRATCH_ROOT" && pwd -P)" || exit 1;
+case "$SCRATCH_ROOT" in "$WORKSPACE_ROOT"/.tmp/rocketclaw) ;; *) echo "scratch escapes target workspace" >&2; exit 1;; esac;
+SCRATCH_DIR="$SCRATCH_ROOT/pov/$(openssl rand -hex 4)";
 (umask 077; mkdir -p "$SCRATCH_DIR") || exit 1; chmod 700 "$SCRATCH_DIR" || exit 1;
 echo "$SCRATCH_DIR";
 ```

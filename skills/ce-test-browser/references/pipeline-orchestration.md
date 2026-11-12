@@ -19,27 +19,40 @@ Run the whole thing as **one** command. Shell variables do not survive between s
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
+WORKSPACE_ROOT="<verified absolute target workspace root>";
+cd "$WORKSPACE_ROOT" || exit 1
+LOG_DIR="$WORKSPACE_ROOT/.tmp/rocketclaw/browser-test"
+mkdir -p "$LOG_DIR" || exit 1
 PORT=$(bash "$SKILL_DIR/scripts/resolve-port.sh" --free);   # append the explicit port as a further argument when you have one
+SERVER_LOG=$(mktemp "$LOG_DIR/dev-server-${PORT}.XXXXXX.log") || exit 1
 echo "Using dev server port: $PORT"
 
-# start in the background (the scan guarantees this port is free), then wait up to 30s
+# Start in the background after the free-port check, then wait up to 30s.
+# Another process can claim the port after the scan; verify our server, not just a listener.
 echo "Starting dev server on port ${PORT}..."
 if [ -f "bin/dev" ]; then
-  PORT=${PORT} bin/dev > /tmp/dev-server-${PORT}.log 2>&1 &
+  PORT=${PORT} bin/dev > "$SERVER_LOG" 2>&1 &
 elif [ -f "bin/rails" ]; then
-  bin/rails server -p ${PORT} > /tmp/dev-server-${PORT}.log 2>&1 &
+  bin/rails server -p ${PORT} > "$SERVER_LOG" 2>&1 &
 elif [ -f "package.json" ]; then
-  PORT=${PORT} npm run dev > /tmp/dev-server-${PORT}.log 2>&1 &
+  PORT=${PORT} npm run dev > "$SERVER_LOG" 2>&1 &
+else
+  echo "No supported dev-server launcher found; configure the project startup command."
+  exit 1
 fi
+SERVER_PID=$!
+echo "Server PID: $SERVER_PID; log: $SERVER_LOG"
 for i in $(seq 1 30); do
   lsof -i ":${PORT}" -sTCP:LISTEN -t >/dev/null 2>&1 && break
   sleep 1
 done
 if ! lsof -i ":${PORT}" -sTCP:LISTEN -t >/dev/null 2>&1; then
   echo "Server did not start in 30s. Last output:"
-  tail -20 /tmp/dev-server-${PORT}.log 2>/dev/null
+  tail -20 "$SERVER_LOG" 2>/dev/null
   exit 1
 fi
 ```
+
+Verify that the recorded process launched the expected application at this port (including any launcher children); a listener belonging to another process is a startup blocker. Preserve the recorded PID, port, and log path in the run receipt. Do not stop or replace another agent's or user's server. Keep all browser evidence and other scratch artifacts under the absolute target workspace's `.tmp/rocketclaw/` tree as well.
 
 The scan may land on a different port than the resolved one, and `$PORT` does not survive into later shell calls. Note the number this block echoes ("Using dev server port: N") and use that literal port in every subsequent selected-driver navigation — do not rely on `${PORT}` carrying over. Then return to the "Test Each Affected Page" step, navigate to `http://localhost:<N>`, inspect the rendered state, and test each route.

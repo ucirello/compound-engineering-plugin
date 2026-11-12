@@ -6,11 +6,9 @@ belong to the repository, where the shared store lives, and what earlier runs
 decided. Every subcommand prints one JSON object to stdout.
 
 Store location:
-  <main checkout>/.context/compound-engineering/ce-retro/
-    The main checkout is the first entry of `git worktree list`, so every
-    linked worktree resolves the same store.
-  <git common dir>/compound-engineering/ce-retro/
-    Used whenever the common repository is bare, even with worktrees attached.
+  <main checkout>/.context/retro/
+    The main checkout is the registered default JJ workspace when available,
+    otherwise the deterministic first registered workspace, so all share a store.
 
 Store files:
   decisions.jsonl          one decision record per line, append-only
@@ -25,7 +23,7 @@ under it are restricted to the owner.
 Exit statuses:
   0  success
   2  command-line misuse
-  3  not inside a git repository (error "not-a-git-repo")
+  3  not inside a JJ repository (error "not-a-jj-repo")
   4  the store cannot be written (error "store-unwritable")
   5  the store path is unsafe: a symlink or not owned by you (error "store-unsafe")
   6  invalid input: a record outside the schema, a bad run name, or a
@@ -71,37 +69,38 @@ def emit(obj):
     sys.stdout.write(json.dumps(obj, indent=2, sort_keys=True) + "\n")
 
 
-def git(cwd, *args):
+def jj(cwd, *args):
     try:
-        r = subprocess.run(["git", "-C", cwd, *args], capture_output=True, text=True)
+        r = subprocess.run(["jj", "--ignore-working-copy", "--no-pager", *args], cwd=os.path.abspath(cwd), capture_output=True, text=True)
     except OSError as e:
-        raise Failure(EXIT_NOT_GIT, "not-a-git-repo", f"git could not run: {e}")
+        raise Failure(EXIT_NOT_GIT, "not-a-jj-repo", f"jj could not run: {e}")
     return r
 
 
 def roots(cwd):
-    r = git(cwd, "rev-parse", "--path-format=absolute", "--git-common-dir")
+    r = jj(cwd, "root")
     if r.returncode != 0:
-        raise Failure(EXIT_NOT_GIT, "not-a-git-repo", r.stderr.strip() or f"{cwd} is not in a git repository")
-    common = os.path.realpath(r.stdout.strip())
-
-    listing = git(cwd, "worktree", "list", "--porcelain")
+        raise Failure(EXIT_NOT_GIT, "not-a-jj-repo", r.stderr.strip() or f"{cwd} is not in a JJ repository")
+    workspace = os.path.realpath(r.stdout.strip())
+    listing = jj(workspace, "workspace", "list", "-T", 'json({"name" => name, "root" => root}) ++ "\\n"')
     if listing.returncode != 0:
-        raise Failure(EXIT_NOT_GIT, "not-a-git-repo", listing.stderr.strip())
+        raise Failure(EXIT_NOT_GIT, "not-a-jj-repo", listing.stderr.strip())
     entries = []
-    for block in listing.stdout.strip().split("\n\n"):
-        lines = block.splitlines()
-        if not lines or not lines[0].startswith("worktree "):
-            continue
-        entries.append({"path": os.path.realpath(lines[0][len("worktree "):]), "bare": "bare" in lines})
-
-    bare = bool(entries) and entries[0]["bare"]
-    worktrees = [e["path"] for e in entries if not e["bare"]]
+    for line in listing.stdout.splitlines():
+        entry = json.loads(line)
+        if not entry.get("root"):
+            raise Failure(EXIT_NOT_GIT, "workspace-root-unknown", "a registered workspace has no recorded root; resolve its path before claiming complete repository coverage")
+        entries.append((entry["name"], os.path.realpath(entry["root"])))
+    entries.sort(key=lambda e: (e[0] != "default", e[0]))
+    worktrees = [path for _, path in entries]
+    if not worktrees:
+        raise Failure(EXIT_NOT_GIT, "workspace-root-unknown", "no registered workspace roots")
     return {
-        "common_dir": common,
-        "bare": bare,
-        "main_checkout": None if bare or not worktrees else worktrees[0],
+        "common_dir": os.path.join(worktrees[0], ".jj"),
+        "bare": False,
+        "main_checkout": worktrees[0],
         "worktrees": worktrees,
+        "workspace_root": workspace,
     }
 
 
@@ -145,20 +144,17 @@ def guard_chain(base, parts, create, restrict_from=0):
 
 def resolve_store(cwd, create=True):
     info = roots(cwd)
-    if info["main_checkout"] is None:
-        base = info["common_dir"]
-        chain = ["compound-engineering", "ce-retro"]
-        gitignored = None
-    else:
-        base = info["main_checkout"]
-        chain = [".context", "compound-engineering", "ce-retro"]
-        gitignored = git(base, "check-ignore", "-q", ".context/compound-engineering/").returncode == 0
+    base = info["main_checkout"]
+    chain = [".context", "retro"]
+    # JJ has no check-ignore equivalent. Unknown is not evidence of exclusion.
+    gitignored = None
 
     store = guard_chain(base, chain, create, restrict_from=len(chain) - 1)
 
     if create:
         try:
-            fd, probe = tempfile.mkstemp(prefix=".probe-", dir=store)
+            scratch = guard_chain(info["workspace_root"], (".tmp", "rocketclaw", "retro"), True)
+            fd, probe = tempfile.mkstemp(prefix=".probe-", dir=scratch)
             os.close(fd)
             os.unlink(probe)
         except OSError as e:
@@ -389,7 +385,8 @@ def cmd_backup(args):
             return
         # Copy to a private temp file and publish it with a hard link, which fails if dest
         # exists: an interrupted copy must never be accepted later as a finished backup.
-        fd, tmp = tempfile.mkstemp(dir=os.path.dirname(dest), prefix=".partial-")
+        scratch = guard_chain(roots(os.getcwd())["workspace_root"], (".tmp", "rocketclaw", "retro"), True)
+        fd, tmp = tempfile.mkstemp(dir=scratch, prefix=".partial-")
         try:
             with os.fdopen(fd, "wb") as out, open(source, "rb") as src:
                 shutil.copyfileobj(src, out)
@@ -417,6 +414,9 @@ METADATA_CHUNK = 400
 
 def run_dir(path):
     out = os.path.realpath(path)
+    local_tmp = os.path.join(roots(os.getcwd())["workspace_root"], ".tmp")
+    if os.path.commonpath([out, local_tmp]) != local_tmp:
+        raise Failure(EXIT_INVALID, "invalid-input", "scratch output must stay under the target workspace's local .tmp directory")
     if not os.path.isdir(out):
         raise Failure(EXIT_INVALID, "invalid-input", f"--out is not a directory: {path}")
     return out

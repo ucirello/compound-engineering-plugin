@@ -4,6 +4,14 @@ A carrier is the prefix string that passes a stage assignment (which model or ha
 
 LFG is otherwise hands-off and never stops to ask. The single question it may ask is the one in scope rule 3 below, and only on an interactive host.
 
+## Native dispatch and permission boundary
+
+Carriers retain caller intent and configured model/tier choices; they are not permission to launch another harness. Resolve available models with OpenCode's `opencode.models` capability and execute permitted work with native subagents, not deleted harness-dispatch or workspace-bridge helpers. Harness names below remain compatibility data: if their semantics cannot be satisfied natively, disclose the unavailable route and apply only the child's documented `prefer` fallback; an unmet `require` remains blocked. Preserve ordered candidates, receipts, bounded recovery and verification coverage.
+
+This skill explicitly requests the child reviews' reviewer delegation, satisfying a host's user-OR-skill delegation exception without redundant approval. A higher prohibition or actual tool denial still wins. Delegation permission is separate from model-selection permission: if the host requires an explicit user model request, omit an optional model argument unless that request exists. Inherit the session model when suitable; retain configured intent and disclose an unmet route or independence requirement. Same-model review is not cross-model review. Nesting capacity is separate again: classify actual depth, permission, model and tool failures; never evade a denial by retrying the denied operation or switching harness. Use parent/inline fallback only when the child review contract permits, and never call incomplete mandatory independence complete.
+
+For nested review setup, instruct the user to locate the active global configuration with `opencode debug paths` or `opencode debug paths config` and merge `experimental.subagent_depth` of at least `3` into the existing `~/.config/opencode/opencode.json` or `.jsonc`. Preserve a higher integer, unrelated keys and experimental siblings; create no competing file. Package/plugin configuration alone does not enable this, and higher-precedence configuration must not lower the value. Document this prerequisite only; never mutate host configuration.
+
 ## What is routable
 
 Interpret whether the invoking conversation expresses **semantic intent to assign a pipeline stage** — planning or implementation — to a specific model or harness. This is judgment, not keyword or prompt-token matching: an explicit instruction such as "plan with fable" or "use Codex for implementation" creates an assignment, while a plain mention of Codex, Composer, Fable, or another model/harness in feature content, quoted material, comparison text, or a filename does not. Two pipeline stages are routable, each with its own carrier:

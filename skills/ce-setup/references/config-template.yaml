@@ -1,18 +1,24 @@
-# Compound Engineering -- repo config
+# RocketClaw -- repo config
 # ce-config-template-version: 3
-# Copy to .compound-engineering/config.yaml in your project root (team defaults).
-# Optional override: .compound-engineering/config.local.yaml, same keys.
+# Copy to .rocketclaw/config.yaml in your project root (team defaults).
+# Optional override: .rocketclaw/config.local.yaml, same keys.
 # Ordinary keys: local wins when set, then this file, then the skill default.
 # docs_root is repo layout -- set it only here; local docs_root is ignored.
 # All settings are optional. Invalid ordinary values continue to the next layer.
 # docs_root fails closed on an unusable value.
+# Global user prerequisite: locate the existing ~/.config/opencode/opencode.json(c)
+# using opencode debug paths (or opencode debug paths config), and merge
+# experimental.subagent_depth >= 3 while preserving higher integers, sibling
+# keys and unrelated config. Do not create a competing file. Plugin/package
+# config alone does not enable this; higher precedence must not lower it.
+# Setup documents this requirement and never changes host configuration.
 
 # --- Artifact root ---
-# Relocate every CE-written artifact folder (solutions, plans, ideation,
+# Relocate every RocketClaw-written artifact folder (solutions, plans, ideation,
 # explainers, pulse-reports, dogfood-reports,
 # feedback-sweep, personas) under one repo-relative root. Unset -> `docs`,
-# byte-identical to today. A configured root becomes the sole location CE reads
-# and writes; CE never falls back to reading `docs/`.
+# byte-identical to today. A configured root becomes the sole location RocketClaw reads
+# and writes; RocketClaw never falls back to reading `docs/`.
 #
 # Set this only in this tracked file so every clone and worktree share one
 # artifact tree. A docs_root in config.local.yaml is ignored.
@@ -20,10 +26,10 @@
 # The value must be a repo-relative directory whose real (symlink-resolved) path
 # stays inside the repo, is not the repo root itself, and is not under `.git/`.
 # Unlike every other setting here, an unusable value does NOT fall through to the
-# default -- CE stops with an error so a typo can't silently write artifacts into
+# default -- RocketClaw stops with an error so a typo can't silently write artifacts into
 # the location you configured away from. `/ce-setup` reports the resolved root.
 
-# docs_root: .compound-engineering/artifacts   # repo-relative dir (default: docs)
+# docs_root: .rocketclaw/artifacts   # repo-relative dir (default: docs)
 
 # --- Product pulse ---
 # Settings written by /ce-product-pulse first-run interview. Re-run the skill with
@@ -66,15 +72,15 @@
 # model. The value is a model alias (e.g. `fable`, `opus`). You can also name a
 # model in a prompt for a one-off, which overrides these keys.
 #
-# Cross-harness: setting a key means every harness you run these skills in will
-# attempt that model. The host serves it natively where it can; otherwise the
-# Claude CLI is invoked when installed and authenticated; otherwise the step runs
-# on your session model and the run says so. Invalid/commented/missing -> no
+# Resolve these configured choices with opencode.models and native subagents.
+# Never launch another harness as a fallback. If the active tool cannot honor
+# model permission or availability, disclose unmet intent and use an allowed
+# inherited-model fallback only where the skill permits. Invalid/commented/missing -> no
 # elevation.
 #
 # `plan_effort` and `brainstorm_effort` separately set the reasoning effort the
 # elevated step runs at (one of low, medium, high, xhigh, max). Unset keeps the
-# existing defaults: high on the Claude CLI route, the harness default on native
+# existing defaults: the active model's configured default on native
 # dispatch. An unrecognized value is invalid -- it is rejected and the run skips
 # elevation rather than silently using a different effort than configured. If
 # the host's native subagent tool takes no effort setting, the step still runs
@@ -154,7 +160,8 @@
 # left out keeps the skill default. Defaults: in Codex, gpt-6.1-terra at high
 # for every subagent; elsewhere, each reviewer's own tier. A model named in
 # conversation or in the project's instructions wins. A model the host refuses
-# falls back once to the session model, and the review says so.
+# is not retried after a permission denial. An allowed session-model fallback
+# is disclosed and never called cross-model independence.
 
 # review_subagents:
 #   codex:
@@ -212,12 +219,12 @@
 #   - { type: github-issues, id: gh-issues, target: owner/repo, ack_action: "feedback:ack", closeout_action: "feedback:resolved", sensitive: false, approved: true }
 
 # Sweep-owned settings.
-# sweep_state_path: docs/feedback-sweep/state.yml   # committed (multi-agent) or /tmp path (solo)
+# sweep_state_path: docs/feedback-sweep/state.yml   # committed (multi-agent) or .tmp/rocketclaw path (solo)
 # sweep_ack_cap: 25                                 # max acks per source per run before the circuit breaker
 # sweep_lease_ttl_minutes: 60                       # single-writer lease staleness threshold
 # sweep_shared_branch: false                        # true: push-gated lease for shared-docs-branch topology
 
-# --- Compound Packs ---
+# --- RocketClaw Packs ---
 
 # Prescriptive domain knowledge folders that planning reads and cites.
 # Declared, never scanned: an entry names a source (repo-relative path,
@@ -233,6 +240,6 @@
 # packs:
 #   - source: compound-packs/local-rules                       # repo-relative, read live
 #   - source: ~/compound-packs/kk-style                        # machine-local, read live
-#   - source: https://github.com/org/rails-ce-pack    # git, cached at ref
+#   - source: https://github.com/org/rails-pack       # git, cached at ref
 #     ref: v1.2.0
 #     pack: [rails, inertia]

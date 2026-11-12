@@ -9,5 +9,6 @@ The summary lets a user who skimmed the run see what they gained and what to do 
 - Name missing optional tools as optional, not as failures, and say to install them only for the workflows the user runs. Do not offer a bulk install: the diagnostic already printed each install command or project URL.
 - Name the files left uncommitted. The closing question offers to commit them, so leave committing out of the to-do list.
 - List what the user still has to do, most important first. Put first any step without which a new file has no effect, such as a reviewer that does not read it yet.
+- Always report the mandatory global user OpenCode depth prerequisite from SKILL.md, including non-interactive, standards-only, pack-scaffold and remote setup. Say whether it is verified or still needed; plugin/package config alone does not enable it. Never change host config. Report unmet configured model/effort routing or mandatory independence as incomplete, not success.
 
 When setup left changes uncommitted, close with a question after the two closing lines in SKILL.md: commit them and open a pull request, commit only, or leave them for the user to review first. Run `ce-commit-push-pr` or `ce-commit` for the user's choice.

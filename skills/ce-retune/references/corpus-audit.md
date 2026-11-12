@@ -16,7 +16,7 @@ Two waves, one agent per unit each way.
 
 1. The project's own documented learnings and solution docs.
 2. The test suite. Grep a distinctive substring of the target text.
-3. Version history. Run `git log -S '<substring>'` for the commit that introduced the line, then read that commit message and the PR it belongs to.
+3. Version history. From the absolute target workspace root, verify and capture the actual task history head, then enumerate that head's full ancestry with `jj log -r '::<verified-task-head>' --no-graph -T 'commit_id ++ "\n" ++ description ++ "\n"' -- <target-path>`. Preserve full subjects and bodies. Inspect candidate changes using `jj diff --from <parent-id> --to <commit-id> --git -- <target-path>` and search both added and deleted patch lines for the literal substring to locate its introduction, removal, or replacement. Follow all parents of merges; do not substitute the default limited log or another history head. Read the introducing change's full description and associated PR. Run repository-scoped `gh` only from that absolute workspace root with `GIT_DIR=$(jj git root)`.
 
 Source 3 is unavailable in a corpus checkout with no history, which is the normal shape of an installed or vendored copy. A defender working without history must say so in `sources_searched` and cannot return `cut` on the strength of the other two alone. That combination is "no provenance found in two of three sources", which is a verification task, not a cut. Point defenders at a checkout that has history, or record the whole audit's provenance basis as partial.
 
@@ -125,4 +125,4 @@ Expect roughly half of `reduce` items to be pinned by a test asserting exact str
 - **A cut with no provenance found after a real search is a confident cut. A cut the defender saves with a citation is off the list.** Do not relitigate a defended keep.
 - **Absence of evidence is weaker than the project's own standard for a change.** Where the guidance requires a reproduced failure or an exact failing path, a search that found nothing is a verification task, not a change. Say which of your cuts rest on that weaker basis.
 
-Dispatch shape: one agent per skill, each reading that skill's full directory and proposing cuts with a target and a reason; then a second agent per skill whose job is the opposite, to **defend the existing prose** using the project's own documented learnings, its tests, and git history. Expect the audit to contradict the premise you started with. That is its value.
+Dispatch shape: one native OpenCode subagent per skill, each reading that skill's full directory and proposing cuts with a target and a reason; then a second independent native subagent per skill whose job is the opposite, to **defend the existing prose** using the project's own documented learnings, its tests, and JJ history anchored to the verified task head. Expect the audit to contradict the premise you started with. That is its value.

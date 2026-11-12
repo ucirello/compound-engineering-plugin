@@ -18,6 +18,8 @@ Build and exercise an iOS app on a simulator, preserving screenshots, logs, huma
 
 **Boundaries:** this skill tests and reports. Diagnosis and any user-approved product fix belong to `ce-debug`, invoked with its authority narrowed so it returns here without committing, pushing, or opening a PR. Keep simulator interaction within the app and flows the user placed in scope.
 
+**Evidence storage:** keep screenshots, captured logs, and any scratch or fallback artifacts beneath the target workspace's absolute `.tmp/rocketclaw/` path, never an operating-system temporary directory. Retain evidence paths in the handoff.
+
 ## Run
 
 1. **Prepare and launch.** Read `references/setup-and-build.md`. It defines the XcodeBuildMCP availability check, project and scheme discovery, simulator choice, build, install, launch, and log-capture start.

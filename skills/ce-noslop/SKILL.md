@@ -26,6 +26,8 @@ For edit and detect, and for an author passage the tests alone do not settle, re
 
 Pick by who reads the result. The caller's own interaction contract wins over any line here.
 
+For commit-message authoring or editing, first read the full https://go.dev/wiki/CommitMessage guide and several recent full commit subjects and bodies using `jj log`, with the shell working directory set to the absolute target workspace root and history anchored to the actual verified task history head. Compare repository prefixes, casing, tense, body structure, wrapping, and issue references. Project instructions and observed history syntax always win; apply only compatible Go quality guidance and never invent precedent. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards. Do not add creator, model, or harness attribution or Co-authored-by/Assisted-by trailers. This prose skill does not authorize recording a commit or changing its description.
+
 - **Agent talking to the user.** The reader is a teammate who knows the domain and did not watch the work. Write each sentence as you would say it to them.
 - **Repo or team artifact.** Neutral. Match the surrounding document's idiom. No first person, no opinion the artifact does not need. This is the default when no reader is named.
 - **The user's own writing.** Preserve voice; make the minimum effective edit. Understandability edits stop at sentence splits and actor restoration that keep the user's word choice.

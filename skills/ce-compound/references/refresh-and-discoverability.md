@@ -1,5 +1,7 @@
 # Phase 2.5 and the Discoverability Check
 
+For `modes.md`'s context-pressure handoff, the Full non-interactive delegate reports gaps and proposed minimal changes without editing instruction files. The original interactive parent relays the completed report/doc and offers these ordinary consent-based edits and any applicable deferred Compound Pack choice, without a second capture or editorial pass over the learning.
+
 ### Phase 2.5: Selective Refresh Check
 
 After writing the lesson's form, decide whether this new solution is evidence that older docs should be refreshed.

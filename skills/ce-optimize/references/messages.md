@@ -1,0 +1,7 @@
+# Message composition for optimization revisions
+
+Before EVERY message composition, including candidate, integrated winner, runner-up, report, recovery and remote result-marker revisions, read the FULL https://go.dev/wiki/CommitMessage guide. From the actual verified absolute target workspace root, capture the actual task history head (not an arbitrary empty `@` or unrelated current branch), then read several recent full subjects AND bodies with `jj log -r 'ancestors(<verified-task-history-head>, 10)' --no-graph -T 'description ++ "\n\n"'`. Compare repository prefixes, casing, tense, body layout, wrapping and issue references against project instructions. Project instructions and observed history syntax ALWAYS win; apply only compatible Go quality guidance and never invent precedent.
+
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards.
+
+Use `jj describe -m "<message composed from the standards above>"` for the exact owned revision, from its absolute workspace root. Keep semantic identity, scope and hypothesis evidence, not prescribed Conventional types/scopes or fixed message strings. No creator/model/harness attribution, Co-authored-by or Assisted-by trailers. A remote result-marker revision must contain only the marker on top of the exact candidate; compose its message with the same procedure.

@@ -21,7 +21,7 @@ A section belongs only when it serves one of these audiences. Omit padding.
 
 ## Unified plan artifact contract
 
-`ce-plan` writes the canonical compound-engineering plan artifact. The same
+`ce-plan` writes the canonical RocketClaw plan artifact. The same
 artifact may begin as a requirements-only skeleton from `ce-brainstorm` and
 later be enriched by `ce-plan`; it is still one plan file moving through
 planning stages, not a requirements doc plus a separate implementation doc.
@@ -281,7 +281,7 @@ them apply.
   not enumerated). A record of the planning process itself (reading the
   user's prompt, glancing at obvious entry points, restating prose) → omit. Put it inline next to the
   KTD or unit it justifies, or in a dedicated section — both shapes work.
-  A constraint adopted from a Compound Pack file is cited inline as
+  A constraint adopted from a RocketClaw Pack file is cited inline as
   `(pack: <id>, <path within the pack>)` after the requirement, KTD, constraint,
   or risk it shaped. The path is relative to the pack's own directory, so it
   is stable for path- and git-sourced packs alike. Cite the pack text; do not
@@ -399,9 +399,11 @@ plan.
   across planning stages (it is a plan at every stage). Do not put a
   conventional-commit prefix (`feat:`/`fix:`) in the title — the `type` field
   carries that classification.
-- **`type`** — conventional-commit-prefix-aligned classification (`feat`,
-  `fix`, `refactor`, `chore`, `docs`, `perf`, `test`, etc.). Carries the
-  intent the eventual commit message should reflect.
+- **`type`** — artifact classification (`feat`, `fix`, `refactor`, `chore`,
+  `docs`, `perf`, `test`, etc.). This metadata describes the work only; it
+  never prescribes a commit prefix, scope, or message. Commit composition
+  belongs to the shipping skill and follows actual project instructions and
+  full task-anchored repository message history, not this artifact's type.
 - **`date`** — creation date in ISO 8601 (`YYYY-MM-DD`), ASCII digits only.
 
 Plans carry **no `status` field** — a plan is a decision artifact, not a

@@ -71,7 +71,7 @@ Dispatch file-grouped subagent batches when fixes need code you have not read, o
 - Do not re-run `ce-code-review`
 - Shared-directory fallback: do not stage or commit; return which `#` were applied or skipped and which files changed
 
-**After inline fixes and after each wave:** orchestrator reviews diffs (scope = assigned `#` only), runs tests (`requires_verification: true` on any applied finding → at least targeted tests; multi-file → broader suite), commits (`fix(review): apply findings #…`) unless worktree-isolated subagents merge per Phase 1. Repeat until all batches complete.
+**After inline fixes and after each wave:** orchestrator reviews diffs (scope = assigned `#` only), runs tests (`requires_verification: true` on any applied finding → at least targeted tests; multi-file → broader suite), and commits only owned paths using JJ. Before composing, read the full https://go.dev/wiki/CommitMessage and inspect several recent full subjects and bodies with `jj log` anchored to the actual verified task history head, with cwd equal to the absolute target workspace root. Compare prefixes, casing, tense, body, wrapping and issue conventions; project instructions and history syntax always win, and Go quality guidance applies only where compatible. Invent no precedent or fixed template. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards. Use `jj describe -m "<message composed from the standards above>"` on the verified owned revision, preserving full message text as data. Repeat until all batches complete.
 
 ### Summary (required)
 

@@ -28,7 +28,7 @@ Follow riffrec's own README when it names a different mount point for the framew
 
 ## Commit
 
-Commit the dependency change, the lockfile, and the mount edit as one setup commit on the current branch through `ce-commit`, with a message that says it adds riffrec live mode for polish sessions. Keep its hash: the live-mode report names it, including when the riffer later declines the consent screen and no session runs (the commit stays; riffrec remains in the app after the session, as disclosed).
+Commit the dependency change, the lockfile, and the mount edit as one setup commit on the current feature line through `ce-commit`. Before composing, read the full https://go.dev/wiki/CommitMessage and use `jj log` from the verified absolute target workspace root to read several recent full subjects and bodies anchored to the actual verified task history head. Compare prefixes, casing, tense, body conventions, wrapping, and issue references; project instructions/history syntax always wins over incompatible Go guidance, and never invent precedent. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards. Convey the addition of riffrec live mode for polish sessions and the installed version without prescribing a title or template. Use `jj describe -m "<message composed from the standards above>"` within the owned-scope `ce-commit` workflow; do not append creator/model/harness attribution or Co-authored-by/Assisted-by trailers. Keep its hash: the live-mode report names it, including when the riffer later declines the consent screen and no session runs (the commit stays; riffrec remains in the app after the session, as disclosed).
 
 ## When it fails
 

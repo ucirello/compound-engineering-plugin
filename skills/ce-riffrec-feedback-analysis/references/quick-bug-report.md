@@ -4,7 +4,7 @@ Use this path when the input is a short recording (under ~60 seconds), the user 
 
 ## Workflow
 
-1. Create `OUTPUT_DIR` with `mktemp -d "${TMPDIR:-/tmp}/riffrec-quick-XXXXXX"`, set `INPUT_PATH` to the supplied capture, and use the invocation in `references/analyzer.md`. Capture the analyzer's printed output directory; later steps read from it.
+1. Resolve the absolute target workspace root and run from that root. Create its local scratch parent with `mkdir -p "$WORKSPACE_ROOT/.tmp/rocketclaw/riffrec"`, then create `OUTPUT_DIR` with `mktemp -d "$WORKSPACE_ROOT/.tmp/rocketclaw/riffrec/quick-XXXXXX"`. Set `INPUT_PATH` to the supplied capture and use the invocation in `references/analyzer.md`. Capture the analyzer's printed output directory; later steps read from it. Never use OS temporary directories or a caller's `TMPDIR` fallback.
 
 2. Read only `analysis.md` from the temp output. Skip `problem-analysis.md`, `review-prompt.md`, `requirements-kickoff.md`, and `source-materials.md` — they are designed for the extensive path.
 
@@ -30,7 +30,7 @@ If the workspace is the product source code AND the broken surface is named clea
 
 - No `problem-analysis.md`, no `requirements-kickoff.md`, no Visual / Functional / Requirement / UX category split.
 - No automatic handoff to `ce-brainstorm`. The quick path ends with the bug report.
-- No commit of `raw/` or `frames/` — they live only in the temp dir and are discarded by the OS.
+- No commit of `raw/` or `frames/` — they live only in workspace-local scratch. Do not claim that the OS discards them; retain them locally unless the user authorizes cleanup of the exact owned output directory.
 - No source-mapping pass across the codebase.
 
 ## Escalation

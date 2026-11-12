@@ -1,10 +1,10 @@
 ---
 name: ce-setup
-description: "Check Compound Engineering's tools and repo config and fix what it finds, scaffold a Compound Pack with `pack:<id>`, or draft and refresh coding standards and review docs from pull request history. Use when setting up or diagnosing Compound Engineering, or when creating or updating CODING_STANDARDS.md or REVIEW.md, including on a schedule."
+description: "Check RocketClaw's tools and repo config and fix what it finds, scaffold a RocketClaw Pack with `pack:<id>`, or draft and refresh coding standards and review docs from pull request history. Use when setting up or diagnosing RocketClaw, or when creating or updating CODING_STANDARDS.md or REVIEW.md, including on a schedule."
 argument-hint: "[pack:<id> | standards] [mode:non-interactive]"
 ---
 
-# Compound Engineering Setup
+# RocketClaw Setup
 
 ## Non-interactive runs
 
@@ -16,29 +16,35 @@ In an interactive run, ask each question below with the host's blocking question
 
 ## Pack Scaffold
 
-When the invocation names a Compound Pack to add, create, or scaffold (the `pack:<id>` argument, or the same request in words), read `references/pack-scaffold.md` from this skill's directory and follow it in place of Phases 1-2: it writes the pack and its config entry only after the user approves, runs the health check itself, and reports into Phase 3 (Summary).
+When the invocation names a RocketClaw Pack to add, create, or scaffold (the `pack:<id>` argument, or the same request in words), first apply the global OpenCode prerequisite below, then read `references/pack-scaffold.md` from this skill's directory and follow it in place of Phases 1-2: it writes the pack and its config entry only after the user approves, runs the health check itself, and reports into Phase 3 (Summary).
 
 ## Review Docs
 
-When the invocation asks to draft, refresh, or update coding standards or review docs (the `standards` argument, or the same request in words), read `references/project-docs.md` and follow it in place of Phases 1-2, drafting the whole set of files even when the request names one. Report into Phase 3.
+When the invocation asks to draft, refresh, or update coding standards or review docs (the `standards` argument, or the same request in words), first apply the global OpenCode prerequisite below, then read `references/project-docs.md` and follow it in place of Phases 1-2, drafting the whole set of files even when the request names one. Report into Phase 3.
 
 ## Artifact Root Resolution
 
-Every Compound Engineering skill that reads or writes a CE-owned artifact tree (`solutions`, `plans`, and others) resolves its root by this rule. Step 2 reports the resolved root.
+Every RocketClaw skill that reads or writes an owned artifact tree (`solutions`, `plans`, and others) resolves its root by this rule. Step 2 reports the resolved root.
 
 <!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only (`<repo-root>` = `jj root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
 - **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
+
+## Required global OpenCode prerequisite
+
+Before any install/setup path, tell the user to locate their existing global user configuration with `opencode debug paths` (or `opencode debug paths config`) and merge `experimental.subagent_depth` of at least `3` into `~/.config/opencode/opencode.json` or its existing `.jsonc` equivalent. Preserve any higher integer, unrelated settings, and sibling `experimental` keys; do not create a competing configuration file. Plugin/package configuration alone does not enable this prerequisite, and higher-precedence configuration must not lower it. Document this requirement in interactive, non-interactive, standards, pack-scaffold, and remote-checkout setup alike; never change host configuration yourself. Report an unmet prerequisite rather than calling nested review complete.
+
+Resolve configured model aliases and tiers using `opencode.models` and dispatch through native OpenCode subagents. Configured model/effort intent remains authoritative; distinguish delegation permission, model permission, and nesting capacity. Skill-explicit review dispatch needs no redundant approval, but obey actual host denials. Where an explicit user model request is required, omit optional model arguments and inherit a suitable session model; disclose unmet routing or independence. Same-model review is not cross-model review. Classify actual depth/permission/model/tool failures, never retry denied operations or switch harnesses to evade them; retain receipts, bounded recovery, and incomplete coverage reporting.
 
 ## Phase 1: Diagnose
 
 ### Step 1: Determine Plugin Version
 
-Detect the installed compound-engineering plugin version by reading the plugin metadata or manifest when the platform exposes it. If the version cannot be determined, skip this step.
+Detect the installed RocketClaw plugin version by reading the plugin metadata or manifest when the platform exposes it. If the version cannot be determined, skip this step.
 
 If a version is found, pass it to the check script via `--version`. Otherwise omit the flag.
 
@@ -47,7 +53,7 @@ If a version is found, pass it to the check script via `--version`. Otherwise om
 Before running the script, display:
 
 ```text
-Compound Engineering -- checking your environment...
+RocketClaw -- checking your environment...
 ```
 
 Run the bundled check script. Set `SKILL_DIR` to the absolute directory you loaded this `ce-setup` SKILL.md from — the Bash tool's CWD is the user's project, not the skill dir, so a bare `scripts/` path will not resolve:
@@ -61,7 +67,7 @@ Use the same command without `--version VERSION` if Step 1 could not determine a
 
 If the script is unavailable, run the inline equivalent listed in `references/repo-fixes.md`.
 
-Display the diagnostic output to the user. The health report includes the resolved artifact root and which config layer supplied it (per Artifact Root Resolution above); show that line so the operator can confirm where CE artifacts will be written. Missing `config.yaml` is a reported absence, not a project issue.
+Display the diagnostic output to the user. The health report includes the resolved artifact root and which config layer supplied it (per Artifact Root Resolution above); show that line so the operator can confirm where artifacts will be written. Missing `config.yaml` is a reported absence, not a project issue.
 
 ### Step 3: Decide Whether Fixes Are Needed
 
@@ -69,17 +75,17 @@ Repo-local fixes the health report names apply only to the checkout that report 
 
 After the health report, decide Phase 2 from writable-checkout availability:
 
-- If this session has a writable git checkout, run Phase 2 locally, including when `project_issues` is 0. Phase 2 always refreshes the example and always offers to create `config.yaml` when that file is missing.
+- If this session has a writable JJ workspace, run Phase 2 locally, including when `project_issues` is 0. Phase 2 always refreshes the example and always offers to create `config.yaml` when that file is missing.
 - If this session has no writable checkout, but the user named a repository and the harness exposes a remote repo-work surface with a writable checkout, run Phase 2 on that surface instead and report the remote repo-local fixes in Phase 3.
 - Otherwise skip Phase 2 and go to Phase 3, saying repo-local writes were skipped because no writable checkout is available.
 
-Two offers concern this machine rather than the checkout, so they stand whether or not Phase 2 runs. If the report names a legacy Compound Codex tool map, offer to remove it following `references/legacy-codex-tool-map.md` from this skill's directory. If the bundled health script reported the `node` row available, offer to warm the npm cache for cross-model peers following `references/acpx-cache-warm.md`.
+Two optional legacy maintenance offers concern this machine rather than the checkout, so they stand whether or not Phase 2 runs. If the report names a legacy Compound Codex tool map, offer to remove it following `references/legacy-codex-tool-map.md` from this skill's directory. Only when the user explicitly maintains legacy package consumers and the bundled health script reported the `node` row available, offer the retained consent-gated cache utility following `references/acpx-cache-warm.md`. Native OpenCode dispatch needs neither that transport nor cache warming.
 
 Phase 2 remediates every project issue the report names, each in its own step of `references/repo-fixes.md`. That includes an out-of-date `config.yaml`, retired config keys, a `ce-work` implementation engine the report marks unavailable or invalid, and malformed dormant `work_engine_preferences` or `work_engine_effort`.
 
 ## Phase 2: Fix Repo-Local Issues
 
-Read `references/repo-fixes.md` from this skill's directory before making any repo-local change. It remediates every project issue the report names and carries Steps 4-10: removing the obsolete `compound-engineering.local.md`, refreshing the example config, refreshing out-of-date config files with their settings kept, offering to create `config.yaml`, repairing invalid `work_engine_preferences` and `docs_root`, the two `.gitignore` offers, and the agent-instructions offers (a knowledge-store mention, the compounding directive, and the chat-register directive for `ce-noslop`), and the offer to draft the project's review docs.
+Read `references/repo-fixes.md` from this skill's directory before making any repo-local change. It remediates every project issue the report names and carries Steps 4-10: removing the obsolete `rocketclaw.local.md`, refreshing the example config, refreshing out-of-date config files with their settings kept, offering to create `config.yaml`, repairing invalid `work_engine_preferences` and `docs_root`, the two `.gitignore` offers, and the agent-instructions offers (a knowledge-store mention, the compounding directive, and the chat-register directive for `ce-noslop`), and the offer to draft the project's review docs.
 
 Every change to a user-owned file is offered and applied only if the user approves.
 

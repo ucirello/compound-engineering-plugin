@@ -4,6 +4,8 @@ Your scope is **synthesis only**. The caller handles discovery, branch/keyword f
 
 ## Input contract
 
+Supported OpenCode export reductions can also appear with `platform: opencode`. A passed source session is primary evidence, not an optional prior-session candidate. Preserve its chronology and failures; never exclude it because it is the parent session. Only the delegate's own session is excluded. The orchestrator obtains exports via supported CLI/API, never SQLite/internal storage; this synthesis worker reads only the supplied reduced scratch paths.
+
 The dispatch prompt provides:
 
 - **`problem_topic`** — one sentence naming the concrete question or problem to synthesize against.

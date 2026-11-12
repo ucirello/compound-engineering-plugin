@@ -2,12 +2,16 @@
 
 Which orchestration shape fits each phase, and what breaks when you pick the wrong one.
 
-Two primitives are assumed, both platform-neutral:
+Use OpenCode-native subagents for model work and shell for deterministic local extraction, profiling, and measurement. Do not introduce harness-dispatch or workspace-bridge scripts. Two primitives are assumed:
 
-- **A dispatch primitive** that launches an independent agent with its own context window and returns a result to the orchestrator (in one host it is a subagent-spawning tool; in another a job runner). Only two properties matter: fresh context per agent, and a result the orchestrator can read.
-- **A concurrency cap** the host enforces on how many agents run at once (often around 10). Dispatches above the cap queue rather than fail, so a 31-unit fan-out is three waves, not one. Plan the wave count; do not assume flat cost.
+- **A native subagent dispatch primitive** that launches an independent agent with its own context window and returns a result to the orchestrator. Only two properties matter: fresh context per agent, and a result the orchestrator can read.
+- **A concurrency cap** the host enforces on how many agents run at once. Plan bounded waves against the actual available capacity, not an assumed cap or automatic queue; do not assume flat cost.
 
-Classify a rejected dispatch by whether an agent launched. Correct a pre-launch argument rejection once, and leave capacity-limited work queued. Any other launch failure follows the phase's own failure direction. In the corpus audit, the proposal and defense contexts must be independent for the audit to mean anything, so a launch failure there is a blocker: stop the audit rather than running the missing side inline.
+This skill explicitly authorizes its reviewer/defender dispatches under a host's user-or-skill delegation exception; do not ask for redundant approval. Respect any actual higher-priority prohibition or tool denial. Before routing, use `opencode.models` to resolve configured model/tier/provider choices; those choices remain authoritative intent, not permission to override host model restrictions. If the host requires an explicit user model request, omit optional model arguments and use the inherited model only when suitable. Record requested versus actual routes, child receipts, and any unmet route or independence; same-model is never cross-model evidence.
+
+Classify a rejected dispatch by whether an agent launched and distinguish depth, delegation permission, model permission/availability, and tool errors. Correct a genuinely malformed pre-launch argument once; never retry a denied operation, evade depth with another harness, or confuse model permission with delegation or nesting capacity. Queue work only where the host actually supports queuing; preserve a bounded recovery attempt and report every unlaunched/uncompleted unit. Any other launch failure follows the phase's own failure direction. In the corpus audit, the proposal and defense contexts must be independent for the audit to mean anything, so a launch failure there is a blocker: stop the audit rather than running the missing side inline. Never label partial mandatory independence complete. Inline or parent fallback is allowed only where the phase contract permits it.
+
+Documented setup prerequisite (never change host configuration during this skill): users must locate the existing global `~/.config/opencode/opencode.json` or `.jsonc` through `opencode debug paths` (or `opencode debug paths config`) and merge `experimental.subagent_depth >= 3` into that existing file. Preserve a higher integer, unrelated keys, and sibling experimental settings; do not create a competing file. Plugin/package configuration alone does not enable this, and higher-precedence configuration must not lower the depth. This prerequisite does not authorize bypassing an actual host denial.
 
 ## The shapes
 

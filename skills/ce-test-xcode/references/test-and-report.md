@@ -2,6 +2,8 @@
 
 This reference owns evidence collection after the app launches.
 
+Use the absolute workspace-local evidence directory retained from setup for every screenshot, saved log, and scratch or fallback artifact. Do not redirect artifacts to an operating-system temporary directory. Include concrete evidence paths in the report so a failed or partial run remains inspectable.
+
 ## Exercise the requested surfaces
 
 Derive the key screens and flows from the user's request and the changed iOS surface. For each one:

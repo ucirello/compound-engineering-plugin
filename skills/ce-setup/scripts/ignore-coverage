@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Read-only, fail-closed coverage proof for setup's two root-level offers.
+# Unknown patterns are never taken as proof; a later negation invalidates proof.
+root="$1"; target="$2"
+[ -n "$root" ] && [ -f "$root/.gitignore" ] || exit 1
+case "$target" in
+  .rocketclaw/*) [ ! -f "$root/.rocketclaw/.gitignore" ] || exit 1 ;;
+  .context/*) [ ! -f "$root/.context/.gitignore" ] || exit 1 ;;
+esac
+if (cd "$root" && jj --ignore-working-copy file list "$target" 2>/dev/null | grep -q .); then
+  exit 1 # Ignore rules do not protect already tracked data.
+fi
+awk -v target="$target" '
+  BEGIN { covered = 0 }
+  { sub(/\r$/, "") }
+  /^[[:space:]]*#/ || /^[[:space:]]*$/ { next }
+  /^!/ { covered = 0; next }
+  {
+    rule = $0; sub(/^\//, "", rule)
+    if (rule == target || rule == ".rocketclaw/" && target == ".rocketclaw/config.local.yaml" || rule == ".rocketclaw/*.local.yaml" && target == ".rocketclaw/config.local.yaml") covered = 1
+  }
+  END { exit covered ? 0 : 1 }
+' "$root/.gitignore"

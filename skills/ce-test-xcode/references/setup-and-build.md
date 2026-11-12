@@ -22,6 +22,8 @@ Also stop with the missing prerequisite when Xcode, its command-line tools, a va
 
 ## Discover and launch
 
+Establish the target's absolute workspace root before collecting artifacts. Run any JJ commands with that root as the working directory, not with `-R` as a substitute. Create a run-specific evidence directory beneath `<absolute-workspace-root>/.tmp/rocketclaw/ce-test-xcode/`; direct screenshots, log capture, scratch files, and error/fallback outputs there. If an adapter cannot write there, preserve its diagnostic and report the evidence-storage blocker rather than silently using an operating-system temporary directory.
+
 1. Discover projects and workspaces, then list schemes for the selected project. An empty argument or `current` selects the default or last-used scheme; a named argument selects that scheme. Ask only when no such scheme can be resolved or project discovery itself remains materially ambiguous.
 2. List simulators. Reuse a compatible booted simulator when practical; otherwise prefer an available iPhone 15 Pro and boot it by UUID. Wait until it is ready.
 3. Build the simulator app with the selected project/workspace and scheme. On failure, report the relevant build errors and stop; do not install or launch a missing artifact.
@@ -29,4 +31,4 @@ Also stop with the missing prerequisite when Xcode, its command-line tools, a va
 
 Any failure before the app is visibly launched with log capture running is a setup blocker: preserve its evidence, report it, and stop later stages.
 
-At handoff, retain the project/workspace, scheme, simulator identity, app identity, and log-capture handle needed by `test-and-report.md`.
+At handoff, retain the absolute workspace root, evidence directory, project/workspace, scheme, simulator identity, app identity, and log-capture handle needed by `test-and-report.md`.

@@ -1,6 +1,6 @@
 # Execution Strategy and Native Dispatch
 
-Read this after the engine is resolved and before dispatching any worker or scheduling a parallel wave. `SKILL.md` resolves the route and enforces the checks on in-progress files and writes; the reference for the selected engine holds any engine-specific lock. This file describes how native work is scheduled, packaged, dispatched, and integrated.
+Read this after the engine is resolved and before dispatching any worker or scheduling a parallel wave. `SKILL.md` resolves the route and enforces the checks on in-progress files and writes; the reference for the selected engine holds any engine-specific lock. This file describes how native work is scheduled, packaged, dispatched, and integrated. All isolated paths also follow the creation, existing-isolation, colocation verification, dated identity and safe JJ removal contract in `references/cross-model-execution.md`. Compare the actual JJ commit ID at the verified base, not a Git `HEAD` assumption; unsupported required isolation is a blocker.
 
 A spawned worker or peer starts a new context and does not continue the parent conversation.
 
@@ -38,7 +38,7 @@ Read `references/worker-model.md` before the first native worker dispatch. It de
 
 A generic subagent is one whose whole brief is the prompt you send it. When the host's subagent tool makes you name an agent, use only a name you have seen the host list, and list its agents before the first dispatch if you have not. Pick the plain one that adds no role of its own, which still counts as a generic subagent. Never pick a specialist, such as a reviewer or worker agent, whose own role prompt, output format, or tool limits would replace or narrow your prompt.
 
-Classify a rejected native dispatch by whether a worker launched: correct a pre-launch argument rejection once, leave capacity-limited work queued, and if another launch failure survives correction, execute that unit inline under the same unit packet and verification contract.
+These instructions explicitly request subagents, satisfying a host user-OR-skill delegation exception without another approval. An unconditional prohibition still controls. Classify actual errors separately as permission denial, model-argument rejection, missing tool, nesting-depth exhaustion or capacity. Correct an unsupported pre-launch argument once only when permitted; never retry denials or evade depth limits. Use inline fallback only when the unit/review contract allows it and disclose missing independence/coverage rather than calling it complete. Verify effective depth from loaded OpenCode configuration, not from the package default.
 
 **Fresh worker invariant (native subagent dispatch only):** When dispatching an implementation unit to a native subagent worker, create a new worker context with no prior implementation-unit transcript. Bind the worker handle to exactly that unit: it may continue or recover the same unit, but never receive a different unit. Retire each handle after its unit is integrated; never retask it or retain idle implementation workers for reuse. Invoke an explicit close/release operation only when the active harness exposes one and assigns that lifecycle action to the caller; otherwise completion is the worker's release boundary. Inline execution creates no worker context or handle, so it has nothing to retire.
 
@@ -57,7 +57,7 @@ Give each native worker:
 
 - **Clean committed baseline.** Dispatch the wave from a committed tree, so each worker's output is attributable and revertible by its file set and an aborted wave restores to the baseline.
 - **Exclusive ownership, including hidden write surfaces.** Beyond the disjoint declared files the Safety Check already verified, every hidden write surface (lockfiles, generated artifacts, snapshots, formatter sweeps, package manifests) is either excluded from all workers or assigned to exactly one.
-- **No worker Git operations.** Workers must not `git add`, commit, or otherwise write the index; concurrent index writes corrupt the shared index. The orchestrator stages and commits after the batch.
+- **No worker canonical commits.** Workers edit only assigned paths; the orchestrator inspects JJ changes and commits owned paths after the batch.
 - **Orchestrator-owned verification.** Workers run no mutating verification (full suites, installs, builds that write shared state); a worker may run a single focused unit test only if it touches no shared state. The authoritative run happens after the wave on the integrated tree.
 - **Abort on unowned writes.** A write outside every worker's exclusive set aborts the wave and disables further shared-workspace waves for the run. Restore to the baseline only changes attributable to a worker. A change no worker accounts for may be the user's: preserve it and stop for reconciliation rather than discarding it.
 
@@ -69,7 +69,7 @@ Give each native worker:
 
 **After a parallel inline/subagent batch, the orchestrator integrates; never trust the handoff summary alone:**
 1. Wait for every worker in the batch to finish.
-2. **Inspect the actual tree, not reported paths.** Determine what each worker really changed (`git status`/diff in its workspace or the shared dir). Reported paths are a hint; declared `Files:` are often incomplete, because workers create or modify files the plan didn't anticipate.
+2. **Inspect the actual tree, not reported paths.** Determine what each worker really changed (`jj status` and `jj diff` from its absolute workspace root). Reported paths are a hint; declared `Files:` are often incomplete, because workers create or modify files the plan didn't anticipate.
 3. **Detect real collisions and semantic contention**: compare actual paths plus shared contracts, generated/config surfaces, and verification effects. A clean merge is not proof of compatibility. Preserve or re-run colliding units on the advancing canonical base; never blind-merge them.
 4. **Review, test, commit, and retire each unit in dependency order — the orchestrator owns commits.** Integrate one result, inspect actual scope, run authoritative verification, create its canonical commit, then immediately retire that unit's worker per the fresh worker invariant before considering the next. Never send the retired handle another implementation unit or keep it in an orchestrator-managed idle pool. Clean up an isolated workspace only when the harness assigns that cleanup to the caller and only after proving the unit's work was integrated — never infer manual cleanup commands from the provider name. Revalidate every remaining result against the advancing canonical tree. Capture each worker's returned verification evidence into the run's `verification_evidence` roll-up. If a worker omitted it, re-derive what the tree allows and mark the rest as unverified rather than fabricating a red-before-implementation observation the worker never reported.
 5. Update the task list (progress lives in the commits).

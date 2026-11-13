@@ -4,31 +4,62 @@
 
 **New PR** (full workflow, no existing PR from Step 1, resolve branch and PR state) — if **Stack mode** is active, follow the Submit section of `references/stack-submit.md` instead of `gh pr create`; then report the bottom open non-draft PR URL and continue to the babysit handoff. Otherwise, immediately before creating, **always** re-run `gh pr list --head <branch> --state open --json number,url,isDraft,headRefName,headRepositoryOwner` (branch name only; target the base repo on a fork, per Context). This catches a PR that appeared since Step 1, or one the Step 1 check missed because it came back **unknown**, so you do not open a duplicate. If the list now shows a PR whose `headRepositoryOwner` and `headRefName` match the current head, switch to the existing-PR path. When several forks match, pick by head owner as in Step 1 rather than assuming index 0. If this re-check itself exits non-zero, resolve `gh auth status` or connectivity before creating; do not assume no PR exists. Otherwise apply per "Applying via gh" below using `gh pr create`. Open it as a draft only when the user or the project asks for one; verification this run could not do belongs in the body, not in draft status. Report the URL.
 
-**Existing PR** (full workflow, found in Step 1) — if **Stack mode** is active, still follow the Submit section of `references/stack-submit.md` so the remaining stack layers submit or sync (shipping from the middle of a stack is normal); then report the bottom open non-draft PR URL and continue to the babysit handoff with the posture derived below. Otherwise the new commits are already on the PR from Step 3 (commit and push). Report the PR URL, then ask whether to rewrite the description.
+**Existing PR** (full workflow, found in Step 1) — if **Stack mode** is active, follow `references/stack-submit.md` to sync remaining layers, report the bottom open non-draft PR URL and continue to handoff. Otherwise report the PR URL after Step 3. Already-authorized babysitting includes factual refresh of a stale body with verified results from this run: apply without another preview/approval question, preserving unrelated user-authored content and issue links. An explicit request to apply a description update likewise needs no second approval. Outside those cases, an optional existing-PR rewrite still requires approval, separately from workspace alignment or monitoring.
 
 - **No** — skip the description rewrite and continue to the babysit handoff rule below.
-- **Yes** — run Step 4 (compose the PR title and body) if not already done, then preview and apply (see below).
+- **Yes** — run Step 4 if needed, show the result and apply under that authorization; do not ask again.
 
-**Description update mode, or existing-PR rewrite confirmed** — preview before applying. First compare the proposed title and body with the existing PR. If they are identical, keep the existing title and body and do not call `gh pr edit`. If the only difference is a branding-only delta and the user did not explicitly request that exact branding change, also keep the existing title and body; branding alone never creates apply intent. Otherwise ask: "New title: `<title>` (`<N>` chars). Summary leads with: `<first two sentences>`. Total body: `<L>` lines. Apply?" If declined, the user may pass focus text back for a regenerate; do not apply. If confirmed, apply per "Applying via gh" below using `gh pr edit` and report the URL.
+**Description update or optional rewrite** — compare proposed and existing title/body first; identical content is a no-op. Description-only requests remain draft-only. For an explicit apply request or already-authorized factual maintenance, apply directly without asking again. Otherwise preview: "New title: `<title>` (`<N>` chars). Summary leads with: `<first two sentences>`. Total body: `<L>` lines. Apply?" A confirmed optional rewrite authorizes its application, not a second approval loop. If declined, keep the current description and continue any otherwise-authorized monitoring; regeneration may be offered separately. Never bundle optional rewrite approval with alignment or babysitting permission or make rewriting a prerequisite for handoff.
 
 **Explainer archival** — runs only in the full workflow, when all of these hold: `pr_teaching_archive` is on, the composed body has a `## New concepts` section, and the apply was confirmed (a new-PR create, or an existing-PR rewrite the user accepted). A declined rewrite skips archival entirely, so no unlinked doc commit is left behind. Resolve every path from the repo root gathered in Context, never from the CWD. With two taught concepts, write one file per concept and stage both in the single commit. Resolve `<root>` first:
 
 <!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only (`<repo-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
 - **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
 
 Then run these steps, in order, immediately before the `gh` call:
 
-1. `git check-ignore -q <root>/explainers/YYYY-MM-DD-<concept-slug>.md` (from the repo root) — the check works on paths that do not exist yet. If the path is ignored, print a one-line warning and skip archival entirely, writing nothing (never `git add -f`).
+1. Check the intended path against all applicable repository ignore rules using local ignore-pattern processing, including repository exclusions, without invoking Git. If ignored or ignore status cannot be established reliably, warn and skip archival without writing; never force tracking.
 2. Write the file (create the directory if needed) with YAML frontmatter `title`, `date`, `input_shape: concept`, `subject`, and the teaching content. If the file already exists from a prior run, overwrite it.
-3. `git add` those file(s) only (never `-A`) and commit with `docs(explainer): teach <concept>[, <concept>]`. Re-apply the **Project publishing gate** to the resulting commit state, then push. If the commit reports nothing to commit, the doc is already committed from a prior run — keep the link and continue.
+3. Before composing the archival change message, read and follow the complete runtime message standards and labeled Go source excerpts in `references/commit-and-push.md`: read the full Go guide and compare several full JJ descriptions at the actual verified task history head; local syntax wins. The message must describe the taught concepts without fixed prefix/subject syntax. Commit only those owned paths with `jj commit <explainer-paths> -m "<message composed from the standards above>"`. Re-apply the **Project publishing gate**, verify the intended head bookmark and push through JJ. If unchanged, verify the docs are already committed before retaining links.
 4. Add a head-branch blob URL for each doc into the `## New concepts` section before applying. Build the URL for the repo's actual host — for example `gh browse -n -b <head-branch> -- <path>` prints the link on whatever host `gh` targets, GitHub Enterprise included. Do not hardcode `github.com`, or the link 404s on GHE.
 
 If the doc write, commit, or push fails, warn and continue to PR creation without the link. Never leave the flow stopped between the commit and the PR.
+
+### Archival message source guidance
+
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards.
+
+Read the full guide at runtime and compare several complete recent subjects and bodies at the actual verified task history head from the absolute target workspace root, using `jj log --no-graph -r '::<verified-history-head>' -n 10 -T 'description ++ "\n"'`. Compare prefixes/packages, casing, tense, separation, wrapping and reference placement. Repository-local instructions and syntax always win; apply compatible Go quality guidance. With no history use explicit instructions and Go guidance without inventing a precedent.
+
+Verbatim Go source example and guidance — illustrative, **not** a mandatory repository template:
+
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+
+```text
+net/http: handle foo when bar
+
+[longer description here in the body]
+
+Fixes #12345
+```
+
+> Notably, for the subject (the first line of description):
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+
+> For the body (the rest of the description):
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
 
 **User-runnable invocation rendering.** For the output handoffs below, default to `/ce-explain <name>`. Use `$ce-explain <name>` only when the active host is Codex or explicitly documents dollar-prefixed skill invocation. Render only the invocation as inline code and output one form only.
 
@@ -37,9 +68,9 @@ If the doc write, commit, or push fails, warn and continue to PR creation withou
 **Resolve the standing opt-out before applying the handoff rule below.** Read `auto_babysit` by the rule here, at the handoff. A config read from an earlier step does not carry over: a run that reaches the handoff without having read the key hands off against the user's standing choice, and a compacted run is the ordinary way that happens.
 
 <!-- ce-config-layers:start -->
-**Resolve ordinary CE yaml keys from the two repo files.**
+**Resolve ordinary yaml keys from the two repo files.**
 
-- **Read** `<repo-root>/.compound-engineering/config.local.yaml`, then `config.yaml` (`<repo-root>` = `git rev-parse --show-toplevel`). Missing files are skipped. Gitignore does not change resolution.
+- **Read** `<repo-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<repo-root>` = `jj workspace root`). Missing files are skipped. Ignore rules do not change resolution.
 - **Win** with the first active (non-commented) value. For scalars, empty is unset; an invalid value continues to the next layer, then the skill default. For lists and maps, a present key — including an empty list or map — replaces the whole key.
 - **Do not** use this rule for `docs_root` — that key is `config.yaml` only.
 <!-- ce-config-layers:end -->
@@ -47,6 +78,8 @@ If the doc write, commit, or push fails, warn and continue to PR creation withou
 Babysit is off only when the winning active value is exactly `false`; a missing key or any other value leaves the default **on**. A handoff the user opted out of is a **successful terminal for this run**, not a blocked one — report the PR URL, say in one line that babysit was skipped by standing config, and stop.
 
 **Babysit handoff — default on; completion gate.** After a newly-created PR, a successful stack submit, or new commits on an existing open PR, this run is not done until `ce-babysit-pr` owns follow-on or an explicit skip below applies. Reporting the PR URL alone is not success. Announce the automatic handoff in one non-blocking line, then invoke the skill through the host's normal skill-invocation mechanism; never ask yes/no. A request for the PR link, a report back, or no merge is not a skip: `ce-babysit-pr` never merges unless asked to land a stack.
+
+Before handoff verify the exact pushed PR head repository, bookmark, remote and commit. A clean workspace may be aligned to that exact head with native JJ without another approval; an empty `@` directly above it is already aligned. Starting or re-arming authorized monitoring also needs no additional yes/no. Preserve unrelated tracked, ignored and untracked work. Dirty/conflicted state, uncertain targets, denied permissions or unknown push authority follow the safe stop/decision path, never reset/discard or a guessed target. Respect higher-priority permissions, watch boundaries and opt-outs. Optional rewrite refusal never blocks this otherwise-authorized handoff.
 
 After a stack submit, hand off the bottom open non-draft PR with the derived `posture:stack-ready`, or `posture:stack-land` when the user explicitly asked to land, plus stack-wide scope when a pipeline submitted the stack. Report that ownership transfer so an outer orchestrator does not start a second bare babysit on the current branch.
 
@@ -74,9 +107,10 @@ A draft-only stack submit is a hard residual before babysit when babysit is on.
 The body **must** be written to a temp file and passed via `--body-file <path>`. Never use `--body-file -`, stdin pipes, heredoc-to-stdin, or `--body "$(cat ...)"` — wrappers and stdin handling can silently produce an empty PR body while `gh` still exits 0 and returns a URL.
 
 ```bash
-BODY_FILE=$(mktemp "${TMPDIR:-/tmp}/ce-pr-body.XXXXXX") && cat >> "$BODY_FILE" <<'__CE_PR_BODY_END__'
+mkdir -p "$workspace_root/.tmp"
+BODY_FILE=$(mktemp "$workspace_root/.tmp/pr-body.XXXXXX") && cat >> "$BODY_FILE" <<'__PR_BODY_END__'
 <the composed body markdown goes here, verbatim>
-__CE_PR_BODY_END__
+__PR_BODY_END__
 ```
 
 The quoted sentinel keeps `$VAR`, backticks, and any literal `EOF` inside the body from being expanded.
@@ -84,8 +118,8 @@ The quoted sentinel keeps `$VAR`, backticks, and any literal `EOF` inside the bo
 For `<TITLE>`: substitute verbatim. If it contains `"`, `` ` ``, `$`, or `\`, escape them or switch to single quotes.
 
 ```bash
-gh pr create --title "<TITLE>" --body-file "$BODY_FILE"   # new PR
-gh pr edit   --title "<TITLE>" --body-file "$BODY_FILE"   # existing PR
+(cd "$workspace_root" && GIT_DIR=$(jj git root) gh pr create --title "<TITLE>" --body-file "$BODY_FILE")   # new PR
+(cd "$workspace_root" && GIT_DIR=$(jj git root) gh pr edit "<verified-pr-url>" --title "<TITLE>" --body-file "$BODY_FILE")   # existing PR
 ```
 
 **Screenshots.** When the body references local images from `references/visual-evidence.md`, create the body file in the images' directory so each `./<name>.png` reference resolves: `BODY_FILE=$(mktemp "<images-dir>/ce-pr-body.XXXXXX")`. Add one `--attach "<images-dir>/<name>.png#<alt text>"` per image to the create or edit command. `gh` uploads each file and rewrites the matching reference to its GitHub URL.

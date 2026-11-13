@@ -1,3 +1,6 @@
+# Historical managed-line inventory for config-refresh.py, not active setup
+# instructions or the generated configuration template. Retired attribution
+# lines are recognized by exact SHA256 fingerprints in config-refresh.py.
 #
 #     effort: high
 #     model: "gpt-5.6"
@@ -33,7 +36,6 @@
 # --- Fable elevation (Claude Code only) ---
 # --- Model elevation ---
 # --- Output format ---
-# --- PR branding (ce-commit-push-pr) ---
 # --- PR concept teaching (ce-commit-push-pr) ---
 # --- Product pulse ---
 # --- Review subagent model ---
@@ -54,10 +56,10 @@
 # Codex and Claude at high, native Grok at xhigh, Antigravity at high (it takes
 # Codex and Claude at high, native Grok at xhigh, OpenCode with no variant.
 # Codex and Claude at high, native Grok at xhigh. OpenCode and Cursor routes
-# Compound Engineering -- local config
-# Compound Engineering -- repo config
-# Copy to .compound-engineering/config.local.yaml in your project root.
-# Copy to .compound-engineering/config.yaml in your project root (team defaults).
+# RocketClaw -- local config
+# RocketClaw -- repo config
+# Copy to .rocketclaw/config.local.yaml in your project root.
+# Copy to .rocketclaw/config.yaml in your project root (team defaults).
 # Cross-harness: setting a key means every harness you run these skills in will
 # Cursor routes take no effort. A map in config.local.yaml replaces this one.
 # Declared, never scanned: an entry names a source (repo-relative path,
@@ -67,14 +69,13 @@
 # Feedback sources swept by /ce-sweep. Generic key: other skills may read this list.
 # HTML styling. CLI arguments override these defaults; pipeline contexts
 # HTML styling. Precedence: a format request in your prompt for that run wins
-# New PRs include a generic Compound Engineering badge by default. Set false to
-# Optional override: .compound-engineering/config.local.yaml, same keys.
+# Optional override: .rocketclaw/config.local.yaml, same keys.
 # Ordinary keys: local wins when set, then this file, then the skill default.
 # Per-skill output format default. Selects the exclusive format the artifact
 # Preferred peer for ce-doc-review and ce-code-review when their conditional
 # Prescriptive domain knowledge folders that planning reads and cites.
 # Reasoning effort for the external worker, per harness. Each value is one of
-# Relocate every CE-written artifact folder (solutions, plans, ideation,
+# Relocate every generated artifact folder (solutions, plans, ideation,
 # Rules are top-level .md files with title + applies_when; subfolders are storage.
 # Send only the reasoning-heavy step of /ce-plan (interpret research, then author
 # Set this only in this tracked file so every clone and worktree share one
@@ -88,7 +89,7 @@
 # Unlike every other setting here, an unusable value does NOT fall through to the
 # When a PR introduces a concept new to the codebase, the generated PR
 # When on, /ce-plan and /ce-brainstorm dispatch their reasoning-heavy step (plan
-# Where to put it: prefer the TRACKED `.compound-engineering/config.yaml` (not
+# Where to put it: prefer the TRACKED `.rocketclaw/config.yaml` (not
 # Written automatically when you decline the Spiral setup offer in /ce-promote.
 # `auto`. Conversation instructions still win, and the skills skip routes that
 # `cross_model_model` and `cross_model_effort` pin the model and reasoning
@@ -107,7 +108,7 @@
 # and archival. Archival additionally writes the explainer to docs/explainers/
 # and links it from the PR (full-workflow runs only; override per run with
 # and which layer supplied it.
-# and writes; CE never falls back to reading `docs/`.
+# and write; skills never fall back to reading `docs/`.
 # archive:on|off). Note: this file is gitignored and per-checkout -- fresh
 # archive:on|off). Ordinary cascade: local, then this file, then the skill default.
 # argument `setup` or `reconfigure` to edit interactively.
@@ -122,7 +123,7 @@
 # brainstorm_model: fable        # model alias for approach generation; candidate preference when a Bake-off runs (no default)
 # brainstorm_output: html        # md | html (default: md)
 # brainstorm_use_fable: true     # true | false (default: false)
-# byte-identical to today. A configured root becomes the sole location CE reads
+# byte-identical to today. A configured root becomes the sole location skills read
 # cannot establish the required host/peer distinction.
 # cannot honor skips the pass with a stated reason -- never substituted.
 # ce-code-review and ce-doc-review spawn on the same host (reviewers, checks,
@@ -141,13 +142,13 @@
 # cross_model_peer: codex          # codex | claude | grok | cursor | composer
 # cross_model_peer: codex          # codex | claude | grok | cursor | composer | opencode
 # cross_model_review_mode: off   # auto | off (default: auto)
-# default -- CE stops with an error so a typo can't silently write artifacts into
+# default -- stop with an error so a typo can't silently write artifacts into
 # default. Composer is a model
 # description gains a "New concepts" section teaching it. The section toggle is
 # disable-model-invocation) always force `md`.
 # docs_root fails closed on an unusable value.
 # docs_root is repo layout -- set it only here; local docs_root is ignored.
-# docs_root: .compound-engineering/artifacts   # repo-relative dir (default: docs)
+# docs_root: .rocketclaw/artifacts   # repo-relative dir (default: docs)
 # effort of whichever peer target runs; unset keeps the skills' editorial
 # effort. A map in config.local.yaml replaces this one.
 # elevation.
@@ -179,7 +180,6 @@
 # none. A value the peer
 # none|low|medium|high|xhigh|max as each model lists them. Cursor routes take no
 # of each skill -- dialogue, research, orchestration -- stays on your session
-# omit it (per-run override: branding:on|off). Existing PR rewrites preserve
 # on your session model and the run says so. Invalid/commented/missing -> no
 # only that confirmation -- genuine blocking questions and the post-plan menu
 # opt out standing (per-run override: the babysit:off token).
@@ -201,7 +201,6 @@
 # plan_output: html              # md | html (default: md)
 # plan_skip_scoping_confirm: true   # true | false (default: false)
 # plan_use_fable: true           # true | false (default: false)
-# pr_branding: false             # true | false (default: true; new PRs only)
 # pr_teaching_archive: true      # true | false (default: false; full-workflow runs only)
 # pr_teaching_section: false     # true | false (default: true)
 # provider when their conditional cross-model pass activates. `off` skips that
@@ -238,7 +237,7 @@
 # sweep_ack_cap: 25                                 # max acks per source per run before the circuit breaker
 # sweep_lease_ttl_minutes: 60                       # single-writer lease staleness threshold
 # sweep_shared_branch: false                        # true: push-gated lease for shared-docs-branch topology
-# sweep_state_path: docs/feedback-sweep/state.yml   # committed (multi-agent) or /tmp path (solo)
+# sweep_state_path: docs/feedback-sweep/state.yml   # committed (multi-agent) or .tmp path (solo)
 # switch. Per-skill so you can enable one without the other. You can also just
 # take no effort. A map in config.local.yaml replaces this one.
 # task/session/project instructions and LFG's provenance-bearing binding may
@@ -251,7 +250,6 @@
 # the plan) and /ce-brainstorm (generate approaches) to a model you name. The rest
 # the single gate: off disables judgment, the section, the /ce-explain offer,
 # the team's. Git sources require ref (tag or sha reproduce exactly; a branch
-# their current branding and never add or refresh it on their own.
 # this gitignored local file) so the setting propagates to every clone and
 # to watch CI + incoming review and drive the PR toward merge-ready. Set false to
 # validators), per harness. Only the current harness's entry applies; a field
@@ -298,3 +296,5 @@
 # elevation rather than silently using a different effort than configured. If
 # the host's native subagent tool takes no effort setting, the step still runs
 # there and the run says the configured effort was not applied.
+# Historical template-line recognition data for config-refresh.py, not active
+# dispatch instructions. Provider/harness spellings are compatibility inputs.

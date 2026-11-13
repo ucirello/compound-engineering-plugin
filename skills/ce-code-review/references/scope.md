@@ -6,22 +6,36 @@ Read this at Stage 1. It defines how to resolve scope on every invocation path a
 
 Compute the diff range, file list, and diff. Minimize permission prompts by combining into as few commands as possible.
 
+Resolve absolute `workspace_root` with `jj workspace root`. Every command in
+this skill runs with cwd set to that target root: shell
+`(cd "$workspace_root" && jj ...)`, Python `cwd=workspace_root`.
+Every repository-scoped `gh` example uses
+`(cd "$workspace_root" && GIT_DIR=$(jj git root) gh ...)`, including examples
+abbreviated as `gh ...`. Never invoke the Git executable, even for fallback,
+history or transport. See https://docs.jj-vcs.dev/latest/git-command-table/
+and https://docs.jj-vcs.dev/latest/cli-reference/ .
+Validate command status and exactly one resolved commit for each endpoint;
+stop on ambiguity instead of guessing.
+
 **If `base:` argument is provided (fast path):**
 
 The caller already knows the diff base. Skip all base-branch detection, remote resolution, and merge-base computation. Use the provided value directly:
 
 ```
 BASE_ARG="{base_arg}"
-BASE=$(git merge-base HEAD "$BASE_ARG" 2>/dev/null) || BASE="$BASE_ARG"
+BASE=$(jj log --no-graph -r "$BASE_ARG" -T 'commit_id ++ "\n"')
 ```
 
 Then produce the same output as the other paths:
 
 ```
-echo "BASE:$BASE" && echo "FILES:" && git diff --name-only $BASE && echo "DIFF:" && git diff -U10 --irreversible-delete $BASE && echo "UNTRACKED:" && git ls-files --others --exclude-standard
+HEAD=$(jj log --no-graph -r @ -T 'commit_id ++ "\n"')
+jj diff --from "$BASE" --to "$HEAD" --name-only
+jj diff --from "$BASE" --to "$HEAD" --git --context 10
+jj status
 ```
 
-This path works with any ref — a SHA, `origin/main`, a branch name. Callers reviewing the current checkout should pass explicit `base:` when auto-detection is unnecessary. **Do not combine `base:` with a PR number or branch target.** If both are present, stop with an error: "Cannot use `base:` with a PR number or branch target — `base:` implies the current checkout is already the correct branch. Pass `base:` alone, or pass the target alone and let scope detection resolve the base."
+This path accepts any single verified JJ revision, commit ID or bookmark (`main@origin`, for example). Preserve that exact supplied base, without merge-base substitution. **Do not combine `base:` with a PR number or branch target.** If both are present, stop with the existing conflicting-target error.
 
 **If a PR number or GitHub URL is provided as an argument:**
 
@@ -30,7 +44,7 @@ Do **not** check out the PR branch. Scope comes from GitHub read APIs plus optio
 **Skip-condition pre-check.** Before scope detection, run a PR-state probe:
 
 ```
-gh pr view <number-or-url> --json state,title,body,files
+GIT_DIR=$(jj git root) gh pr view <number-or-url> --json state,title,body,files
 ```
 
 Apply skip rules in order:
@@ -38,77 +52,87 @@ Apply skip rules in order:
 - `state` is `CLOSED` or `MERGED` -> stop with reason `PR is closed/merged; not reviewing.`
 - **Trivial-PR judgment**: spawn a lightweight sub-agent on the platform's cheapest capable model when a known override exists; otherwise omit the model override and inherit. Read `references/subagent-model.md` before this spawn; in Codex it replaces this tier. Give it the PR title, body, and changed file paths. The agent's task: "Is this an automated or trivial PR that does not warrant a code review? Consider: dependency lock-file or manifest-only bumps, automated release commits, chore version increments with no substantive code changes. When in doubt, answer no — false negatives (skipped reviews that should have run) are more costly than false positives (unnecessary reviews)." If the judgment returns yes: stop with reason `PR appears to be a trivial automated PR; not reviewing. Run without a PR argument to review the current branch, or pass base:<ref> if review is intended.`
 
-If the user's or project's active instructions or the live prompt name a model for this subagent, use that model instead of the default tier above. They can name it by the subagent's tier, by its prompt-asset name, or for the subagents being dispatched. Without such an instruction, a model configured for this subagent's role takes precedence over the default tier.
+Treat user/project role models and role configuration as desired intent, not permission to override the host. Apply `subagent-model.md`: under a user-OR-skill rule this skill requests the trivial-PR check, omit forbidden model arguments, classify actual depth/denial/capacity/model errors, and if no check can run do not assume the PR is trivial.
 
 When any skip rule applies, stop without dispatching reviewers. **Default mode:** emit the reason as plain text. **`mode:agent`:** emit JSON only — `{"status":"skipped","reason":"<same message>"}` — so programmatic callers can parse the outcome. **Standalone**, **`base:`**, and **branch-remote** paths are unaffected. **Draft PRs are reviewed normally.**
 
 If no skip rule applies, fetch PR metadata **without checkout**:
 
 ```
-gh pr view <number-or-url> --json title,body,baseRefName,headRefName,headRefOid,isCrossRepository,url,files,reviews,comments --jq '{title, body, baseRefName, headRefName, headRefOid, isCrossRepository, url, files: [.files[].path], hasPriorComments: ((.reviews | map(select(.state != "APPROVED" or .body != "")) | length) > 0 or (.comments | length) > 0)}'
+GIT_DIR=$(jj git root) gh pr view <number-or-url> --json title,body,baseRefName,headRefName,headRefOid,isCrossRepository,url,files,reviews,comments --jq '{title, body, baseRefName, headRefName, headRefOid, isCrossRepository, url, files: [.files[].path], hasPriorComments: ((.reviews | map(select(.state != "APPROVED" or .body != "")) | length) > 0 or (.comments | length) > 0)}'
 ```
 
-Set `BASE:` to `pr:<number-or-url>` (logical marker — not a git SHA). Set `UNTRACKED:` from `git ls-files --others --exclude-standard` on the **current** checkout (usually empty during PR-remote review).
+Set `BASE:` to `pr:<number-or-url>` (logical marker, not a revision). Obtain untracked paths from `jj status` on the current workspace; never auto-track excluded files.
 
 **PR scope mode.** Classify as **`local-aligned`** only when **all** of these hold; otherwise use **`pr-remote`**. A matching branch name alone is not enough — a fork PR or a stale local branch can share a name with the PR head while pointing at unrelated code, and trusting the name would diff and inspect the wrong tree.
 
-1. `git rev-parse --abbrev-ref HEAD` equals `headRefName`.
+1. A verified local JJ bookmark for the current ancestry matches `headRefName` (inspect `jj bookmark list` and `jj log`); no guessed current branch.
 2. The PR is **not** cross-repository (`isCrossRepository` is false).
-3. The PR head commit is contained in the local checkout: `git merge-base --is-ancestor <headRefOid> HEAD` exits 0. This confirms the working tree actually carries the PR head (allowing unpushed local fixes layered on top) rather than an unrelated same-named branch.
+3. `jj log --no-graph -r '<headRefOid> & ::@' -T 'commit_id ++ "\n"'` returns exactly the verified PR head. This allows local fixes and an empty `@` above that head, but excludes unrelated same-named bookmarks.
 
-- **`local-aligned`** — all three checks pass. Local Read/Grep/git blame against workspace files are valid for PR changed paths.
+- **`local-aligned`** — all three checks pass. Local Read/Grep/JJ annotation against workspace files are valid for PR changed paths.
 - **`pr-remote`** — any check fails. The working tree is **not** the PR head; workspace file contents for changed paths may be stale or unrelated.
 
 **Diff by scope mode** (do not mix remote and local diffs — contradictory hunks cause false positives):
 
-- **`local-aligned`:** Resolve `<resolved-base-ref>` from `baseRefName` (fetch if needed). Compute `BASE=$(git merge-base HEAD <resolved-base-ref>)`, then set `FILES:` from `git diff --name-only $BASE` and `DIFF:` from `git diff -U10 --irreversible-delete $BASE` (includes committed, staged, and unstaged changes on the PR branch). Do **not** call `gh pr diff` or append remote hunks — when unpushed fixes exist, the local tree is canonical. Note in Coverage: `scope: local-aligned (PR; local tree diff)`.
+- **`local-aligned`:** Resolve the verified base bookmark, fetching with `jj git fetch --remote <verified-base-remote> --branch <baseRefName>` if needed. Resolve exactly one `heads(::@ & ::<resolved-base-ref>)` as BASE, then capture `@` as HEAD. Use `jj diff --from "$BASE" --to "$HEAD" --name-only` and `jj diff --from "$BASE" --to "$HEAD" --git --context 10`. Do not mix remote hunks with this canonical local tree diff. Note `scope: local-aligned (PR; local tree diff)` in Coverage.
 - **`pr-remote`:** Set `FILES:` from the PR `files` array. Set `DIFF:` from `gh pr diff <number-or-url> --color=never`. If `gh pr diff` fails, stop with an actionable error — do not fall back to checkout. Then drop deleted-file bodies from that saved output the way `--irreversible-delete` does on the local paths, with `awk '/^diff --git /{del=0} del && !/^index /{next} /^deleted file mode /{del=1} {print}'`; never pipe `gh pr diff` straight into the filter, because the pipe hides its failure.
 
 When **`pr-remote`**, before Stage 4:
 
-1. Best-effort fetch PR head without checkout: `git fetch --no-tags origin <headRefName>:refs/review/pr-<number>-head` (substitute PR number from metadata).
-2. Set `PR_HEAD_REF=refs/review/pr-<number>-head` for reviewers and validators only when `git rev-parse refs/review/pr-<number>-head` equals the metadata `headRefOid`. A successful fetch does not prove the ref is the PR head: on a cross-repository PR, `origin` can carry an unrelated branch with the same name, and the PR can move between the metadata call and the fetch. When the fetch fails or the OID differs, omit `PR_HEAD_REF` and note which in Coverage — reviewers must rely on diff hunks only.
-3. Best-effort fetch the PR base without checkout: `git fetch --no-tags origin <baseRefName>`. When it succeeds, resolve a concrete ref with `git rev-parse FETCH_HEAD` and set `PR_BASE_REF` to that SHA — a **real git base ref** reviewers and validators use for file-level git diffs (e.g. `data-migration-reviewer` runs `git diff <PR_BASE_REF> -- db/schema.rb`/`structure.sql`). The `pr:<number-or-url>` logical marker in `BASE:` stays the scope marker; `PR_BASE_REF` is the diffable base. When the fetch fails, omit `PR_BASE_REF` and note in Coverage — schema-drift and other git-diff checks fall back to diff hunks only and must **not** assume `main`.
+1. Resolve the actual head repository and a verified remote; fetch with `jj git fetch --remote <head-remote> --branch <headRefName>` without editing the working copy. Do not assume origin owns a fork's head.
+2. Resolve the fetched remote bookmark to one commit ID with `jj log --no-graph -r '<headRefName>@<head-remote>' -T 'commit_id ++ "\n"'`. Set `PR_HEAD_REF` only if it equals metadata `headRefOid`; otherwise omit it and record diff-hunks-only coverage.
+3. Fetch the verified base repository/bookmark with `jj git fetch`. Resolve the unique common ancestor of the fetched base and verified head as `PR_BASE_REF`, retaining the PR's exact range. If unavailable or ambiguous, omit it and report degraded mechanics; never guess main, use a different ref, or compare to the local tree. `BASE:` remains the logical PR marker.
 4. Include `<pr-scope-mode>pr-remote</pr-scope-mode>` and, when set, `<pr-head-ref>...</pr-head-ref>` and `<pr-base-ref>...</pr-base-ref>` in the Stage 4 review context bundle.
 
-Reviewers and Stage 5b validators in **`pr-remote`** mode must **not** Read/Grep workspace paths for files in `FILES:`. Inspect via `git show <PR_HEAD_REF>:<path>` when `PR_HEAD_REF` is set, otherwise use only the provided diff hunks. **`local-aligned`** uses normal workspace inspection.
+Reviewers and validators in remote scope must not Read/Grep workspace paths for changed files. Use `jj file show -r <verified-head> <path>` or provided hunks; local-aligned uses normal workspace inspection.
 
 **If a branch name is provided as an argument:**
 
 Substitute the provided branch name as `<branch>`. Do **not** check out `<branch>`.
 
-If `git rev-parse --abbrev-ref HEAD` equals `<branch>`, use the **standalone (current branch)** path below — same tree, explicit branch name; do not use remote-only diff.
+If the verified bookmark target is in current ancestry and represents this working copy's task, use standalone; a matching name alone is insufficient.
 
 Otherwise diff the remote/local ref **without checkout**:
 
 1. Try `gh pr view <branch> --json baseRefName,url,headRefName` — if a PR exists, prefer the **PR number/URL path** above (same remote diff rules).
-2. Else resolve `<branch>` as `origin/<branch>` or `<branch>` after `git fetch --no-tags origin <branch>` when needed.
-3. Resolve default base branch (same logic as standalone). Compute `BASE=$(git merge-base <base-ref> <branch-ref>)` and `git diff -U10 --irreversible-delete $BASE <branch-ref>`.
+2. Else resolve the verified remote bookmark `<branch>@<remote>` or local bookmark, fetching with `jj git fetch --remote <remote> --branch <branch>` when needed.
+3. Resolve the actual default base from repository/PR metadata. Capture the unique `heads(::<base-ref> & ::<branch-ref>)` as BASE and the verified branch commit as HEAD. Compare those exact IDs with `jj diff --from "$BASE" --to "$HEAD" --git --context 10`.
 4. If `<branch-ref>` cannot be resolved locally, stop: "Cannot diff branch `<branch>` without checkout. Check out that branch, pass its open PR URL/number, or review the current branch with `base:`."
 
-On success for remote branch diff, set **branch-remote scope**. The working tree is **not** `<branch>`. Include `<pr-scope-mode>branch-remote</pr-scope-mode>` and `<branch-head-ref><branch-ref></branch-head-ref>` in the Stage 4 review context bundle. Reviewers and Stage 5b validators must **not** Read/Grep workspace paths for files in `FILES:`. Inspect via `git show <branch-ref>:<path>` or diff hunks only.
+On success set branch-remote scope, passing the verified head in `<branch-head-ref>` and mode in `<pr-scope-mode>`. Reviewers and validators use `jj file show -r <branch-ref> <path>` or diff hunks, never changed workspace paths.
 
 Produce:
 
 ```
-echo "BASE:$BASE" && echo "FILES:" && git diff --name-only $BASE <branch-ref> && echo "DIFF:" && git diff -U10 --irreversible-delete $BASE <branch-ref> && echo "UNTRACKED:" && git ls-files --others --exclude-standard
+jj diff --from "$BASE" --to "$HEAD" --name-only
+jj diff --from "$BASE" --to "$HEAD" --git --context 10
+jj status
 ```
 
 **If no argument (standalone on current branch):**
 
-Apply the same base-detection logic as branch mode above, using the current branch (i.e., `gh pr view --json baseRefName,url` with no argument defaults to the current branch).
+Apply branch-mode base detection using the verified task bookmark/PR identity,
+not the Git backend's current branch. Call repository-scoped
+`GIT_DIR=$(jj git root) gh pr view <verified-task-bookmark> --json baseRefName,url`
+from the absolute root, or use explicit task/repository default-base metadata.
+An empty `@` above the pushed task head still belongs to that task when the
+bookmark/ancestry is verified. If task identity is ambiguous, do not guess a
+backend HEAD or default main.
 
-If no base can be resolved, **stop**. Do not fall back to `git diff HEAD` — a standalone review without the base would only show uncommitted changes and silently miss all committed work on the branch.
+If no unique verified base can be resolved, **stop**. Do not fall back to `jj diff -r @`: it would miss committed task work.
 
 On success, produce the diff:
 
 ```
-echo "BASE:$BASE" && echo "FILES:" && git diff --name-only $BASE && echo "DIFF:" && git diff -U10 --irreversible-delete $BASE && echo "UNTRACKED:" && git ls-files --others --exclude-standard
+jj diff --from "$BASE" --to "$HEAD" --name-only
+jj diff --from "$BASE" --to "$HEAD" --git --context 10
+jj status
 ```
 
-Using `git diff $BASE` (without `..HEAD`) diffs the merge-base against the working tree, which includes committed, staged, and unstaged changes together.
+Capture `@` to HEAD after snapshotting, so the exact base-to-working-copy range includes committed and current tracked task changes. Record both IDs and reuse them throughout review.
 
-**Whole-file deletions carry no body.** `--irreversible-delete` keeps each deleted file's `deleted file mode` header and path and leaves out its old content, so reviewers do not read code the change removes. A reviewer that needs a deleted body reads it from the review base, as `references/diff-scope.md` states.
+**Whole-file deletions carry no body in the reviewer prompt.** Save the full exact diff for mechanical facts, then omit deleted hunk bodies from the presentation copy (retain headers/path/mode). The awk filter above applies to saved JJ Git-format output too. Never use the filtered copy for line counts. Read needed old bodies from the captured base with `jj file show`.
 
 **Untracked file handling:** Always inspect `UNTRACKED:`. Untracked paths are out of scope unless staged. When non-empty, list excluded files in Coverage and continue on tracked changes only — never stop or prompt.
 
@@ -117,7 +141,7 @@ Using `git diff $BASE` (without `..HEAD`) diffs the merge-base against the worki
 Derive deterministic facts once with `scripts/review-scope.py` from this skill's directory. The helper validates the endpoints, counts changed lines, derives path classes, and reports floors. It never awards lite. Do not reproduce those mechanics in prose or estimate them from diff hunks. The invocation below is the helper's contract: run it directly rather than inspecting the script or probing its `--help`, unless it actually fails with an incompatibility.
 
 Set `SCOPE_MODE` to the Stage 1 scope mode and set `DIFF_A`/`DIFF_B` to its two endpoints:
-- **`local-aligned` / standalone / `base:`** — `DIFF_A="$BASE"` (a real SHA/ref), `DIFF_B` empty (diffs base vs working tree).
+- **`local-aligned` / standalone / `base:`** — `DIFF_A="$BASE"`, `DIFF_B="$HEAD"` (both captured commit IDs, including snapshotted working-copy changes).
 - **`pr-remote` / `branch-remote`** — `DIFF_A=<PR_BASE_REF>`, `DIFF_B=<PR_HEAD_REF>` (or `<branch-head-ref>`) — the fetched refs from Stage 1.
 
 ```bash
@@ -126,11 +150,11 @@ PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c 
 if [ "$SCOPE_MODE" = "pr-remote" ] || [ "$SCOPE_MODE" = "branch-remote" ]; then
   "$PY" "$SKILL_DIR/scripts/review-scope.py" --base "${DIFF_A:-}" --head "${DIFF_B:-}" --docs-root "<root>";
 else
-  "$PY" "$SKILL_DIR/scripts/review-scope.py" --base "$DIFF_A" --docs-root "<root>";
+  "$PY" "$SKILL_DIR/scripts/review-scope.py" --base "$DIFF_A" --head "$DIFF_B" --local-scope --docs-root "<root>";
 fi
 ```
 
-Remote scope always passes both endpoint flags, even when a best-effort fetch left one value empty; the helper then refuses to compute rather than comparing the fetched base to the unrelated local worktree. Load the JSON result. `hard_block_full` is a floor for the Review depth gate in `references/modes-and-output.md`; it covers the named hard-block classes, uncounted files, and a `size_band` of `large` (executable non-test changed lines at the full floor). `silent_pass_classes` names guards for consequence assessment under that gate, not a depth floor. Neither awards lite, and a count below the floor decides nothing on its own. Whole-file deletions are not in any of the line counts above: the helper lists them in `deleted_files`, counts their executable non-test lines in `deleted_exec_nontest_lines`, and bands that count in `deleted_band` (`none`, `small`, or `large`), which the gate reads. `signals` are path heuristics, not selection decisions and not a lite block. After this stage, apply that gate before reading any later reference. On the full spine, Stage 3 still judges content-based risk such as auth, payments, mutation, external I/O, concurrency, and process execution. Use `test_files_changed`, `agent_surface`, `has_learnings_corpus`, and `declared_packs` as inputs to the conditions that select generic reviewers, not as automatic spawn decisions. `declared_packs` reports whether the local CE config names any Compound Pack, read from the config alone (nothing is resolved, so `pack_roots` is always 0); the learnings selection rule in `references/persona-catalog.md` decides what that fact selects on the full spine, and `references/depth-paths.md` decides how the lite and focused paths use it. It describes the local checkout, so the helper evaluates it only in local scope: in remote scope it is `null` and no resolver runs. In local scope, `null` means the helper could not tell; read the config's `packs:` key yourself.
+Remote scope always passes both endpoint flags, even when a best-effort fetch left one value empty; the helper then refuses to compute rather than comparing the fetched base to the unrelated local worktree. Load the JSON result. `hard_block_full` is a floor for the Review depth gate in `references/modes-and-output.md`; it covers the named hard-block classes, uncounted files, and a `size_band` of `large` (executable non-test changed lines at the full floor). `silent_pass_classes` names guards for consequence assessment under that gate, not a depth floor. Neither awards lite, and a count below the floor decides nothing on its own. Whole-file deletions are not in any of the line counts above: the helper lists them in `deleted_files`, counts their executable non-test lines in `deleted_exec_nontest_lines`, and bands that count in `deleted_band` (`none`, `small`, or `large`), which the gate reads. `signals` are path heuristics, not selection decisions and not a lite block. After this stage, apply that gate before reading any later reference. On the full spine, Stage 3 still judges content-based risk such as auth, payments, mutation, external I/O, concurrency, and process execution. Use `test_files_changed`, `agent_surface`, `has_learnings_corpus`, and `declared_packs` as inputs to the conditions that select generic reviewers, not as automatic spawn decisions. `declared_packs` reports whether the local RocketClaw config names any Compound Pack, read from the config alone (nothing is resolved, so `pack_roots` is always 0); the learnings selection rule in `references/persona-catalog.md` decides what that fact selects on the full spine, and `references/depth-paths.md` decides how the lite and focused paths use it. It describes the local checkout, so the helper evaluates it only in local scope: in remote scope it is `null` and no resolver runs. In local scope, `null` means the helper could not tell; read the config's `packs:` key yourself.
 
 ### Stage 1c: Map criteria files to changed paths
 
@@ -147,8 +171,7 @@ Candidates are `CODING_STANDARDS.md`, `CLAUDE.md`, and `AGENTS.md` at any depth.
 Create the review run directory now. Every path, lite or full, writes its artifacts there:
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+SCRATCH_ROOT="$workspace_root/.tmp/rocketclaw";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;

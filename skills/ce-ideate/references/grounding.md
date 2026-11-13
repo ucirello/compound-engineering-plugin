@@ -8,11 +8,12 @@ Before generating ideas, gather grounding. The dispatch set depends on the mode 
 
 **Surprise-me grounding depth.** In surprise-me mode, grounding goes deeper than specified mode — apply the 0.2 table's `1 grounding` row, and pass issue themes as first-class input rather than a footnote when issue intelligence runs. Specified mode keeps the shallower scan: the user's named subject anchors what is relevant.
 
-**Pre-resolve the scratch directory.** Generate a `<run-id>` once (8 hex chars) and reuse it for the web-research cache and the Phase 2/4 checkpoints so they share one per-run directory. Scratch lives beneath the effective user's private CE root — `/tmp/compound-engineering-<uid>` when it is usable, else the validated `$TMPDIR` fallback the block below selects — never `.context/`. Run this to validate the owner-private root, create the run directory, and capture its absolute path:
+**Pre-resolve the scratch directory.** Generate a `<run-id>` once (8 hex chars) and reuse it for the web-research cache and the Phase 2/4 checkpoints so they share one per-run directory. Scratch lives beneath local `.tmp/rocketclaw/`, never OS temporary storage or `.context/`. Ensure `.tmp/` is ignored in a repository. Run this to validate the owner-private root, create the run directory, and capture its absolute path:
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+workspace_root="$(jj workspace root 2>/dev/null)" || workspace_root="$(pwd -P)";
+SCRATCH_ROOT="$workspace_root/.tmp/rocketclaw";
+if [ -L "$workspace_root/.tmp" ]; then echo "unsafe .tmp symlink" >&2; exit 1; fi;
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
@@ -123,13 +124,17 @@ Sub-agent dispatch is tiered by task shape, never hardcoded to a model name:
 - **Generation tier** — evidence-driven ideation frames and basis verification. Use the platform's mid-tier model when the harness exposes a known override.
 - **Ceiling tier** — ceiling ideation frames, cross-cutting synthesis, and final arbitration. Inherit the orchestrator's model by omitting the model parameter.
 
-If model names are unknown, omit the override and inherit rather than guessing.
+Resolve model names with native `opencode.models`, never guess them or invoke another harness's dispatcher. Execute through native subagents and use shell only for mechanical work.
 
-If the user's or project's active instructions or the live prompt name a model for this subagent, use that model instead of the default tier above. They can name it by the subagent's tier, by its prompt-asset name, or for the subagents being dispatched. Without such an instruction, a model configured for this subagent's role takes precedence over the default tier.
+If the user's or project's active instructions or the live prompt name a model for this subagent, treat that as the desired model instead of the default tier above, subject to host model-selection permission below. They can name it by the subagent's tier, by its prompt-asset name, or for the subagents being dispatched. Without such an instruction, a model configured for this subagent's role takes precedence over the default tier as desired routing, not as permission to override the inherited model.
 
-**Degradation rule.** When the platform's subagent primitive does not support per-agent model selection, dispatch everything on the inherited model and keep the read budgets and dossier caps — cost control then comes from structure, not tiering.
+**Permission and capability rules (apply to every tier and dispatch above).** This skill explicitly requests the described subagents: under a user-or-loaded-skill delegation rule that is sufficient without a second approval. A higher-priority prohibition or actual denial still applies. Delegation permission does not grant model-selection permission: only pass an optional model override when host policy permits it, including any requirement for an explicit user model request. Configuration remains authoritative desired routing; otherwise use a suitable inherited model and disclose unmet tier requirements. Separate same-model agents are not cross-model independence. If a required route or independent pass cannot run, report incomplete coverage, not verification.
 
-For every native dispatch in this skill, classify rejection by whether an agent launched: correct a pre-launch argument rejection once, leave capacity-limited work queued, and send any other failure to that phase's stated degraded path.
+Check the effective runtime nesting capacity separately from permission; package-local configuration does not establish consumer depth. Classify actual errors as depth/capacity, permission, model-argument rejection, or missing tool. Do not retry denials or evade depth limits through shell or another harness. Use only the phase's documented inline/degraded fallback, retaining its coverage caveat.
+
+**Degradation rule.** When permitted model selection is unavailable, dispatch suitable work on the inherited model and keep the read budgets and dossier caps — cost control then comes from structure, not tiering. Report any unmet ceiling or independence requirement.
+
+For every native dispatch in this skill, classify rejection by whether an agent launched: correct a non-policy pre-launch argument mistake once, leave transient capacity-limited work queued, and send other failures to that phase's stated degraded path. Exhausted nesting depth is not transient queue capacity; do not retry or bypass it.
 
 Two overrides raise the whole ideation fleet to the ceiling tier: surprise-me mode and the `go deep` depth override (Phase 0.5).
 

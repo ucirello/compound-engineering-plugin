@@ -1,5 +1,7 @@
 # Tracker Detection and Defer Execution
 
+For every repository-scoped `gh` command below, run from the target absolute workspace root and export `GIT_DIR=$(jj git root)` first; retain that environment for probes, issue creation and fallback calls. Temporary payloads/logs belong under that workspace's `.tmp/`.
+
 This reference covers how residual actionable findings are filed in the project's tracker. Loaded by caller workflows (for example `ce-work` Residual Work Gate, or `lfg` residual handling), not by `ce-code-review`, which stops after the report.
 
 ---

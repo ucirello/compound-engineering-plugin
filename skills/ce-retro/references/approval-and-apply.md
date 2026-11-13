@@ -27,13 +27,44 @@ For each approved item `ce-retro` owns:
 
 1. Make the edit.
 2. Verify it with the check that proved the candidate: the path now resolves, the command now runs, the instruction is gone, the new check fails on the old shape and passes on the current tree.
-3. Commit it alone, staging and committing only that item's files, with a message that says what friction it removes. Do not push.
+3. Commit it alone with JJ, selecting only that item's owned files with `jj commit <owned-paths> -m "<message composed from the standards below>"` from the target workspace's absolute root. Preserve other changes. The description says what friction it removes. Do not push.
 
 When verification fails, undo that item's edit, and report it as approved but not applied with the reason. When a project or user rule refuses the edit, stop that item and report it as refused. Do not make the change another way.
 
 When an approved file already had uncommitted changes before this run, do not commit it. Leave the edit in place and say so in the report.
 
-**Files outside the repo.** Before editing one, run the helper's `backup --run <this run's name> --file <path>` and keep the printed path. When `store` reported that `.context/compound-engineering/` is not gitignored at the main checkout, add `--dest-root <this run's scratch directory>` so the copy stays out of the repo. Show that item's diff and get its own approval, even when the batch was approved. Do not commit it. The report names the backup path.
+**Files outside the repo.** Before editing one, run the helper's `backup --run <this run's name> --file <path>` and keep the printed path. When `store` reported that `.context/` is not ignored, or its ignore status is unknown, add `--dest-root <this run's scratch directory>` so the copy stays in ignored local scratch. Show that item's diff and get its own approval, even when the batch was approved. Do not commit it. The report names the backup path.
+
+### Change-description standards
+
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards.
+
+Before composing, read the full Go guide and compare several recent subjects AND bodies using `jj log --no-graph -r '::<verified-history-head>' -n 10 -T 'description ++ "\n"'` from the target workspace's absolute root. Resolve the history head from this task, not a hardcoded branch. Establish prefixes/package names, casing, tense, subject/body separation, wrapping, and issue placement. Repository-local instructions and observed syntax always win; apply compatible Go guidance for clarity without imposing a fixed template. With no history, follow explicit project/user instructions and Go guidance without inventing precedent.
+
+The following verbatim Go source guidance is illustrative, not a mandatory repository template:
+
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+
+```text
+net/http: handle foo when bar
+
+[longer description here in the body]
+
+Fixes #12345
+```
+
+> Notably, for the subject (the first line of description):
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+
+> For the body (the rest of the description):
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
 
 ## Route the rest
 

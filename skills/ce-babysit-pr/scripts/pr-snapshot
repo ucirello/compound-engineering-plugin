@@ -270,6 +270,47 @@ def _replace_atomic(src, dst):
             time.sleep(_WIN_RETRY_SECONDS)
 
 
+def _local_staging_root():
+    """Transient writes stay in absolute workspace-local .tmp, never the durable state dir."""
+    cwd = os.path.abspath(os.getcwd())
+    result = subprocess.run(["jj", "workspace", "root"], cwd=cwd,
+                            capture_output=True, text=True, encoding="utf-8")
+    root = os.path.abspath(result.stdout.strip()) if result.returncode == 0 else cwd
+    local_tmp = os.path.join(root, ".tmp")
+    staging = os.path.join(local_tmp, "rocketclaw", "ce-babysit-pr", "staging")
+    # Refuse a symlinked .tmp namespace that would redirect transient files outside the root.
+    if os.path.commonpath((os.path.realpath(root), os.path.realpath(staging))) != os.path.realpath(root):
+        raise OSError("local staging path escapes workspace root")
+    os.makedirs(staging, mode=0o700, exist_ok=True)
+    return staging
+
+
+def _write_atomic_json(value, destination, indent=None):
+    """Keep the old durable file intact on serialization, fsync or replacement failure."""
+    path = None
+    try:
+        with tempfile.NamedTemporaryFile("w", dir=_local_staging_root(), delete=False) as tmp:
+            path = tmp.name
+            json.dump(value, tmp, indent=indent)
+            tmp.flush()
+            os.fsync(tmp.fileno())
+        try:
+            _replace_atomic(path, destination)
+        except OSError as exc:
+            if exc.errno == errno.EXDEV:
+                raise OSError(errno.EXDEV,
+                              "cannot atomically publish local .tmp staging across devices; "
+                              "durable destination unchanged; no copy or global-temp fallback",
+                              os.path.abspath(destination)) from exc
+            raise
+    finally:
+        if path is not None:
+            try:
+                os.unlink(path)
+            except FileNotFoundError:
+                pass
+
+
 class _WatchSuperseded(Exception):
     """Internal control flow: this watch lost ownership and must unwind immediately."""
 
@@ -296,18 +337,13 @@ def _run(cmd):
     env["NO_COLOR"] = "1"
     env.pop("CLICOLOR_FORCE", None)
     env.pop("GH_FORCE_TTY", None)
-    return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", env=env)
-
-
-def _run_git(cmd):
-    env = os.environ.copy()
-    env["GIT_TERMINAL_PROMPT"] = "0"
-    env["GCM_INTERACTIVE"] = "never"
-    env["GIT_ASKPASS"] = ""
-    env["SSH_ASKPASS"] = ""
-    return subprocess.run(
-        cmd, capture_output=True, text=True, encoding="utf-8", env=env, timeout=30,
-    )
+    for key in ("GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"):
+        env.pop(key, None)
+    workspace = subprocess.run(["jj", "workspace", "root"], capture_output=True,
+                               text=True, check=True).stdout.strip()
+    env["GIT_DIR"] = subprocess.run(["jj", "git", "root"], cwd=workspace,
+                                    capture_output=True, text=True, check=True).stdout.strip()
+    return subprocess.run(cmd, cwd=workspace, capture_output=True, text=True, encoding="utf-8", env=env)
 
 
 def _run_checked(cmd, label):
@@ -479,8 +515,8 @@ def fetch_base_ref(owner, name, ref, merge_identity, host=None):
     `baseRefOid` is retained only as historical PR metadata. Current identity comes from both the
     PR's `baseRef.target.oid` and an exact Git-ref read; a usable generated test merge must then
     name that base and the observed PR head as its two parents. Some valid private-repository OAuth
-    sessions return 404 from the REST Git-ref endpoint, so that response falls back to the Git
-    transport while preserving exact-ref matching and non-interactive failure behavior.
+    sessions return 404 from the REST Git-ref endpoint, so that response falls back to an
+    independent exact-branch REST read while preserving non-interactive failure behavior.
     """
     historical_oid = (merge_identity or {}).get("baseRefOid")
     head_oid = (merge_identity or {}).get("headRefOid")
@@ -517,30 +553,12 @@ def fetch_base_ref(owner, name, ref, merge_identity, host=None):
     ])
     current_oid = (r.stdout or "").strip()
     if r.returncode != 0 and re.search(r"\bHTTP\s+404\b", r.stderr or "", re.IGNORECASE):
-        exact_ref = f"refs/heads/{ref}"
-        remote_url = (f"https://{host or 'github.com'}/"
-                      f"{quote(owner, safe='')}/{quote(name, safe='')}.git")
-        try:
-            # Reuse the gh session (GH_TOKEN or keyring) as git's credential source so a
-            # headless host with no configured Git credential helper is not anonymous here.
-            git_result = _run_git([
-                "git", "-c", "core.askPass=",
-                "-c", "credential.helper=",
-                "-c", "credential.helper=!gh auth git-credential",
-                "ls-remote", "--exit-code", "--refs",
-                remote_url, exact_ref,
-            ])
-        except (subprocess.TimeoutExpired, OSError):
-            git_result = None
-        if git_result is not None and git_result.returncode == 0:
-            matches = []
-            for line in (git_result.stdout or "").splitlines():
-                fields = line.split()
-                if len(fields) == 2 and fields[1] == exact_ref and _valid_oid(fields[0]):
-                    matches.append(fields[0])
-            if len(matches) == 1:
-                current_oid = matches[0]
-                r = git_result
+        # A second independent API route reads the same exact branch, never a
+        # substitute ref. Failure retains probe-error rather than guessing.
+        r = _run(["gh", "api", *_host_args(host),
+                  f"repos/{owner}/{name}/branches/{quote(ref, safe='')}",
+                  "--jq", ".commit.sha"])
+        current_oid = (r.stdout or "").strip()
     if r.returncode != 0 or not _valid_oid(current_oid):
         return base
     base["oid"] = current_oid
@@ -732,7 +750,7 @@ query($owner:String!,$repo:String!,$pr:Int!){
     pullRequest(number:$pr){
     stackEntry{ position }
     stack{ id number size baseRefName
-      entries(first:100){ nodes{ position pullRequest{
+      entries(first:100){ pageInfo{hasNextPage} nodes{ position pullRequest{
         number url state isDraft baseRefName headRefName headRefOid
       } } }
     }
@@ -756,8 +774,23 @@ query($owner:String!,$repo:String!,$pr:Int!){
         return MANAGER_PROBE_ERROR, None, None
     if stack is None:
         return MANAGER_ABSENT, None, default_branch
+    if not isinstance(stack, dict):
+        return MANAGER_PROBE_ERROR, None, default_branch
+    connection = stack.get("entries") or {}
+    # Never certify membership/order from a truncated connection.
+    if (not isinstance(connection, dict)
+            or not isinstance(connection.get("pageInfo"), dict)
+            or connection["pageInfo"].get("hasNextPage") is not False
+            or not isinstance(connection.get("nodes"), list)
+            or len(connection["nodes"]) != stack.get("size")):
+        return MANAGER_PROBE_ERROR, None, default_branch
+    nodes = connection["nodes"]
+    if (any(not isinstance(raw, dict) or not isinstance(raw.get("position"), int)
+            or not isinstance(raw.get("pullRequest"), dict) for raw in nodes)
+            or len({raw["position"] for raw in nodes}) != len(nodes)):
+        return MANAGER_PROBE_ERROR, None, default_branch
     entries = []
-    for raw in (stack.get("entries") or {}).get("nodes") or []:
+    for raw in sorted(nodes, key=lambda item: item["position"]):
         remote_pr = raw.get("pullRequest") or {}
         entries.append({
             "position": raw.get("position"),
@@ -768,7 +801,25 @@ query($owner:String!,$repo:String!,$pr:Int!){
             **(_pr_summary(remote_pr) or {}),
         })
     chain = _chain_from_entries(entries, pr, "graphql", stack.get("baseRefName"),
-                                manager_id=stack.get("id"), manager_number=stack.get("number"))
+                                 manager_id=stack.get("id"), manager_number=stack.get("number"))
+    if chain:
+        for index, entry in enumerate(entries):
+            parent_oid = entries[index - 1].get("head") if index else None
+            if index == 0:
+                base = _run(["gh", "api", *_host_args(host),
+                             f"repos/{owner}/{name}/branches/{quote(stack.get('baseRefName') or '', safe='')}",
+                             "--jq", ".commit.sha"])
+                parent_oid = base.stdout.strip() if base.returncode == 0 else None
+            if not (_valid_oid(parent_oid) and _valid_oid(entry.get("head"))):
+                continue
+            comparison = _run(["gh", "api", *_host_args(host),
+                               f"repos/{owner}/{name}/compare/{parent_oid}...{entry['head']}",
+                               "--jq", ".status"])
+            status = comparison.stdout.strip() if comparison.returncode == 0 else None
+            if status in ("ahead", "identical", "behind", "diverged"):
+                entry["needs_rebase"] = status in ("behind", "diverged")
+        chain = _chain_from_entries(entries, pr, "graphql", stack.get("baseRefName"),
+                                    manager_id=stack.get("id"), manager_number=stack.get("number"))
     return ((MANAGER_CONFIRMED, chain, default_branch) if chain
             else (MANAGER_PROBE_ERROR, None, default_branch))
 
@@ -813,18 +864,9 @@ def fetch_pr_chain(pr, repo, url, base_ref_name, head_ref_name, owner, name, hos
                    cross_repository=False):
     """Classify manager membership and ordinary dependency relationships without mutation.
 
-    The local manager is the fast/rich path, but its output is accepted only when it contains the
-    requested PR. `gh stack view` has no target argument and may describe a different current stack.
+    Query the server's explicit manager membership directly. The gh-stack extension's local
+    discovery launches Git, so it is not a permissible fast path in a never-use-git repository.
     """
-    local = _run(["gh", "stack", "view", "--json"])
-    if local.returncode == 0:
-        try:
-            chain = _chain_from_stack_view(json.loads(local.stdout), pr, url)
-        except (TypeError, ValueError, json.JSONDecodeError):
-            chain = None
-        if chain:
-            return chain
-
     manager_status, chain, default_branch = _fetch_graphql_stack(pr, owner, name, host)
     if manager_status == MANAGER_CONFIRMED:
         chain["default_branch"] = default_branch
@@ -1394,7 +1436,7 @@ def _empty_trajectory():
 
 def _load_trajectory(state):
     """Load the trajectory, tolerating a partial or non-dict value from an older on-disk
-    state.json (persisted in /tmp across script versions) — backfill missing keys so a new
+    state.json (persisted in local .tmp across script versions) — backfill missing keys so a new
     field never KeyErrors an old state, and a null/garbage value never crashes."""
     tj = state.get("trajectory")
     if not isinstance(tj, dict):
@@ -2488,12 +2530,7 @@ def locked_state(state_dir, pr, repo, now):
         state.setdefault("invocation_backstop_seconds", DEFAULT_INVOCATION_BACKSTOP_SECONDS)
         box = {"state": state}
         yield box
-        tmp = tempfile.NamedTemporaryFile("w", dir=state_dir, delete=False)
-        json.dump(box["state"], tmp, indent=2)
-        tmp.flush()
-        os.fsync(tmp.fileno())
-        tmp.close()
-        _replace_atomic(tmp.name, state_path)
+        _write_atomic_json(box["state"], state_path, indent=2)
 
 
 def _fetch_snapshot(args):
@@ -2788,12 +2825,7 @@ def _reserve_watch_candidate(args, generation):
     }
     with _state_lock(args.state_dir, exclusive=True):
         previous = _read_watch_candidate(args)
-        tmp = tempfile.NamedTemporaryFile("w", dir=args.state_dir, delete=False)
-        json.dump(candidate, tmp)
-        tmp.flush()
-        os.fsync(tmp.fileno())
-        tmp.close()
-        _replace_atomic(tmp.name, _watch_candidate_path(args))
+        _write_atomic_json(candidate, _watch_candidate_path(args))
     return previous
 
 

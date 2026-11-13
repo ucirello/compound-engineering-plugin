@@ -4,6 +4,25 @@ description: "Create structured plans for multi-step work, including software an
 argument-hint: "[optional: feature description, requirements doc path, plan path to deepen, or any task to plan] [output:html]"
 ---
 
+## Native execution boundaries
+
+This skill explicitly requests the research/review subagents described below.
+Under a user-or-loaded-skill delegation rule this suffices; do not ask again.
+Respect unconditional higher-priority bans and actual tool denials. Model choice
+is separate: use `opencode.models` for discovery, preserve configured choices and
+tiers, but omit optional model overrides when the host requires an explicit user
+model request and none exists. Suitable inherited-model research may proceed
+with any unmet model requirement disclosed. Same-model reviewers do not establish
+cross-model independence; required unavailable passes mean incomplete coverage.
+Verify effective nesting capacity separately and classify actual dispatch errors
+as denial, missing tool, model-argument rejection or depth/capacity exhaustion.
+Do not evade restrictions through another harness or shell. Use allowed inline
+or parent-coordinator fallback only when that pass permits it. These rules also
+govern all referenced research, deepening, review and elevation instructions.
+For every JJ command set cwd to the absolute target workspace root. Scope
+repository `gh` commands there with `GIT_DIR=$(jj git root)`. Keep temporary
+files below local `.tmp/`; never use direct Git execution.
+
 # Create Technical Plan
 
 **Outcome:** a plan for carrying out and checking the agreed work while preserving its outcome and constraints. Resolve technical choices from evidence; leave adequate instructions unchanged. `ce-brainstorm` defines **WHAT**, `ce-plan` plans **HOW**, and `ce-work` executes. A prior brainstorm is optional.

@@ -7,7 +7,7 @@ Your scope is **synthesis only**. The caller handles discovery, branch/keyword f
 The dispatch prompt provides:
 
 - **`problem_topic`** — one sentence naming the concrete question or problem to synthesize against.
-- **`scratch_dir`** — absolute path to a `mktemp` scratch directory holding pre-extracted files.
+- **`scratch_dir`** — absolute path to a private workspace-local `.tmp/` directory holding reduced supported OpenCode exports or pre-extracted files. In delegated Full mode the passed source session is primary evidence; exclude only the delegated run's own session, not the source. Never read OpenCode databases or internal storage.
 - **`sessions`** — an array of objects (5 max), one per pre-extracted session, each with:
   - `path` — absolute path to a skeleton text file inside `scratch_dir`
   - `errors_path` *(optional)* — absolute path to an errors text file when the orchestrator extracted errors-mode for this session
@@ -31,7 +31,7 @@ These rules apply at all times during synthesis.
 - **Never invoke the Skill tool.** This agent runs in subagent context where Skill calls deadlock. The orchestrator has already done all extraction; you only synthesize.
 - **Never extract or reproduce tool call inputs/outputs verbatim.** Summarize what was attempted and what happened.
 - **Never include thinking or reasoning block content.** Claude Code thinking blocks are internal reasoning; Codex reasoning blocks are encrypted. Neither is actionable. The skeleton extractor already strips these. Do not report them if any survived.
-- **Never analyze the current session.** Its conversation history is already available to the caller; the orchestrator already excluded it from the dispatch payload.
+- **Exclude only your own session.** In a delegated Full run, analyze the passed source session as primary evidence; it is not the delegated run's current session.
 - **Never make claims about team dynamics or other people's work.** This is one person's session data.
 - **Never write any files.** Return text findings only.
 - **Report technical content, not personal content.** Sessions contain everything: credentials, frustration, half-formed opinions. Use judgment about what belongs in a technical summary and what does not.

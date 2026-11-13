@@ -76,7 +76,7 @@ This is where validity is decided. Judge every **new** item here, in your own co
 Working over the full set lets you do what a per-thread subagent can't:
 - **Dedup reads by file** — read a file once and judge all its threads together.
 - **Cross-item reasoning** — cluster findings by root assumption; a source (often a bot) that's wrong in one place is suspect across its siblings; converging requests from independent reviewers are a strong fix signal.
-- **Selective depth** — clear nits need only the comment plus the diff line; deep-read (callers, invariants, `git blame`/PR rationale for author intent) only where a finding is contestable or the code looks deliberate. That deep read on the contestable minority is what catches a confidently-wrong reviewer.
+- **Selective depth** — clear nits need only the comment plus the diff line; deep-read (callers, invariants, `jj file annotate`/PR rationale for author intent) only where a finding is contestable or the code looks deliberate. That deep read on the contestable minority is what catches a confidently-wrong reviewer.
 
 Produce a verdict per item and sort into three lists:
 
@@ -149,29 +149,67 @@ Each fix runs only targeted tests on its own change. This step runs the project'
 
 3. **Red, failures touch files in the change set** -> one inline diagnose-and-fix pass. Re-run validation. If still red, escalate with a `needs-human` item containing the test output; do **not** commit.
 
-4. **Red, failures touch only files outside the change set** -> treat as pre-existing. Proceed to step 6, but add a footer to the commit message: `Note: pre-existing failure in <test> not addressed by this PR.`
+4. **Red, failures touch only files outside the change set** -> treat as pre-existing. Proceed to step 6, but describe the pre-existing failure and the affected test in the change description using the runtime repository's message conventions.
 
 Record the validation outcome (command run, pass/fail counts, any pre-existing failures noted) for the step 9 summary.
 
 ## 6. Commit and Publication
 
-Commit only the change set, preserving unrelated work in the tree and index, with a message referencing the PR:
+Commit only the change set, preserving unrelated working-copy changes, with a message referencing the PR and describing the per-item fixes.
+
+**Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards.**
+
+Before composition, read the full linked Go guide and compare several recent full subjects AND bodies from the actual task's verified history head, from the target workspace's absolute root:
 
 ```bash
-git add [files in the change set]
-git commit -m "Address PR review feedback (#PR_NUMBER)
+(cd "$workspace_root" && jj log --no-graph -r '::<verified-history-head>' -n 10 -T 'description ++ "\n"')
+```
 
-- [list changes from per-item results]" -- [files in the change set]
+Resolve that anchor from this PR and repository, not a hardcoded default branch; this style sample does not replace the reviewed base/head range. Establish local prefixes/package names, casing, tense, subject/body separation, wrapping and issue-reference placement. Repository-local instructions and observed syntax always win; apply compatible Go guidance for clarity and structure. With no history, use explicit project/user instructions and Go guidance without inventing precedent.
+
+The following verbatim Go excerpts are source guidance, not a required repository template:
+
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+
+```text
+net/http: handle foo when bar
+
+[longer description here in the body]
+
+Fixes #12345
+```
+
+> Notably, for the subject (the first line of description):
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+
+> For the body (the rest of the description):
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
+
+Inspect `jj status` and `jj diff` first. If unrelated changes share `@`, use `jj split <owned-paths>` to isolate only this batch; when a file mixes ownership use interactive hunk selection, and stop if ownership cannot be separated safely. Identify the resulting owned revision explicitly; do not describe or publish unrelated changes.
+
+```bash
+(cd "$workspace_root" && jj describe -r "<verified-owned-revision>" -m "<message composed from the standards above>")
+(cd "$workspace_root" && jj log --no-graph -r "<verified-owned-revision>" -T 'commit_id ++ "\n"')
 ```
 
 In `mode:return-to-caller`, capture the combined fix commit SHA and follow [references/return-to-caller.md](return-to-caller.md) to save every judged action and intended checklist tick. Return after saving; do not push or enter steps 7-8 for any part of this batch. A failed commit or save reports the actual local state and incomplete handoff, never completion.
 
 Ordinary and pipeline execution publish the commit before the remote tail:
 ```bash
-git push
+(cd "$workspace_root" && jj bookmark set "<verified-PR-bookmark>" -r "<verified-owned-revision>")
+(cd "$workspace_root" && jj git push --remote "<verified-PR-remote>" --bookmark "<verified-PR-bookmark>")
 ```
 
 Read the PR's state immediately before pushing. If it is no longer open, a merge or close happened while this batch ran: do not push, and report the fix as an unpublished local commit along with the items left unaddressed.
+
+Verify the PR head repository, remote, bookmark and ancestry before publication; never guess a fork target or rewrite published history. Push only within inherited authority. Routine publication already authorized by this workflow does not require repeated approval; uncertain authority or dirty/conflicted ownership follows the safe residual path.
 
 ## 7. Reply and Resolve
 
@@ -200,10 +238,10 @@ GH_HOST=<derived-host> bash "$SKILL_DIR/scripts/get-thread-for-comment" PR_NUMBE
 The returned `id` is the authoritative thread ID for resolution, and `root_comment_id` is the numeric ID of the thread's first comment for the REST reply. If the thread ID differs from what `get-pr-comments` returned, use the one from this script.
 
 1. **Reply directly to the root comment over REST** using [scripts/reply-to-pr-thread](../scripts/reply-to-pr-thread). If the bundled script is missing, use the same `POST repos/{owner}/{repo}/pulls/PR_NUMBER/comments/ROOT_COMMENT_ID/replies` endpoint. Do not substitute `addPullRequestReviewThreadReply`, `gh pr review`, or a `/reviews` POST: those operations go through review-submission state, so the reply can sit unsubmitted, while a successful reply must be immediately submitted and visible.
-Feed the body from a private OS scratch file. For a fresh reply, the quoted heredoc below writes multiline Markdown without shell expansion; never use `echo "..."` or `printf` to interpret escape sequences. For a saved reply, write its exact decoded `reply_body` bytes to that file with a tool instead of running the illustrative heredoc, which would add a terminal newline. Preserve all existing line breaks, including terminal ones:
+Feed the body from a private file under the target workspace's `.tmp/`. For a fresh reply, the quoted heredoc below writes multiline Markdown without shell expansion; never use `echo "..."` or `printf` to interpret escape sequences. For a saved reply, write its exact decoded `reply_body` bytes to that file with a tool instead of running the illustrative heredoc, which would add a terminal newline. Preserve all existing line breaks, including terminal ones:
 ```bash
 SKILL_DIR="<absolute path of the directory containing the ce-resolve-pr-feedback SKILL.md>";
-REPLY_BODY_FILE="<absolute private OS scratch reply file>";
+REPLY_BODY_FILE="<absolute workspace-root>/.tmp/<private-run>/reply.md";
 cat > "$REPLY_BODY_FILE" <<'EOF'
 > the specific sentence being addressed from the reviewer's comment
 
@@ -250,7 +288,7 @@ GH_HOST=<derived-host> bash "$SKILL_DIR/scripts/resolve-pr-thread" THREAD_ID
 These cannot be resolved via GitHub's API. Reply with a top-level PR comment referencing the original (pass `-R OWNER/REPO` — the parsed base repo — so a fork→upstream reply posts on the watched upstream PR, not the fork namespace):
 
 ```bash
-REPLY_BODY_FILE="<absolute private OS scratch reply file>";
+REPLY_BODY_FILE="<absolute workspace-root>/.tmp/<private-run>/reply.md";
 cat > "$REPLY_BODY_FILE" <<'EOF'
 > the specific sentence being addressed from the reviewer's comment
 
@@ -276,7 +314,7 @@ The `review_threads` array should be empty (except `needs-human` items).
 
 In resume, verify only the saved actions and report new feedback through its caller result; return to [references/resume.md](resume.md) without entering another fix cycle.
 
-**For fresh-feedback modes, if new threads remain**, check the iteration count -- counting rounds **for this PR**, not just this invocation. An orchestrator such as `ce-babysit-pr` re-invokes this skill fresh each round, so a per-invocation counter never trips; count instead the earlier review-fix commits already on the branch (`git log <base>..HEAD` subjects that address review feedback) plus this run's own cycles.
+**For fresh-feedback modes, if new threads remain**, check the iteration count -- counting rounds **for this PR**, not just this invocation. An orchestrator such as `ce-babysit-pr` re-invokes this skill fresh each round, so a per-invocation counter never trips; count instead the earlier review-fix commits in the verified PR range (`jj log --no-graph -r '<verified-base>..<verified-head>' -T 'description ++ "\n"'` from the absolute target root) plus this run's own cycles.
 
 - **First or second fix-verify cycle**: Repeat from step 2 for the remaining threads.
 
@@ -302,7 +340,7 @@ Not addressing (count): [what was skipped and the evidence]
 Declined (count): [what was declined and the harm or scope reason cited; name out-of-scope items separately so the user can carry them forward]
 
 Validation: [one line -- e.g., "bun test passed (893/893)" or "bun test passed with pre-existing failure in X noted"; omit when no code changes were committed]
-Diff change: [`git diff --shortstat` from the head before this run's first fix commit to the head after its last, e.g., "+42 / -7 across 3 files"; omit when no code changes were committed]
+Diff change: [`jj diff --from <captured-before-head> --to <verified-final-head> --stat` from the absolute target root, e.g., "+42 / -7 across 3 files"; omit when no code changes were committed]
 ```
 
 If any item is `needs-human`, append a decisions section. These are rare but high-signal. Each carries the `needs-human` object composed in step 3: quoted feedback, investigation, the reason autonomous action is unsafe or ambiguous, concrete options with tradeoffs, a recommendation if any, and links to every still-open thread it covers.

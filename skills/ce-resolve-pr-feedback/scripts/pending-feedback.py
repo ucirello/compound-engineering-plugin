@@ -182,11 +182,20 @@ def prepared_content(record: dict) -> dict:
     }
 
 
+def temporary_root() -> Path:
+    cwd = Path.cwd().resolve()
+    root = subprocess.run(["jj", "workspace", "root"], cwd=cwd,
+                          capture_output=True, text=True, check=False)
+    local_tmp = (Path(root.stdout.strip()).resolve() if root.returncode == 0 else cwd) / ".tmp"
+    local_tmp.mkdir(exist_ok=True)
+    return local_tmp
+
+
 def write_record(path: Path, raw: bytes, *, checkpoint: bool) -> None:
     if checkpoint:
         temporary = None
         try:
-            with tempfile.NamedTemporaryFile(dir=path.parent, prefix=".pending-feedback-", delete=False) as temp:
+            with tempfile.NamedTemporaryFile(dir=temporary_root(), prefix=".pending-feedback-", delete=False) as temp:
                 temporary = Path(temp.name)
                 temp.write(raw)
                 temp.flush()
@@ -205,9 +214,19 @@ def write_record(path: Path, raw: bytes, *, checkpoint: bool) -> None:
 
 
 def github_json(host: str, endpoint: str) -> dict:
+    # Calls use an explicit API identity, but gh still needs JJ backend context
+    # when this helper is invoked from a repository.
+    env = os.environ.copy()
+    root = subprocess.run(["jj", "workspace", "root"], capture_output=True, text=True, check=False)
+    workspace_root = root.stdout.strip() if root.returncode == 0 else os.getcwd()
+    if root.returncode == 0:
+        backend = subprocess.run(["jj", "git", "root"], cwd=workspace_root,
+                                 capture_output=True, text=True, check=False)
+        require(backend.returncode == 0, backend.stderr.strip() or "Cannot resolve JJ backend")
+        env["GIT_DIR"] = backend.stdout.strip()
     result = subprocess.run(
         ["gh", "api", "--hostname", host, "--method", "GET", endpoint],
-        capture_output=True, text=True, check=False,
+        cwd=workspace_root, env=env, capture_output=True, text=True, check=False,
     )
     require(result.returncode == 0, result.stderr.strip() or f"GitHub GET failed: {endpoint}")
     return object_value(json.loads(result.stdout), "GitHub response")
@@ -257,10 +276,13 @@ def main() -> None:
             command_parser.add_argument("--input", required=True)
     args = parser.parse_args()
     if args.command == "preflight":
-        path = Path(args.path).absolute() if args.path else Path(tempfile.mkdtemp(prefix="ce-pending-feedback-")) / "pending.json"
+        if args.path:
+            path = Path(args.path).absolute()
+        else:
+            path = Path(tempfile.mkdtemp(dir=temporary_root(), prefix="pending-feedback-")) / "pending.json"
         require(not os.path.lexists(path), "handoff destination already exists")
         require(path.parent.is_dir(), "handoff parent directory does not exist")
-        with tempfile.TemporaryFile(dir=path.parent):
+        with tempfile.TemporaryFile(dir=temporary_root()):
             pass
         print(json.dumps({"handoff": str(path)}))
         return

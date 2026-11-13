@@ -1,21 +1,65 @@
-# Choosing the model for a spawned subagent
+# Native reviewer dispatch: permission, model, and depth
 
-This rule decides the model and reasoning effort for every subagent this skill spawns: reviewers, the lite reviewer, checks, leaves, and validators. Read it before the first spawn. The orchestrator itself keeps the session model.
+Read this before **every** reviewer, trivial-PR check, finish leaf, validator,
+peer, or fallback dispatch. This skill explicitly requests those subagents.
 
-**Default tier.** The step that spawns the subagent names its default tier. In Codex (the host whose subagent tool is `spawn_agent`), the default tier for every subagent is instead `gpt-6.1-terra` with reasoning effort `high`, passed as the spawn's `model` and `reasoning_effort`. That replaces the step's tier, including a step that would otherwise run the subagent on the session model or a cheaper tier.
+Preserve the step's default tier intent. For Codex compatibility, the existing
+default intent for all spawned roles remains `gpt-6.1-terra` with `high`
+reasoning effort; explicit user/project role requests, then role configuration,
+take precedence. This is not permission to pass forbidden overrides. Native
+OpenCode executes only permitted models discovered through `opencode.models`.
 
-If the user's or project's active instructions or the live prompt name a model for this subagent, use that model instead of the default tier above. They can name it by the subagent's tier, by its prompt-asset name, or for the subagents being dispatched. Without such an instruction, a model configured for this subagent's role takes precedence over the default tier.
+1. **Delegation permission.** Interpret the actual host rule. Under a user-OR-
+   applicable-skill rule, these explicit dispatch instructions satisfy the skill
+   exception; do not demand a second user request or approval. Loading a skill
+   that never requests delegation is not authorization. An unconditional
+   higher-priority prohibition, unavailable tool, or actual denial still wins.
+   Never bypass it through shell or another harness.
+2. **Model-selection permission.** This is separate. Read the desired model and
+   effort from the user's instructions, then the role's `review_subagents`
+   configuration, then the step's tier default. Resolve ordinary scalar keys
+   from `<workspace-root>/.rocketclaw/config.local.yaml`, then `config.yaml`:
+   first valid nonempty value wins; lists/maps replace the whole key, including
+   empty values. `docs_root` remains config.yaml-only. The `review_subagents`
+   map's current-harness entry (`opencode` here) has optional string `model` and
+   `effort`; omitted/invalid fields retain defaults. Preserve configured routes
+   and tiers as intent. Discover permitted concrete IDs with `opencode.models`
+   and dispatch with native subagents, not another harness's CLI.
+   If the host forbids overrides without an explicit user model request, omit
+   the optional `model` argument (and forbidden effort arguments), even when
+   this skill or configuration suggests a tier. Inherit the session model when
+   it satisfies the contract. Record requested versus applied model/effort and
+   unmet tier requirements in Coverage. Same-model contexts are separate
+   reviewers, not cross-model independence. A required fixed route or
+   different-model pass that cannot run makes that coverage **incomplete**.
+3. **Nesting/capacity.** Check effective OpenCode configuration from its supported
+   configuration interface/source documents, including precedence; package-
+   local configuration is not automatically merged into an installed plugin's
+   consumer. Deep delegation requires effective `experimental.subagent_depth`
+   at least 3, and the current nesting level must leave room. Do not modify host
+   configuration. Classify actual launch errors as nesting-depth exhaustion,
+   active-agent capacity, delegation denial, model/effort rejection, or missing
+   tool; never call one another. Capacity may queue until active agents finish.
+   A model rejection may get one inherited-model attempt only if allowed and
+   suitable; do not retry denied delegation or evade depth through shell.
 
-**Configured model.** `review_subagents` in CE config is the model configured for this subagent's role. Read it under this rule:
+Use the supported V2 configuration query with the target absolute workspace
+location explicitly URL-encoded, not an unscoped request (which defaults to
+`/root`). For a target root `/absolute/target/workspace`, the query is
+`opencode api get '/api/config?location%5Bdirectory%5D=%2Fabsolute%2Ftarget%2Fworkspace'`.
+Substitute the URL-encoded actual absolute `workspace_root`, not that example
+path. Use its actual response shape to inspect discovered source documents and
+precedence; source-entry arrays are not a single effective config object.
+Confirm the winning `experimental.subagent_depth` and remaining nesting
+capacity, not merely a shipped value in the plugin package. See
+https://opencode.ai/v2/docs/config . A runtime launch error is authoritative
+evidence of exhausted remaining depth even when the configured ceiling is 3.
+Do not launch a probe reviewer or modify global/project configuration to test it.
 
-<!-- ce-config-layers:start -->
-**Resolve ordinary CE yaml keys from the two repo files.**
-
-- **Read** `<repo-root>/.compound-engineering/config.local.yaml`, then `config.yaml` (`<repo-root>` = `git rev-parse --show-toplevel`). Missing files are skipped. Gitignore does not change resolution.
-- **Win** with the first active (non-commented) value. For scalars, empty is unset; an invalid value continues to the next layer, then the skill default. For lists and maps, a present key — including an empty list or map — replaces the whole key.
-- **Do not** use this rule for `docs_root` — that key is `config.yaml` only.
-<!-- ce-config-layers:end -->
-
-The key maps a harness name (`codex`, `claude`, `grok`, `cursor`, `opencode`, `antigravity`) to an entry with an optional `model` and an optional `effort`. Only the entry for the current harness applies, and it applies to every subagent this skill spawns. A field the entry leaves out keeps the default tier's value. A field that is not a string is ignored. Pass an effort only when the spawn tool takes one; otherwise say in Coverage that the configured effort was not applied.
-
-**Refused model.** When the spawn is refused because the requested model or effort is not available, spawn that subagent once more with no model or effort override, so it inherits the session model. Do not try a different model. Say in Coverage which model was refused and, when the error lists them, which models the host offers. A spawn refused because the host is at its active-agent limit is not this case; the spawning step's own capacity handling covers it.
+When delegation is unavailable, only contract-permitted parent/inline work may
+continue. Attribute it to the parent, exclude it from `independent_reviewers`,
+and retain all missing independent coverage and validator gates. Focused mode
+requires an independent read; without one its verdict is Not ready. Full review
+cannot claim all selected reviewers or required cross-model passes completed
+when they did not. Merge/report mechanics may run in the parent if necessary;
+that never substitutes for an independent reviewer or validator.

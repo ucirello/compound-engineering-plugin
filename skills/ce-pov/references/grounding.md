@@ -6,21 +6,21 @@ Read this before dispatching scouts. It defines how the Ground step (SKILL.md Ph
 
 Dispatch is tiered by task shape, never hardcoded to a model name:
 
-- **Extraction tier** — the project-grounding scout and the precedent-&-activity scout: search-and-quote work. Use the platform's cheapest capable model when the harness exposes a known override; otherwise inherit.
-- **Generation tier** — the external-evidence researcher: web/docs retrieval and entailment checking. Use the platform's mid-tier model when a known override exists; otherwise inherit.
+- **Extraction tier** — the project-grounding scout and the precedent-&-activity scout: search-and-quote work. Prefer the platform's cheapest capable model only when a known override is permitted by the host; otherwise inherit.
+- **Generation tier** — the external-evidence researcher: web/docs retrieval and entailment checking. Prefer the platform's mid-tier model only when a known override is permitted by the host; otherwise inherit.
 - **Ceiling tier** — the final assessment stays with the agent running `ce-pov`, even when another agent delegated the task to it. That agent checks whether the evidence is sufficient, weighs skeptical findings, and produces the required result. Research subagents gather evidence; they do not make this final assessment.
 
-If the user's or project's active instructions or the live prompt name a model for this subagent, use that model instead of the default tier above. They can name it by the subagent's tier, by its prompt-asset name, or for the subagents being dispatched. Without such an instruction, a model configured for this subagent's role takes precedence over the default tier.
+Subject to the host's model-selection permission, a user/project/live-prompt model request takes precedence over role configuration, which takes precedence over the default tier. Discover permitted models with `opencode.models`; retain configuration choices and tiers as intent. A configured model is not permission to override the inherited model.
 
-**When per-agent models cannot be chosen.** If the platform's subagent mechanism cannot select a model per agent, dispatch every scout on the inherited model and keep their read budgets. Cost control then comes from the read budgets and the tier-sensitive scout count, not from tiering.
+**Delegation, model selection, and depth are separate.** This skill explicitly requests native scout subagents. Under a host rule allowing delegation when the user OR a loaded skill requests it, these instructions satisfy the skill-requested exception without a second approval. An unconditional higher-priority prohibition, missing tool, or actual denial still applies. If model overrides require an explicit user model request, omit the optional `model` argument absent that request; use suitable inherited-model scouts and keep their read budgets. Disclose unmet fixed-model or tier requirements. Separate same-model reviewers do not establish cross-model independence.
 
-When a scout dispatch is rejected, first check whether an agent launched. If the rejection was a bad argument before launch, correct it once. If the platform is out of capacity, leave the work queued. If a launch still fails after the correction, gather that scout's bounded evidence inline and lower the verdict's stated confidence.
+Verify effective nesting capacity through supported runtime configuration/capability evidence; permission alone does not establish remaining depth. On failure, first check whether an agent launched and classify the actual error: depth/capacity, permission denial, rejected model argument, missing tool, or other launch failure. Correct an ordinary malformed pre-launch argument once only when allowed; never retry a denied operation or bypass depth/permission through shell or another harness. Queue temporary capacity failures where supported. If dispatch remains unavailable, gather a scout's bounded evidence inline (this evidence-gathering contract permits it), disclose the fallback, and lower confidence. Inline work cannot replace a required independent peer pass; unmet required coverage remains incomplete.
 
 Create the scratch dir once, and reuse the echoed path for every scout this run:
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+WORKSPACE_ROOT="<verified absolute target workspace root, or absolute local project root outside JJ>";
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;

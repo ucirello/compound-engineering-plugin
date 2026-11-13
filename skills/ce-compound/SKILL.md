@@ -50,9 +50,9 @@ Enter non-interactive mode when **either** holds: the arguments you were invoked
 Resolve `<root>` when you first compose a `<root>/solutions/` path, and pass a subagent the resolved path rather than the config.
 
 <!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only (`<repo-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
 - **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
@@ -61,9 +61,17 @@ Resolve `<root>` when you first compose a `<root>/solutions/` path, and pass a s
 
 **Only the orchestrator writes product files.** Phase 1 subagents write to per-run scratch only, and never touch `<root>/`, project instruction files, or any other tracked path.
 
-The orchestrator writes what `references/form.md` chooses, in every mode and without asking: at most one added test, added or tightened lint rule with any baseline entries it needs, or condition in an existing `CODING_STANDARDS.md`, and at most one learning under `<root>/solutions/`. It never changes product code. It also writes two maintenance side effects that their own step describes: `CONCEPTS.md` during vocabulary capture, and — **only in interactive Full mode after consent** — a small discoverability line in a project instruction file. Two further writes exist **only in interactive Full mode when the user selects them at the assembly destination step**: a rule file inside a writable declared Compound Pack, and the `packs:` entry appended to `.compound-engineering/config.yaml`. An instruction file is only ever edited, never created. Nothing else in the tree is written. Edits to *other* docs belong to a refresh, which a capture recommends or runs with a narrow scope.
+The orchestrator writes what `references/form.md` chooses, in every mode and without asking: at most one added test, added or tightened lint rule with any baseline entries it needs, or condition in an existing `CODING_STANDARDS.md`, and at most one learning under `<root>/solutions/`. It never changes product code. It also writes two maintenance side effects that their own step describes: `CONCEPTS.md` during vocabulary capture, and — **only in interactive Full mode after consent** — a small discoverability line in a project instruction file. Two further writes exist **only in interactive Full mode when the user selects them at the assembly destination step**: a rule file inside a writable declared Compound Pack, and the `packs:` entry appended to `.rocketclaw/config.yaml`. An instruction file is only ever edited, never created. Nothing else in the tree is written. Edits to *other* docs belong to a refresh, which a capture recommends or runs with a narrow scope.
 
 ## Full Mode
+
+### Context-pressure handoff
+
+When an interactive run would otherwise choose Lightweight for context pressure, dispatch one fresh native OpenCode subagent loading `ce-compound` with `mode:non-interactive depth:full`. Read the source session ID with shell from `$OPENCODE_SESSION_ID`, never guess or recall it. Obtain the absolute workspace root with `jj workspace root`. Pass that ID, title when known, absolute root, any learning-doc path already written this run, and a one-sentence problem topic. Do not pre-digest the conversation. The delegated run is the orchestrator for the write boundary and reuses an already-written doc.
+
+This skill explicitly requests delegation under a host rule allowing user- or skill-requested subagents; do not ask again under that rule. Respect unconditional prohibitions and actual denials. Use native `opencode.models` for configured model discovery when needed; model permission is separate from delegation permission, so omit an unauthorized model override and use a suitable inherited model. Classify actual errors separately as unavailable tool, permission denial, model-argument rejection, or exhausted nesting depth. Never evade restrictions through shell or another harness. Fall back to Lightweight only for actual unavailable/denied/depth delegation, naming which; advise re-running `ce-compound` from this same session once delegation is available, not in a fresh session. Explicit non-interactive `depth:` tokens remain authoritative.
+
+The parent relays the delegated report and doc path, then offers with usual consent reported-but-unapplied interactive-only discoverability instruction-file edits and a Compound Pack destination. Do not run a second Full pass or re-edit the doc in the parent.
 
 Run these in order. Each reference is a required read at the step that names it.
 

@@ -13,7 +13,8 @@ Run the bundled overlap check against fresh refs. Pass the local remote whose UR
 ```bash
 SKILL_DIR="<absolute path of this skill's directory>";
 PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c '' >/dev/null 2>&1 && { echo "$c"; break; }; done)"; [ -n "$PY" ] || { echo "no working Python 3 interpreter on PATH" >&2; exit 1; };
-"$PY" "$SKILL_DIR/scripts/intake-overlap" --repo-dir "$(git rev-parse --show-toplevel)" --remote "<base-remote>" --base "<baseRefName>" --pr "<N>"
+WORKSPACE_ROOT="$(jj workspace root)"; cd "$WORKSPACE_ROOT" || exit 1; export GIT_DIR="$(jj git root)"
+"$PY" "$SKILL_DIR/scripts/intake-overlap" --repo-dir "$WORKSPACE_ROOT" --remote "<base-remote>" --base "<baseRefName>" --pr "<N>"
 ```
 
 Assess the PR when the output's `overlap` is `true` or `"unknown"`, or when the user asked to update or rebase it or asked whether it is still worth keeping. Otherwise skip to the checkout gate; babysit behaves as it always has. Age, commits behind, and time since last activity never trigger the assessment and never count as evidence for a verdict.
@@ -46,7 +47,7 @@ Intake itself never merges the base into the PR; on a CLEAN PR that would be the
 
 **Close.** Close only with the user's explicit permission. That permission covers closing with one comment that carries the evidence and thanks the contributor (`gh pr close "<N>" --repo "<[host/]owner/repo>" --comment "<text>"`, against the PR's base repository).
 
-**Rework.** When the user asks for the rework, write the rework you described (goal, scope, PR link, how to verify it) to a new plan file in OS temp, invoke `ce-work mode:return-to-caller <that path>` on the PR head checkout, push its commits under babysit's ordinary push authority, then start a fresh invocation on the PR. Return-to-caller mode keeps `ce-work` from opening a second PR or watcher. When you cannot push to the PR, offer a takeover (`references/takeover.md`) instead.
+**Rework.** When the user asks for the rework, write the rework you described (goal, scope, PR link, how to verify it) to a new plan file under the workspace's local `.tmp/`, invoke `ce-work mode:return-to-caller <that path>` on the PR head workspace, push its commits under babysit's ordinary push authority, then start a fresh invocation on the PR. Return-to-caller mode keeps `ce-work` from opening a second PR or watcher. When you cannot push to the PR, offer a takeover (`references/takeover.md`) instead.
 
 **Unattended result.** Mirror the auto-merge-setting stop in `references/setup.md`: return `{ status: "needs-human", fixes_applied: [], residuals: [<one residual>] }`, where the residual is `type: "needs-human"` with `sources: []`, `thread_urls: []`, and a `decision_context` whose `quoted_feedback` names the verdict, `investigation` carries the report evidence below, `decision_reason` says why an unattended run cannot decide it, `options` are rework, close, and keep as is with their tradeoffs, and `recommendation` is the verdict.
 
@@ -60,16 +61,22 @@ A check that reached Update on its own does not ask and does not rebase. A moved
 
 Run it after the first snapshot bootstrap and before Step 2 acts on any `branch_currency` item, so the new invocation has already superseded any older watcher and classified the PR's chain; the rewritten head makes that item stale, and the next snapshot recomputes it. Do not rewrite a confirmed managed stack layer, a PR under `probe-error`, or a PR whose head another open PR uses as its base; continue with the ordinary watch and say why. Rewriting needs push access to the head branch and a clean checkout.
 
-1. **Record the starting point.** Read the head SHA from the head repository's branch through the remote `gh pr checkout` set as the branch's upstream (not the base repository's `refs/pull/<N>/head` mirror, which can lag), and keep that commit under a private local ref so it stays recoverable.
-2. **Rebase in a temporary worktree** at the recorded head onto the freshly fetched base. Resolve each conflict by the PR's intent and the base's newer rules. A conflict that reveals a product or architecture disagreement stops the rebase and reopens the verdict: decide again under Verdict with the new evidence. A user's rewrite grant does not carry over to a different verdict.
-3. **Compare before pushing.** Compare the old and new commit series with `git range-diff` and read the final diff. Confirm no intended change disappeared and nothing the base already landed came back. The comparison shows merges of the base into the PR as dropped; that is expected, not lost work. Never push when:
+1. **Record the starting point.** Fetch the exact head bookmark from its verified head-repository remote through JJ, verify its OID against a fresh API branch read (not a lagging pull-ref mirror), and preserve a recovery bookmark at the recorded commit.
+2. **Rebase in an isolated JJ workspace** at the recorded head onto the freshly fetched base. Use the workspace lifecycle below, then `jj rebase` over the verified PR-only revision set. Resolve each conflict by the PR's intent and the base's newer rules. A product or architecture disagreement stops the rebase and reopens the verdict; the user's rewrite grant does not authorize a different verdict.
+3. **Compare before pushing.** Compare old/new series with `jj interdiff --from "<old-head>" --to "<new-head>"` and per-change `jj diff` over the recorded series, then read the final exact base/head diff. Confirm no intended change disappeared and nothing the base already landed came back. Account explicitly for base merges dropped during rebasing. Never push when:
    - the rebase leaves an empty diff, or drops a PR commit as already applied upstream — reopen the verdict, because the base absorbing the PR is evidence for Close;
    - the series contains a merge of any branch other than the base — fall back to the ordinary watch and say why.
 4. **Run focused checks** for the touched area. Name checks that could not run in the temporary worktree as unverified; CI in the watch covers them after the push.
-5. **Push with a lease** on the recorded head SHA: `git push --force-with-lease=<head-branch>:<recorded-sha>` to that upstream remote. A refused push means someone pushed meanwhile: refetch, record the new head as the starting point, and redo steps 2-5 once. A second refusal reports that the branch is actively being pushed to and stops.
+5. **Push with JJ's remote-tracking lease.** Before moving the head bookmark, require its tracked remote OID still equals the recorded starting SHA. Move only that bookmark to the verified new head, then `jj git push --remote "<verified-head-remote>" --bookmark "<head-bookmark>"`. JJ rejects unexpected remote changes; never force past rejection. Refetch, record the new head and redo steps 2-5 once. A second refusal reports active concurrent pushing and stops.
 6. **Bring the checkout along.** Move the user's checkout to the new head only when its tip still equals the recorded old head. Any other tip holds work that is not yours: stop and report.
 
-Remove the temporary worktree whenever the update ends, whether or not it pushed.
+### Isolated workspace lifecycle
+
+Detect existing harness isolation first and reuse its verified name without renaming, recreating or silently changing colocation. For new isolation, use `ce-worktree` with one identity `YYYYMMDD-<meaningful-kebab-case-slug>` derived from the PR/task/revision; capture the local date once, normalize caller names without double-prefixing, and preserve the chosen name across retries, resumes and midnight. Use that identity for both registration and destination basename under the source workspace's local `.tmp/`. Check registrations and paths for collisions and append `-2`, `-3`, etc., never overwrite. Preserve PR/source bookmarks. Use a harness-owned supported colocated capability if available and verify its required name; unsupported naming/colocation is a safe compatibility blocker, not permission to bypass lifecycle ownership.
+
+From the source's absolute root: `(cd "$workspace_root" && jj workspace add --colocate --name "<dated-identity>" --revision "<verified-head>" "<absolute-owned-destination>")`. From the created absolute root, verify `jj git colocation status`, and move the active OpenCode session there with its native session-move tool when adopting it. See https://docs.jj-vcs.dev/latest/cli-reference/#jj-workspace .
+
+Retire only authorized run-owned disposable isolation. Stop workers, move active sessions to a surviving workspace and leave the target first. Verify exact registered name, absolute path and ownership; preserve recovery bookmarks and copy/read back evidence outside it. Prove required integration and inspect tracked changes, conflicts, ignored and untracked content (the latter are not protected by removal's snapshot). Never remove unrelated, ambiguous, still-referenced or non-disposable work. From the surviving absolute root use `jj workspace remove "<verified-name>"`; verify both deregistration and directory disappearance. On warning/failure retain remaining state and report; never force-delete or fall back to Git cleanup. Use `jj workspace forget` only for unregistering while retaining files. Bookmark deletion is separate; preserve recovery/archive references.
 
 ## Report
 

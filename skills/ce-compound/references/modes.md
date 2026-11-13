@@ -6,7 +6,7 @@
 /ce-compound mode:non-interactive depth:full [context]
 ```
 
-An interactive run picks its own depth rather than asking the user. Default to **Full**. Choose **Lightweight** only when the session is near its context limit.
+An interactive run picks its own depth rather than asking the user. Default to **Full**. Under context pressure delegate Full using `SKILL.md`'s context-pressure handoff. Choose **Lightweight** only when that delegation is actually unavailable, denied, or out of nesting depth. Explicit non-interactive `depth:` tokens still decide depth exactly as before.
 
 A non-interactive run takes its depth only from an explicit token, and at most one depth token is accepted. `depth:lightweight` routes directly to Lightweight Mode. `depth:full` or no depth token enters Full Mode, including its automatic session-history probe. A non-interactive call carrying no depth token therefore behaves as it always has. Non-interactive lightweight asks no blocking questions and launches no subagents. If the invocation carries an unknown `depth:` token, multiple `depth:` tokens, or a `depth:` token without non-interactive intent, do not guess: emit the non-interactive failure report with the reason and end with `Documentation skipped`.
 

@@ -6,7 +6,7 @@
 
 When the scope is only the current session and it is in your context, mine it yourself with the instructions in `references/agents/session-miner.md`. Otherwise split the extracted skeletons and error logs into batches of a few sessions each. Dispatch one generic subagent per batch, all in one response. Seed each with the full text of `references/agents/session-miner.md`, the paths of its batch's files, the repo's roots, and the focus if the user gave one. Pass file paths, never transcript text, in the prompt. A miner reads and returns evidence. It edits nothing and runs nothing that changes state.
 
-When the harness exposes no subagent primitive, mine the batches yourself with the same instructions.
+Use OpenCode-native subagents for this explicit miner dispatch. This satisfies a host rule allowing delegation requested by a loaded skill, but never overrides an unconditional prohibition. Model-selection permission is separate: inherit the model unless a user-authorized override is allowed; use `opencode.models` only to resolve permitted configured routes. Check effective nesting capacity; classify actual tool errors as depth/capacity, permission, model rejection, or missing capability without evasion or denied retries. When delegation is prohibited, unavailable, or depth-exhausted, mine the batches yourself with the same instructions and disclose the fallback and any lost coverage. These evidence miners do not require cross-model independence; never claim that same-model miners establish it.
 
 ## Combine across sessions
 
@@ -30,7 +30,7 @@ The repo's history holds decisions too. When a commit deliberately removed the t
 
 Hold each candidate to the bar in SKILL.md. The parts that need a procedure:
 
-- **The check that could defeat it.** Write one sentence saying what you would observe if the fix were needed, then run the narrowest check that could show it is not: a transcript count, a `git log`, a read of the current file. Aim it at cost, not at how often a pattern appears; a pattern can recur and never cost anything.
+- **The check that could defeat it.** Write one sentence saying what you would observe if the fix were needed, then run the narrowest check that could show it is not: a transcript count, a `jj log` from the absolute target workspace root with full `description` output, a read of the current file. Aim it at cost, not at how often a pattern appears; a pattern can recur and never cost anything.
 - **The cause on the current tree.** When the cause can be checked mechanically, check it: the path a doc names does not exist, the command an instruction gives fails, nothing points to the file agents keep searching for, the check is not wired up. When it cannot be replayed, such as an instruction that caused a correction, confirm the cause is still there. When it is gone, something already fixed it.
 - **A mistake agents recovered from** weighs more when nothing reliable caught it (the user, a late full test run, or luck) than when an immediate check did.
 

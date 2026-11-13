@@ -16,15 +16,17 @@ PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c 
 
 Run `store` and `read` the same way, each in its own call. `"$PY" "$SKILL_DIR/scripts/retro-state.py" --help` lists every subcommand, its flags, and its exit statuses.
 
-- `roots` names the git common directory, the main checkout, and every worktree. "This repo" means all of them, not only the directory you were started in. Outside a git repository, say so and stop: the ledger and the current-tree check both need git.
-- `store` resolves the ledger directory, shared by every worktree. When it reports `.context/compound-engineering/` is not gitignored at the main checkout, offer to add that line to the main checkout's `.gitignore` before any write. When the user declines, the ledger still lives there. Keep the answer: `references/approval-and-apply.md` uses it to decide where backups of files outside the repo go. When `store` reports the ledger cannot be written, as in a sandbox limited to the current worktree, finish as the no-user branch does and tell the user to rerun from the main checkout or with write access to it.
+- `roots` names the shared JJ repository directory, the original workspace when registered, and every workspace. "This repo" means all of them, not only the directory you were started in. Outside a JJ repository, say so and stop: the ledger and the current-tree check both need JJ. See https://docs.jj-vcs.dev/latest/cli-reference/#jj-workspace. Run JJ commands with the tool working directory set to the target workspace's absolute root.
+- `store` resolves the ledger directory, shared by every worktree. When it reports `.context/` is not gitignored at the main checkout, offer to add that line to the main checkout's `.gitignore` before any write. When the user declines, the ledger still lives there. Keep the answer: `references/approval-and-apply.md` uses it to decide where backups of files outside the repo go. When `store` reports the ledger cannot be written, as in a sandbox limited to the current worktree, finish as the no-user branch does and tell the user to rerun from the main checkout or with write access to it.
 - `read` returns the latest decision per item and the per-harness cutoff from earlier runs.
 
-Create this run's scratch directory for extraction output. Never write transcript extracts into the repo. Keep the printed path: shell state does not carry between tool calls, so every later block that uses `RUN_DIR` sets it again on its first line. The directory's basename is this run's name.
+The helper returns `gitignored: null` when ignore protection has not been established. Treat that as unknown, not ignored: inspect the original workspace's ignore instructions and offer to add `.context/` before writing; preserve the user's decision and use local scratch for outside-file backups unless protection is established. Ensure `.tmp/` is ignored before writing extracts.
+
+Create this run's scratch directory for extraction output under ignored local `.tmp/`, never in tracked content. Keep the printed path: shell state does not carry between tool calls, so every later block that uses `RUN_DIR` sets it again on its first line. The directory's basename is this run's name.
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+WORKSPACE_ROOT="$(jj workspace root)" || exit 1;
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;

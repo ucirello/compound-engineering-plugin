@@ -1,6 +1,6 @@
 # Shipping (LFG steps 9–11)
 
-The shipping steps are the last stretch of the run: commit, push, PR, CI, and close-out. LFG's SKILL.md defines the shipping precondition (the `git remote` check) and the two invocation strings. This file defines everything else: which handoff runs, what LFG passes into it, what it does with the result, and how the run closes out.
+The shipping steps are the last stretch of the run: commit, push, PR, CI, and close-out. LFG's SKILL.md defines the shipping precondition (the `jj git remote list` check) and the two invocation strings. This file defines everything else: which handoff runs, what LFG passes into it, what it does with the result, and how the run closes out.
 
 ## Step 9 — a project-defined process may replace the default handoff
 
@@ -14,7 +14,11 @@ Pass the recorded plan path from step 1 into the `ce-commit-push-pr` invocation,
 
 This commits any remaining changes, pushes the branch, and opens a pull request, non-interactively because of the `mode:pipeline` token. If it prints a `New concepts:` trailer after the PR URL, record the concept name(s) for step 11. If a PR already exists for the branch (check with `gh pr view --json number,url,state 2>/dev/null`), skip PR creation but still commit and push any uncommitted changes. Pipeline mode leaves an existing PR body alone by default, so the description context above would be lost there; after the push, invoke `ce-commit-push-pr mode:pipeline` again in its description-update mode on that PR with the same context, so the record reaches the reviewer without a confirmation prompt.
 
-**Per the shipping precondition, when no remote is configured, do NOT invoke `ce-commit-push-pr` or a project-defined shipping process.** The default's commit step pushes unconditionally (`git push -u origin HEAD`), so a literal invocation would still hit the impossible push. Instead commit the files this run changed, by name (the work source's files, the review fixes, and any captured learning), and skip the push and PR creation entirely. Never `git add -A`: a file that was already dirty before the run, or one the defect route's `pre_fix_scope` lists, stays uncommitted and is named in the report.
+**Per the shipping precondition, when no remote is configured, do NOT invoke `ce-commit-push-pr` or a project-defined shipping process.** Instead invoke `ce-commit` for the files this run changed, by name (the work source's files, the review fixes, and any captured learning), with the semantic work summary. That skill must read the full Go commit guide and compare recent JJ subjects and bodies before composing a repository-local message. Skip push and PR creation entirely. Preserve unrelated edits: a file already dirty before the run, or listed in the defect route's `pre_fix_scope`, stays uncommitted and is named in the report.
+
+All repository-scoped `gh` commands in this reference run from the target workspace's absolute root with `GIT_DIR=$(jj git root)`; capture errors under its local `.tmp/`, not global temporary storage.
+
+Routine PR maintenance already authorized by this pipeline needs no second approval: apply factual description refreshes from verified run results while preserving unrelated user prose and issue links. Do not route that refresh through an optional rewrite approval flow. Description-only requests remain draft-only unless application was explicitly requested. Outside authorized maintenance, optional rewrites retain their approval gate, remain separate from alignment/monitoring, and declining them never blocks an otherwise authorized handoff. Clean-head alignment and starting/re-arming authorized monitoring require no extra approval after verifying the repository, remote, bookmark and exact pushed head; an empty `@` directly above it is already aligned. Preserve tracked, ignored and untracked unrelated work; dirty/conflicted state, uncertain targets, denied permissions or unknown push authority takes the safe stop path, never a reset or guessed target. Respect watch boundaries, standing monitoring opt-outs and final-merge authority.
 
 ## Step 10 — stack handoff from step 9
 

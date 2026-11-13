@@ -1,83 +1,13 @@
-# `gh stack` semantics this skill relies on
+# Stack metadata and JJ semantics
 
-Verified against `gh stack version 0.1.0`. `gh stack <command> --help` is authoritative — if it
-disagrees with anything here, follow `--help` and say so in your report. (`gh stack help <command>`
-does not work; it prints top-level help.)
+The former branch-mutating `gh stack` construction commands are not a JJ workspace API. Do not invoke checkout/init/add/top/submit through a Git-backed stack manager or use Git as a fallback. Construct and publish local layers with native JJ under `stack-submit.md`; read GitHub PR metadata with repository-scoped gh under `context.md`.
 
-Only the behavior that changes a decision in stack mode is listed. This file is self-contained on
-purpose: do not depend on the user having a separate `gh-stack` skill installed.
+Resolve a parent PR by number and fetch metadata including base/head repository, `headRefName`, `headRefOid`, author and draft state. Verify repository, remote, bookmark and exact commit together. A bookmark name alone is not identity. Fetch the exact head bookmark via its confirmed JJ remote and verify the fetched commit. If it cannot be retrieved, report an exact-ref residual, not an alternate revision.
 
-## Classifying a parent
+Preserve any existing managed-stack topology. Use the complete server-manager GraphQL discovery contract in `skills/ce-babysit-pr/references/stack.md` and the native recipes in `skills/ce-babysit-pr/references/stack-commands.md` (paths relative to the installed package root). Capture manager identity, complete ordered PR membership, trunk, immediate parents, exact head/base names and OIDs, head repositories, and draft/closed state. Never infer membership from ancestry or ordinary PR base relationships. A successful null manager is absent; unavailable schema counts as absent only after a separate successful default-branch probe. Denied, malformed, truncated, rate-limited or failed queries are probe-error, not absence or completed coverage.
 
-```bash
-gh stack checkout "<parent-pr-number>"
-```
+GitHub's native managed-stack relationship is not equivalent to merely setting ordinary PR base branches. Separate **existing-member maintenance** from **creation/import/structural edits**. Confirmed existing members can be rebased and lease-pushed with JJ while retaining manager identity and PR/base relationships; do not require a hypothetical registration endpoint for a transaction that does not need one. New/adopted members or changed structure require the provider's documented API-native registration capability and subsequent membership verification. A genuinely unavailable required registration operation is a precise residual, not a reason to claim JJ cannot maintain existing layers. Never silently substitute an untracked collection of PRs for required managed membership.
 
-Resolve a parent by **PR number** whenever one exists — that is what pulls a stack down from
-GitHub. A bare branch name resolves against **local** stacks only, so a branch-only parent can be
-classified locally and no further.
+For existing-member synchronization follow the corresponding `stack-commands.md` transaction: preserve old tips and immediate parents under recovery bookmarks; rebase only each dependent's recorded own-commit range onto its verified new immediate parent; verify interdiff, ancestry and publishing gates; move only its owned bookmark and lease-push it; re-probe each head and manager relationship. Never rebase the already-pushed active target. Conflicts or unexpected remote movement stop propagation without force. Multi-ref atomicity is not assumed or required when unsupported: report actual per-layer progress and the first blocked/divergent layer. A provider-required atomic or registration operation that cannot be satisfied remains an external residual.
 
-Branch on the exit code; status text goes to stderr and must not be parsed.
-
-| Exit | Meaning | What it means here |
-|---|---|---|
-| 0 | Success | Parent is in a stack, and `HEAD` has moved to it |
-| 2 | Not in a stack | Parent is standalone; nothing was checked out or fetched |
-| 5 | Invalid arguments | Fix the invocation; see `--help` |
-| 6 | Disambiguation required | Branch is in several stacks — check out a non-shared branch |
-| 9 | Stacked PRs unavailable | Not enabled on this repository; tell the user and stop |
-
-```bash
-gh stack view --json    # JSON on stdout: trunk, currentBranch,
-                        # branches[] { name, head, base, isCurrent, isMerged, needsRebase,
-                        #              pr { number, url, state } }
-```
-
-`base` is the parent SHA the branch was last known to contain, not the parent's current tip;
-`needsRebase` is true when that tip is no longer an ancestor. There is no field naming the top of
-the stack and no documented branch ordering, so do not derive position from this payload — use
-`add`'s exit 5 instead.
-
-## Resolving a PR head
-
-`gh pr view "<n>" --json headRefName,headRefOid,author` identifies the head; `headRefName` alone
-does not, because a same-repo name can be absent or stale locally and can collide with an unrelated
-branch. Create a local branch at `headRefOid`, fetching `refs/pull/<n>/head` when that commit is not
-reachable — reachability leaves the commit with no branch to name.
-
-## Building
-
-```bash
-gh stack init [--base "<trunk>"] "<branch>"...
-```
-
-Processes branches bottom to top and checks out the **last** one. **Existing branches are adopted;
-missing ones are created** — the first from the trunk, each later one from the branch before it.
-There is no separate adopt mode: existence decides. `--base` selects a non-default trunk, so a
-parent branch can serve as the trunk without joining the stack.
-
-```bash
-gh stack add "<branch>"
-```
-
-Must run from the **top** branch of the stack (or the trunk while it is still empty); anywhere else
-exits **5**. Exit 5 here means "you are not on the top", and moving there with `gh stack top` is a
-decision, not a fix: it changes which layer the new branch is parented to. Whether that is correct
-belongs to the caller — when a specific parent was named, it is not. Without `-Am`, `add` does not
-touch the working tree, so staged and unstaged changes follow onto the new branch.
-
-```bash
-gh stack submit --auto [--open]
-```
-
-`--auto` avoids a title prompt per new PR. `--open` creates PRs ready for review instead of drafts,
-and also marks pre-existing drafts ready.
-
-## Never
-
-- **`gh stack link`** — GitHub-only by design, creates no local tracking, so a later
-  `gh stack submit`, `gh stack view`, or `gh stack merge` will not see the layer. It exists for
-  branches managed by external tools (jj, Sapling, git-town).
-- **`gh pr merge`** on a stack member — it cannot merge a stack. Landing uses `gh stack merge`.
-- **Bare `view` / `submit` / `init` / `add` / `checkout`** — each prompts or opens a TUI that
-  blocks under a PTY. Always pass the arguments and flags shown above.
+Do not use `gh pr merge` on a managed member. Landing remains owned by `ce-babysit-pr` with explicit `posture:stack-land` or by the user, through a verified supported stack landing interface.

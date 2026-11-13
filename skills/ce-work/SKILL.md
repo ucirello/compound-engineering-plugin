@@ -45,7 +45,7 @@ When triage selects Return-to-Caller Mode, read `references/return-to-caller.md`
 
 Before the first implementation write, including on the Trivial route, read `references/implementation-loop.md`. It decides evidence, verification, per-unit commits, and simplification.
 
-The commit rule from this file stays in force throughout: every implementation commit names only that unit's owned files. A bare `git commit` can absorb the user's pre-existing index, so it is forbidden.
+The commit rule from this file stays in force throughout: every implementation commit names only that unit's owned files. Run JJ from the target workspace's absolute root and never include unrelated working-copy edits.
 
 Keep going until every in-scope unit is done. A progress update does not end the run; stop before that only for a named blocker.
 

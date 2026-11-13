@@ -161,6 +161,8 @@ encode_omp_raw_cwd() {
             printf -- '-%s' "$rel"
             ;;
         *)
+            # Read-only decoding of historical omp bucket identities, not a
+            # temporary-storage destination. New scratch belongs in local .tmp/.
             canon_tmp="$(cd "${TMPDIR:-/tmp}" 2>/dev/null && pwd -P)" || canon_tmp=""
             case "$cwd" in
                 "$canon_tmp")

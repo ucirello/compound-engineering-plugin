@@ -6,11 +6,11 @@ belong to the repository, where the shared store lives, and what earlier runs
 decided. Every subcommand prints one JSON object to stdout.
 
 Store location:
-  <main checkout>/.context/compound-engineering/ce-retro/
-    The main checkout is the first entry of `git worktree list`, so every
-    linked worktree resolves the same store.
-  <git common dir>/compound-engineering/ce-retro/
-    Used whenever the common repository is bare, even with worktrees attached.
+  <main checkout>/.context/ce-retro/
+    JJ's shared repository location identifies the original workspace, so
+    linked workspaces resolve the same store.
+  <JJ repository>/rocketclaw/ce-retro/
+    Used when the original workspace is no longer available.
 
 Store files:
   decisions.jsonl          one decision record per line, append-only
@@ -25,7 +25,7 @@ under it are restricted to the owner.
 Exit statuses:
   0  success
   2  command-line misuse
-  3  not inside a git repository (error "not-a-git-repo")
+  3  not inside a JJ repository (error "not-a-jj-repo")
   4  the store cannot be written (error "store-unwritable")
   5  the store path is unsafe: a symlink or not owned by you (error "store-unsafe")
   6  invalid input: a record outside the schema, a bad run name, or a
@@ -71,36 +71,37 @@ def emit(obj):
     sys.stdout.write(json.dumps(obj, indent=2, sort_keys=True) + "\n")
 
 
-def git(cwd, *args):
+def jj(cwd, *args):
     try:
-        r = subprocess.run(["git", "-C", cwd, *args], capture_output=True, text=True)
+        r = subprocess.run(["jj", "--ignore-working-copy", *args], cwd=os.path.abspath(cwd), capture_output=True, text=True)
     except OSError as e:
-        raise Failure(EXIT_NOT_GIT, "not-a-git-repo", f"git could not run: {e}")
+        raise Failure(EXIT_NOT_GIT, "not-a-jj-repo", f"jj could not run: {e}")
     return r
 
 
 def roots(cwd):
-    r = git(cwd, "rev-parse", "--path-format=absolute", "--git-common-dir")
+    r = jj(cwd, "workspace", "root")
     if r.returncode != 0:
-        raise Failure(EXIT_NOT_GIT, "not-a-git-repo", r.stderr.strip() or f"{cwd} is not in a git repository")
-    common = os.path.realpath(r.stdout.strip())
-
-    listing = git(cwd, "worktree", "list", "--porcelain")
+        raise Failure(EXIT_NOT_GIT, "not-a-jj-repo", r.stderr.strip() or f"{cwd} is not in a JJ repository")
+    workspace = os.path.realpath(r.stdout.strip())
+    repo = os.path.join(workspace, ".jj", "repo")
+    if os.path.isfile(repo):
+        with open(repo) as f:
+            repo = os.path.join(os.path.dirname(repo), f.read().strip())
+    common = os.path.realpath(repo)
+    listing = jj(workspace, "workspace", "list", "-T", 'json(root) ++ "\\n"')
     if listing.returncode != 0:
-        raise Failure(EXIT_NOT_GIT, "not-a-git-repo", listing.stderr.strip())
-    entries = []
-    for block in listing.stdout.strip().split("\n\n"):
-        lines = block.splitlines()
-        if not lines or not lines[0].startswith("worktree "):
-            continue
-        entries.append({"path": os.path.realpath(lines[0][len("worktree "):]), "bare": "bare" in lines})
-
-    bare = bool(entries) and entries[0]["bare"]
-    worktrees = [e["path"] for e in entries if not e["bare"]]
+        raise Failure(EXIT_NOT_GIT, "not-a-jj-repo", listing.stderr.strip())
+    paths = [json.loads(line) for line in listing.stdout.splitlines()]
+    if any(path is None for path in paths):
+        raise Failure(EXIT_NOT_GIT, "workspace-path-unavailable", "A registered JJ workspace has no recorded root; session coverage cannot be established")
+    worktrees = [os.path.realpath(path) for path in paths]
+    original = os.path.dirname(os.path.dirname(common))
+    main = original if original in worktrees else None
     return {
         "common_dir": common,
-        "bare": bare,
-        "main_checkout": None if bare or not worktrees else worktrees[0],
+        "bare": main is None,
+        "main_checkout": main,
         "worktrees": worktrees,
     }
 
@@ -147,20 +148,21 @@ def resolve_store(cwd, create=True):
     info = roots(cwd)
     if info["main_checkout"] is None:
         base = info["common_dir"]
-        chain = ["compound-engineering", "ce-retro"]
+        chain = ["rocketclaw", "ce-retro"]
         gitignored = None
     else:
         base = info["main_checkout"]
-        chain = [".context", "compound-engineering", "ce-retro"]
-        gitignored = git(base, "check-ignore", "-q", ".context/compound-engineering/").returncode == 0
+        chain = [".context", "ce-retro"]
+        # Do not pretend a partial local ignore parser implements JJ's layered
+        # ignore semantics. The caller must verify protection before writing.
+        gitignored = None
 
     store = guard_chain(base, chain, create, restrict_from=len(chain) - 1)
 
     if create:
         try:
-            fd, probe = tempfile.mkstemp(prefix=".probe-", dir=store)
-            os.close(fd)
-            os.unlink(probe)
+            if not os.access(store, os.W_OK | os.X_OK):
+                raise OSError("directory is not writable/searchable")
         except OSError as e:
             raise Failure(EXIT_UNWRITABLE, "store-unwritable", f"cannot write to {store}: {e}")
     return {"store": store, "gitignored": gitignored, "roots": info}
@@ -389,7 +391,11 @@ def cmd_backup(args):
             return
         # Copy to a private temp file and publish it with a hard link, which fails if dest
         # exists: an interrupted copy must never be accepted later as a finished backup.
-        fd, tmp = tempfile.mkstemp(dir=os.path.dirname(dest), prefix=".partial-")
+        workspace = jj(os.path.abspath(os.getcwd()), "workspace", "root")
+        if workspace.returncode:
+            raise Failure(EXIT_NOT_GIT, "not-a-jj-repo", workspace.stderr.strip())
+        scratch = guard_chain(workspace.stdout.strip(), (".tmp", "rocketclaw", "ce-retro"), True)
+        fd, tmp = tempfile.mkstemp(dir=scratch, prefix=".partial-")
         try:
             with os.fdopen(fd, "wb") as out, open(source, "rb") as src:
                 shutil.copyfileobj(src, out)

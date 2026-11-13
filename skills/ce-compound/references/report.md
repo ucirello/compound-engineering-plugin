@@ -1,5 +1,7 @@
 # Completion reports
 
+For context-pressure delegated Full mode, return the report and written doc path to the parent, explicitly listing interactive-only steps not applied: discoverability instruction-file edits and a Compound Pack destination. The parent relays this report and offers those steps with usual consent, without a second Full pass or re-editing the doc. If delegation was unavailable, denied, or depth-exhausted, the Lightweight report names the actual blocker and advises retrying from this same source session once delegation is available.
+
 ## Success Output
 
 **User-runnable refresh rendering.** The reports below print a refresh invocation for the user to copy. Default to `/ce-compound refresh <scope>`; use `$ce-compound refresh <scope>` only when the active host is Codex or explicitly documents dollar-prefixed skill invocation. Render only the invocation as inline code and output one form only.

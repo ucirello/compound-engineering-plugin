@@ -47,7 +47,7 @@ decides per flag: fix, annotate as historical, or confirm intentional.
 Only the summary exit code distinguishes "clean" from "needs a look".
 
 The script never touches the network (no fetch); classification uses
-whatever refs exist locally. Run a best-effort `git fetch --quiet` first
+whatever refs exist locally. Run a best-effort `jj git fetch` first
 when freshness matters. Pure stdlib (no third-party deps).
 """
 import os
@@ -102,15 +102,49 @@ def usage_fail(msg: str) -> "NoReturn":
 
 
 def git(args: list[str], cwd: str) -> tuple[int, str]:
+    """Translate the validator's object queries into native JJ facts."""
+    def rev(value):
+        if value == "HEAD":
+            return "@"
+        if value.startswith("origin/"):
+            return value[7:] + "@origin"
+        return value
+    command = args[0]
+    if command == "rev-parse" and "--show-toplevel" in args:
+        native = ["workspace", "root"]
+    elif command == "rev-parse" and args[-1] == "origin/HEAD":
+        # No guessed default: caller checks verified local remote candidates.
+        return 1, ""
+    elif command == "rev-parse":
+        native = ["log", "--no-graph", "-r", rev(args[-1]), "-T", "commit_id"]
+    elif command == "rev-list":
+        left, right = args[-1].split("..", 1)
+        native = ["log", "--no-graph", "-r", f"{rev(left)}..{rev(right)}", "-T", '"x\\n"']
+    elif command == "cat-file":
+        value = args[-1]
+        if value.endswith("^{commit}"):
+            native = ["log", "--no-graph", "-r", rev(value[:-9]), "-T", "commit_id"]
+        else:
+            revision, path = value.split(":", 1)
+            native = ["file", "list", "-r", rev(revision), "--", path]
+    elif command == "merge-base":
+        native = ["log", "--no-graph", "-r", f"{rev(args[-2])} & ::{rev(args[-1])}", "-T", "commit_id"]
+    else:
+        return 1, ""
     try:
         result = subprocess.run(
-            ["git", *args],
-            cwd=cwd,
+            ["jj", *native],
+            cwd=os.path.abspath(cwd),
             capture_output=True,
             text=True,
             timeout=30,
         )
-        return result.returncode, result.stdout.strip()
+        output = result.stdout.strip()
+        if command == "rev-list" and result.returncode == 0:
+            output = str(len(output.splitlines())) if output else "0"
+        if command in ("cat-file", "merge-base") and not output:
+            return 1, ""
+        return result.returncode, output
     except (OSError, subprocess.TimeoutExpired):
         return 1, ""
 

@@ -21,7 +21,7 @@ plan_use_fable:
 
 pr_branding:
   kind: remove
-  reason: "No longer does anything; PR branding is off by default and is requested per run with the branding:on token."
+  reason: "Retired; no longer supported."
 
 work_delegate:
   kind: remove

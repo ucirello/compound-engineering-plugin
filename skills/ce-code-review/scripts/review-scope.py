@@ -12,6 +12,7 @@ consequence.
 from __future__ import annotations
 
 import argparse
+import difflib
 import functools
 import json
 import os
@@ -84,10 +85,11 @@ AGENT_SURFACE_PATTERN = re.compile(
 )
 
 
-def git(*args: str) -> subprocess.CompletedProcess[str]:
+def jj(*args: str) -> subprocess.CompletedProcess[str]:
     # surrogateescape keeps paths holding non-UTF-8 bytes (Latin-1 filesystems) from crashing the decode.
     return subprocess.run(
-        ["git", *args],
+        ["jj", "--no-pager", "--color=never", *args],
+        cwd=repo_root(),
         capture_output=True,
         encoding="utf-8",
         errors="surrogateescape",
@@ -98,15 +100,8 @@ def git(*args: str) -> subprocess.CompletedProcess[str]:
 def valid_commit(ref: str | None) -> bool:
     if not ref:
         return False
-    return git("rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}").returncode == 0
-
-
-def unique_merge_base(base: str, head: str) -> str | None:
-    result = git("merge-base", "--all", base, head)
-    candidates = [line for line in result.stdout.splitlines() if line]
-    if result.returncode != 0 or len(candidates) != 1:
-        return None
-    return candidates[0]
+    result = jj("log", "--no-graph", "-r", ref, "-T", 'commit_id ++ "\\n"')
+    return result.returncode == 0 and len(result.stdout.splitlines()) == 1
 
 
 DEFAULT_DOCS_ROOT = "docs"
@@ -129,17 +124,10 @@ def normalize_docs_root(docs_root: str | None) -> str:
 
 @functools.lru_cache(maxsize=None)
 def repo_root() -> Path:
-    """The repository root, matching how docs_root is resolved everywhere else.
-
-    docs_root is repo-relative (``<repo-root>/<docs_root>``), so the corpus
-    check must resolve against the git toplevel, not the current working
-    directory. ce-code-review can run from a subdirectory (``git diff`` still
-    works there), where ``Path.cwd()`` would join docs_root under the subdir and
-    wrongly report the corpus absent. Fall back to cwd when git can't answer.
-    """
-    # fsdecode, not git()'s UTF-8: the toplevel is reused as a filesystem path and must round-trip to its bytes.
+    """Find the absolute JJ workspace root before running workspace commands."""
     result = subprocess.run(
-        ["git", "rev-parse", "--show-toplevel"], capture_output=True, check=False
+        ["jj", "workspace", "root"], cwd=Path.cwd().resolve(),
+        capture_output=True, check=False
     )
     toplevel = os.fsdecode(result.stdout.strip())
     if result.returncode == 0 and toplevel:
@@ -172,10 +160,10 @@ PACKS_RESOLVER_TIMEOUT = 30.0
 
 
 def declared_packs() -> tuple[bool | None, int]:
-    """Whether the local CE config declares Compound Packs, from the config alone.
+    """Whether the local RocketClaw config declares Compound Packs, from the config alone.
 
     Runs the sibling resolver in `--declared-only` mode, which parses the
-    `packs:` list from both CE config layers and shape-checks each entry with no
+    `packs:` list from both RocketClaw config layers and shape-checks each entry with no
     git or cache work. Its `declared` is true when any entry parsed or the block
     is malformed -- a broken declaration is still one the learnings pass must
     surface in Coverage. ``None`` means the helper could not tell (resolver
@@ -280,31 +268,18 @@ def matching_classes(
     ]
 
 
-def numstat_path(name: str) -> str:
-    """Return the destination path from a `git diff --numstat` rename display name."""
-    if " => " not in name:
-        return name
-    if "{" in name and "}" in name:
-        prefix, rest = name.split("{", 1)
-        old_new, suffix = rest.split("}", 1)
-        _, new = old_new.split(" => ", 1)
-        # A collapsed segment (`a/{b => }/c`) leaves an empty side, so the
-        # rebuilt path would carry `//` and miss every path-class pattern.
-        return re.sub(r"/{2,}", "/", f"{prefix}{new}{suffix}")
-    _, new = name.split(" => ", 1)
-    return new
-
-
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base", required=True)
     parser.add_argument("--head")
+    parser.add_argument("--local-scope", action="store_true",
+                        help="read local config signals with explicitly pinned endpoints")
     parser.add_argument("--docs-root", default="docs")
     args = parser.parse_args()
 
     # Remote scope (pr-remote / branch-remote) always passes --head, even when a
     # best-effort fetch left it empty; the local config is not that tree's config.
-    repo = repo_signals(args.docs_root, local_scope=args.head is None)
+    repo = repo_signals(args.docs_root, local_scope=args.local_scope or args.head is None)
 
     if not valid_commit(args.base):
         print(json.dumps(fail_closed("invalid base endpoint", repo), sort_keys=True))
@@ -313,38 +288,67 @@ def main() -> int:
         print(json.dumps(fail_closed("invalid head endpoint", repo), sort_keys=True))
         return 0
 
-    diff_args = [args.base]
-    if args.head:
-        merge_base = unique_merge_base(args.base, args.head)
-        if merge_base is None:
-            print(json.dumps(fail_closed("merge base unavailable or ambiguous", repo), sort_keys=True))
+    # Pin both endpoints once. Never replace the captured range with a merge
+    # base or with parent-relative per-commit statistics.
+    endpoints = []
+    for ref in (args.base, args.head if args.head is not None else "@"):
+        resolved = jj("log", "--no-graph", "-r", ref, "-T", 'commit_id ++ "\\n"')
+        ids = resolved.stdout.splitlines()
+        if resolved.returncode or len(ids) != 1:
+            print(json.dumps(fail_closed("endpoint unavailable or ambiguous", repo), sort_keys=True))
             return 0
-        diff_args = [merge_base, args.head]
-
-    # Unquoted non-ASCII paths keep extension checks and manifest paths usable.
-    numstat = git("-c", "core.quotePath=false", "diff", "--numstat", *diff_args)
-    raw = git("-c", "core.quotePath=false", "diff", "--raw", *diff_args)
-    if numstat.returncode != 0 or raw.returncode != 0:
-        print(json.dumps(fail_closed("git diff failed", repo), sort_keys=True))
+        endpoints.append(ids[0])
+    base, head = endpoints
+    template = (
+        'json({"path" => path, "source" => source.path(), '
+        '"status" => status, "executable" => '
+        'if(status == "removed", source.executable(), target.executable()), '
+        '"old_type" => source.file_type(), "new_type" => target.file_type()}) ++ "\\n"'
+    )
+    raw = jj("diff", "--from", base, "--to", head, "-T", template)
+    if raw.returncode != 0:
+        print(json.dumps(fail_closed("JJ diff failed", repo), sort_keys=True))
         return 0
 
     executable_mode_paths: set[str] = set()
     deleted_paths: set[str] = set()
-    for line in raw.stdout.splitlines():
-        if "\t" not in line:
-            continue
-        meta, path_field = line.split("\t", 1)
-        fields = meta.lstrip(":").split(" ")
-        if len(fields) < 2:
-            continue
-        if fields[-1] == "D":
-            deleted_paths.add(path_field)
-        old_mode, new_mode = fields[0], fields[1]
-        mode = old_mode if new_mode == "000000" else new_mode
-        if not mode.endswith("755"):
-            continue
-        for path in path_field.split("\t"):
-            executable_mode_paths.add(path)
+    stats = []
+    try:
+        for line in raw.stdout.splitlines():
+            entry = json.loads(line)
+            name = entry["path"]
+            if entry["executable"]:
+                executable_mode_paths.add(name)
+            if entry["status"] == "removed":
+                deleted_paths.add(name)
+            contents = []
+            countable = not any(
+                entry[key] in ("conflict", "git-submodule", "tree")
+                for key in ("old_type", "new_type")
+            )
+            for revision, path, absent in (
+                (base, entry["source"], entry["status"] == "added"),
+                (head, name, entry["status"] == "removed"),
+            ):
+                if absent:
+                    contents.append([])
+                    continue
+                value = jj("file", "show", "-r", revision, path)
+                if value.returncode or "\0" in value.stdout:
+                    countable = False
+                contents.append(value.stdout.splitlines(keepends=True))
+            added = removed = 0
+            if countable:
+                for op, a, b, c, d in difflib.SequenceMatcher(
+                    None, *contents, autojunk=False
+                ).get_opcodes():
+                    if op != "equal":
+                        removed += b - a
+                        added += d - c
+            stats.append((str(added), str(removed), name) if countable else ("-", "-", name))
+    except (ValueError, KeyError, TypeError):
+        print(json.dumps(fail_closed("unreadable JJ scope facts", repo), sort_keys=True))
+        return 0
 
     files: list[str] = []
     executable_lines = 0
@@ -354,18 +358,16 @@ def main() -> int:
     uncounted = 0
     deleted_files: list[str] = []
     deleted_exec_nontest_lines = 0
-    for line in numstat.stdout.splitlines():
-        parts = line.split("\t")
-        if len(parts) < 3:
-            continue
-        added, deleted, name = parts[0], parts[1], parts[2]
-        resolved_name = numstat_path(name)
+    for added, deleted, name in stats:
+        resolved_name = name
         files.append(resolved_name)
         ext = Path(resolved_name).suffix.lower()
         is_exec = ext in CODE_EXTENSIONS or resolved_name in executable_mode_paths
         is_test = bool(TEST_PATTERN.search(resolved_name))
         if resolved_name in deleted_paths:
             deleted_files.append(resolved_name)
+            if added == "-" or deleted == "-":
+                uncounted += 1
             if deleted.isdigit():
                 changed_lines += int(deleted)
                 if is_exec and not is_test:
@@ -399,6 +401,8 @@ def main() -> int:
     result = {
         "status": "complete",
         "reason": None,
+        "base": base,
+        "head": head,
         "exec_lines": executable_lines,
         "exec_nontest_lines": executable_nontest_lines,
         "unclassified_lines": unclassified_lines,

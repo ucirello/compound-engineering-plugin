@@ -2,12 +2,16 @@
 name: ce-resolve-pr-feedback
 description: Judge PR feedback centrally, apply valid fixes, and complete review conversations with publication verified. Use when addressing feedback already left on a PR, preparing local fixes for a caller to publish, or completing a saved feedback batch. Use ce-code-review for reviewing code before feedback exists.
 argument-hint: "[mode:pipeline | mode:return-to-caller | mode:resume] [PR number, comment URL, or blank for current branch's PR] [handoff:<path>]"
-allowed-tools: Bash(gh *), Bash(git *), Bash(bash *), Bash(python3 *), Read, Write
+allowed-tools: Bash(gh *), Bash(jj *), Bash(bash *), Bash(python3 *), Read, Write
 ---
 
 # Resolve PR Review Feedback
 
 Judge fresh PR review feedback centrally, then dispatch generic subagents seeded with the bundled fixer prompt only for approved fixes. Publish the fixes before replying and resolving. Resume completes saved judgments without another fix pass.
+
+**Execution context:** Resolve the target's absolute `workspace_root` before work. Run every JJ command from that root, for example `(cd "$workspace_root" && jj status)`, never by repository selection alone. In every separate shell call, run repository-scoped `gh` and bundled helpers from that root with `GIT_DIR=$(jj git root)` exported there; preserve `GH_HOST` independently. Store all temporary bodies, evidence and fallback files beneath that workspace's `.tmp/` (or local `.tmp/` without a repository). Never invoke Git directly. Native JJ reference: https://docs.jj-vcs.dev/latest/git-command-table/ .
+
+**Native dispatch:** These fixer instructions explicitly request OpenCode-native subagents when the host permits user-or-skill-requested delegation; no second approval is needed under that rule. A higher-priority prohibition or actual denial still wins. Delegation permission does not grant model-selection permission: discover configured routes through `opencode.models`, preserve configuration authority, and use inherited models unless explicit model selection is allowed. Classify actual dispatch failures as missing tool, denial, model rejection, or nesting/capacity exhaustion; never evade them through another harness or shell. Fixers may fall back inline because they implement already judged changes, not independent review. Required independent/cross-model adjudication that cannot run remains incomplete; same-model agents do not prove cross-model coverage.
 
 **Done:** Every selected item has a verdict and verified conversation completion or a reported residual. Completed threads have a visible submitted reply with quoted context and authoritative resolution; `needs-human` threads stay open. Ordinary and pipeline runs publish valid fixes before completion. Return-to-caller preserves its local fix commit and exact pending actions in a readable validated handoff, or records actual no-change completion. Resume verifies fresh publication and returns checkpointed completion or pending saved actions with retry evidence. Pending actions are never reported as resolved.
 

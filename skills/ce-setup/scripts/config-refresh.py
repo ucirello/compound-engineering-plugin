@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bring a repo's Compound Engineering config files up to date with the bundled template.
+"""Bring a repo's RocketClaw config files up to date with the bundled template.
 
 Subcommands (each prints one JSON object on stdout):
 
@@ -14,7 +14,7 @@ Subcommands (each prints one JSON object on stdout):
                              verify again, then replace the layer's file with the draft
 
 L is `tracked` (config.yaml) or `local` (config.local.yaml). `--repo DIR` overrides
-the repository root (default: the git top level of the working directory).
+the repository root (default: the JJ workspace root of the working directory).
 
 Exit 0 when the command did its job (status always; draft drafted or found nothing
 to do; verify and apply passed). Exit 1 when the file is refused, a change is not
@@ -66,13 +66,13 @@ VERSION_LINE = re.compile(r"^# ce-config-template-version:(.*)$")
 ANCHOR_OR_ALIAS = re.compile(r"(?:^|:\s+|-\s+|[\[{,]\s*)[&*][A-Za-z0-9_-]")
 BLOCK_SCALAR = re.compile(r"(?:^|:\s+|-\s+)[|>][-+0-9]*\s*$")
 LEGACY_LOCAL_MARKERS = (
-    "# Compound Engineering -- local config",
-    "# Copy to .compound-engineering/config.local.yaml",
+    "# RocketClaw -- local config",
+    "# Copy to .rocketclaw/config.local.yaml",
 )
 
 MARKER = "# --- Kept from the previous file: settings this plugin does not recognize, and notes ---"
 LOCAL_HEADER = [
-    "# Compound Engineering -- checkout-local overrides. Keep this file gitignored.",
+    "# RocketClaw -- checkout-local overrides. Keep this file gitignored.",
     "# A setting here wins over config.yaml for this checkout; docs_root is read",
     "# only from config.yaml. config.example.yaml lists every setting.",
 ]
@@ -245,6 +245,17 @@ def block_is_set(block):
 
 
 
+# Exact historical managed-line fingerprints retain cleanup recognition without
+# shipping obsolete attribution instructions as readable configuration examples.
+RETIRED_ATTRIBUTION_LINE_HASHES = frozenset({
+    "efbfa717437cdc36f75497d5b4d6bc02f3e144604a98028a7bd3c2c5eb750c73",
+    "25fb330e94f4f728399fd8f080b1c9aa8a537e5c612ee5944277d3cd537d3b6f",
+    "cac828cf59d4f92c4a7a36b51baf9ad976154c68a2b4e7592845b3a4f9e117c0",
+    "c54d8daf6435ef24e385ba294d33bbaa5472609f9c3668aa70db17d66ec3101f",
+    "7fde938be4d5e39b8691a919f0f982f0f1c936bf25c66be61339bbaf97f2e701",
+})
+
+
 class Bundle:
     def __init__(self):
         with open(TEMPLATE_PATH, encoding="utf-8") as fh:
@@ -289,7 +300,8 @@ class Bundle:
         return None
 
     def is_known(self, line):
-        return line in self.known or line == MARKER or bool(VERSION_LINE.match(line))
+        return (line in self.known or line == MARKER or bool(VERSION_LINE.match(line))
+                or hashlib.sha256(line.encode("utf-8")).hexdigest() in RETIRED_ATTRIBUTION_LINE_HASHES)
 
     def candidates(self, key):
         return difflib.get_close_matches(key, sorted(self.slots), n=3, cutoff=0.75)
@@ -772,14 +784,15 @@ def repo_root(arg):
     if arg:
         return os.path.abspath(arg)
     try:
-        out = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, timeout=10)
+        out = subprocess.run(["jj", "workspace", "root"], cwd=os.path.abspath(os.getcwd()), capture_output=True, text=True, timeout=10,
+                             env={k: v for k, v in os.environ.items() if not k.startswith("GIT_")})
         if out.returncode == 0 and out.stdout.strip():
             return out.stdout.strip()
     except (OSError, subprocess.SubprocessError):
         pass
     path = os.getcwd()
     while True:
-        if os.path.exists(os.path.join(path, ".git")):
+        if os.path.exists(os.path.join(path, ".jj")):
             return path
         parent = os.path.dirname(path)
         if parent == path:
@@ -788,7 +801,7 @@ def repo_root(arg):
 
 
 def layer_path(repo, layer):
-    return os.path.join(repo, ".compound-engineering", LAYER_FILES[layer])
+    return os.path.join(repo, ".rocketclaw", LAYER_FILES[layer])
 
 
 def emit(payload, code=0):
@@ -862,7 +875,9 @@ def cmd_draft(bundle, repo, args):
         return emit({"ok": True, "layer": layer, "state": state, "action": "none", "keys": report})
 
     lines = render(bundle, layer, original, changes)
-    workdir = tempfile.mkdtemp(prefix=DRAFT_PREFIX)
+    scratch = os.path.join(repo, ".tmp")
+    os.makedirs(scratch, exist_ok=True)
+    workdir = tempfile.mkdtemp(prefix=DRAFT_PREFIX, dir=scratch)
     draft_path = os.path.join(workdir, LAYER_FILES[layer])
     changes_path = os.path.join(workdir, "changes.json")
     text = to_text(original, lines)
@@ -910,11 +925,11 @@ def cmd_verify(bundle, repo, args):
     return emit({"ok": problem is None, "layer": args.layer, "verify": problem or "ok"}, 0 if problem is None else 1)
 
 
-def remove_draft_files(draft_path, changes_path):
+def remove_draft_files(draft_path, changes_path, repo):
     """Delete only the two files `draft` wrote, then their directory if it is now empty."""
     workdir = os.path.dirname(os.path.abspath(draft_path))
     if not (os.path.basename(workdir).startswith(DRAFT_PREFIX)
-            and os.path.dirname(os.path.realpath(workdir)) == os.path.realpath(tempfile.gettempdir())):
+            and os.path.dirname(os.path.realpath(workdir)) == os.path.realpath(os.path.join(repo, ".tmp"))):
         return
     for path in (draft_path, changes_path):
         if os.path.dirname(os.path.abspath(path)) == workdir and os.path.basename(path) in (
@@ -938,7 +953,9 @@ def cmd_apply(bundle, repo, args):
         return emit({"ok": False, "layer": args.layer, "applied": False, "verify": problem}, 1)
     with open(os.path.abspath(args.draft), "rb") as fh:
         data = fh.read()
-    fd, tmp = tempfile.mkstemp(prefix=".refresh-", dir=os.path.dirname(path))
+    scratch = os.path.join(repo, ".tmp")
+    os.makedirs(scratch, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix=".refresh-", dir=scratch)
     try:
         with os.fdopen(fd, "wb") as fh:
             fh.write(data)
@@ -948,13 +965,13 @@ def cmd_apply(bundle, repo, args):
         if os.path.exists(tmp):
             os.unlink(tmp)
         return emit({"ok": False, "layer": args.layer, "applied": False, "verify": str(exc)}, 1)
-    remove_draft_files(args.draft, args.changes)
+    remove_draft_files(args.draft, args.changes, repo)
     return emit({"ok": True, "layer": args.layer, "applied": True, "file": path,
                  "sha256": hashlib.sha256(data).hexdigest()})
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Refresh Compound Engineering config files.")
+    parser = argparse.ArgumentParser(description="Refresh RocketClaw config files.")
     sub = parser.add_subparsers(dest="command", required=True)
     for name in ("status", "draft", "verify", "apply"):
         cmd = sub.add_parser(name)
@@ -967,7 +984,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     repo = repo_root(args.repo)
     if repo is None:
-        return emit({"ok": False, "error": "not inside a git repository"}, 1)
+        return emit({"ok": False, "error": "not inside a JJ workspace"}, 1)
     bundle = Bundle()
     return {"status": cmd_status, "draft": cmd_draft, "verify": cmd_verify, "apply": cmd_apply}[args.command](
         bundle, repo, args)

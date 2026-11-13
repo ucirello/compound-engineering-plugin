@@ -36,22 +36,22 @@ A case a stated condition already covers is not a finding; answer it with the co
   - artifacts already on disk.
 
   A fresh subagent inherits none of the parent's context. The dispatch also says what happens on capacity backpressure versus other failures.
-- Prompts and documents go to peer CLIs on stdin or as a file, so they never hit the OS argument limit.
+- Dispatch peers through OpenCode-native model discovery and subagents; use shell for permitted local mechanics, not another harness dispatcher. Pass large prompts and documents by absolute file path when supported, so they never hit the OS argument limit. Configuration remains authoritative for desired models and tiers. Delegation permission, permission to override a model, and remaining nesting depth are separate: a skill's explicit dispatch request satisfies a host user-or-skill rule, never an unconditional prohibition. Inherit a suitable model when overrides are forbidden, classify actual denial/depth/capacity/tool errors, and report unavailable required independence or cross-model coverage as incomplete.
 - When a diff edits one copy of a mirrored block (the code-review/doc-review workers, the ce-pov copies, paired references), the twin changes identically or a parity test pins it.
 
-## Git and targets
+## JJ and targets
 
-- A step that commits, stashes, switches branches, or pushes keeps pre-existing user changes, including staged and untracked files, out of its result, and restores exactly what it saved.
-- The target (host, owner, repo, PR, ref) is resolved once and passed to every read and mutation. A bare `gh` or `git` call falls back to the checkout, which is the wrong repo for forks and Enterprise hosts.
-- The default branch and remote are stated as conditions ("the default branch on its tracking remote; unknown means create a branch"), never as literal `main`, `master`, or `origin` and never as an enumerated list of fallback commands.
-- In a runnable template, a placeholder filled from branch, PR, or remote metadata is double-quoted, and positional git refs follow `--`.
+- A step that commits, changes revisions or bookmarks, or pushes keeps pre-existing tracked, untracked and ignored user content out of its result. Preserve recovery references and restore only proven run-owned changes; unknown movement is a safe stop, not permission to discard.
+- The target (host, owner, repo, PR, ref) is resolved once and passed to every read and mutation. Run JJ from the target workspace's absolute root, not merely with `-R`; repository-scoped `gh` runs there with `GIT_DIR=$(jj git root)` and the verified forge/repository target, including forks and Enterprise hosts. Never invoke the Git executable, including read-only or transport paths. Native `jj git ...` remains supported; see https://docs.jj-vcs.dev/latest/git-command-table/ and https://docs.jj-vcs.dev/latest/cli-reference/.
+- The default bookmark and remote are stated as conditions ("the default bookmark on its tracking remote; unknown means report the ambiguity"), never as literal `main`, `master`, or `origin` and never as an enumerated list of fallback commands.
+- In a runnable template, a placeholder filled from bookmark, PR, or remote metadata is double-quoted; use the command's explicit revision option for a verified JJ revision rather than treating metadata as shell source.
 
 ## Temp directories
 
 The authoring statement is "Temp directories" in `docs/solutions/skill-design/portable-agent-skill-authoring.md`; review checks:
 
 - A directory that something must rediscover without being handed its path (a later invocation that resumes state, attaches to a live session, or polls a job it did not start) is created under the scratch-root preamble copied from a shipped skill. Only a known root makes it findable.
-- A directory whose absolute path is passed to everything that uses it, including a worker the run starts and later polls, may be a unique `mktemp -d "${TMPDIR:-/tmp}/<name>-XXXXXX"`. It is created private (0700) and atomically, so moving it under the scratch root adds no privacy. Asking for that move is not a finding.
+- A directory whose absolute path is passed to everything that uses it, including a worker the run starts and later observes, is also created under the absolute workspace root's ignored `.tmp/`, for example `mktemp -d "$workspace_root/.tmp/<name>-XXXXXX"` after ensuring that parent exists. Outside a JJ repository use an absolute local `.tmp/` parent. Create it private (0700) and atomically; fallback and error paths never use OS-global temporary storage.
 - No skill creates a temp directory with a fixed name or a name from an optional tool such as `openssl`. Two runs then share a path, or a missing tool collapses every run onto one.
 
 ## Edits that move or shrink text

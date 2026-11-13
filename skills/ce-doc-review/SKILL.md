@@ -20,12 +20,12 @@ Either way, a question that calls for a user decision calls the tool or falls ba
 
 ## Artifact Root
 
-Resolve `<root>` **only** in the no-path interactive branch, which discovers the most recent plan under `<root>/plans/`. Every other run reads the document at the path it was handed. So an absolute-path or non-interactive review — `/tmp/plan.md`, possibly outside any repo — never depends on a repo root or a CE config it does not need.
+Resolve `<root>` **only** in the no-path interactive branch, which discovers the most recent plan under `<root>/plans/`. Every other run reads the document at the path it was handed. So an absolute-path or non-interactive review — `/project/.tmp/plan.md`, possibly outside any repo — never depends on a repo root or configuration it does not need.
 
 <!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only (`<repo-root>` = `jj workspace root`, with command cwd set to the target workspace's absolute root). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before. JJ reference: https://docs.jj-vcs.dev/latest/cli-reference/.
 - **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
@@ -52,7 +52,7 @@ The team is `coherence-reviewer` and `feasibility-reviewer` always, plus each ac
 
 Dispatch generic subagents with **bounded parallelism** through the platform's subagent primitive. Give each one its `references/personas/<reviewer-name>.md` as `references/dispatch.md` describes. Never dispatch a standalone agent by type or name.
 
-A capacity rejection is backpressure, not reviewer failure: wait and retry. If capacity cannot recover and selected reviewers remain undispatched, collect and clean up any started cross-model jobs as `references/cross-model-review.md` describes, then stop as incomplete without synthesis, fixes, or a success handoff. Preserve collected outcomes and report which reviewers completed, failed, or could not run, and why.
+A concurrent-capacity rejection is backpressure, not reviewer failure: wait for active work to free slots and retry within a bounded budget. A runtime nesting-depth error is distinct: do not retry it as backpressure. Apply `references/subagent-model.md`'s separate permission, model-selection and depth gates. These instructions explicitly request reviewer delegation under a user-OR-skill rule; forbidden model overrides are omitted and suitable inherited models used, with unmet cross-model requirements disclosed as incomplete. If capacity cannot recover and selected reviewers remain undispatched, collect and clean up started cross-model jobs, then stop incomplete without synthesis, fixes or a success handoff. Preserve outcomes and actual errors; no shell/other-harness bypass.
 
 ### Cross-Model Judgment Pass
 

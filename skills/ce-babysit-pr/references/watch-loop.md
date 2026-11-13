@@ -32,8 +32,8 @@ Use the harness's tools to run the detector and wait for its output. A skill dri
 
 | Harness | Run and wait tools | Durable beyond the session? |
 |---------|--------------------|-----------------------------|
-| Claude Code (CLI) | background `Bash` + a `Monitor`/wait; or `ScheduleWakeup` under `/loop` | No (session-bound) — cron for durable |
-| Grok (CLI/TUI) | background `run_terminal_command` + `get_command_or_subagent_output`; `scheduler_create --durable` for a cross-session schedule | Yes via `scheduler_create --durable` (60s min, 7d) |
+| Claude Code (CLI compatibility) | background `Bash` + a `Monitor`/wait; or `ScheduleWakeup` under `/loop` | Session-bound; not an OpenCode durable-dispatch route |
+| Grok (CLI/TUI compatibility) | background `run_terminal_command` + `get_command_or_subagent_output` | Compatibility mapping only; never dispatch another harness for durable continuation |
 | Cursor (CLI) | `Shell` background + `notify_on_output` sentinel (its `/loop` is user-typed, **not** skill-invocable) | No (session-bound) |
 | Codex (CLI) | `exec_command` to start the detector, then `write_stdin` to wait on the returned process session | No (session-bound) |
 
@@ -41,7 +41,7 @@ Use the harness's tools to run the detector and wait for its output. A skill dri
 
 **Checkpoint:** Use checkpoint mode only when the user requests it or nothing can wake this agent. Run one tick, persist state, report, and print the exact host-rendered resume invocation. Say monitoring is paused. Never fake a loop with a foreground `sleep` or an unmanaged detached process.
 
-**Durability:** the in-session watch dies with the session. Re-invoking the skill resumes from disk, because `/tmp` persists across ticks. For an unattended multi-day watch, escalate to a durable scheduler: Grok's `scheduler_create --durable`, or cron running `<cli> exec '<host-rendered resume invocation>'`. A fresh headless run has no memory of this conversation, so persist consequential decisions to disk.
+**Durability:** the in-session watch dies with the session; workspace-local `.tmp/` preserves the journal for resume. Follow `references/setup.md`'s native-only durable handoff: use an actually available, documented OpenCode scheduler/session-continuation capability, verify persistent wake delivery, and record its identity plus session, absolute workspace, PR, posture, durable state path and original invocation tuple. Do not invent an API/CLI command or dispatch another harness. Preserve consequential decisions, one writer/watcher, permissions, monitoring opt-outs, elapsed budget and cancellation on stop/supersession/terminal completion. If verified durable continuation is unavailable, disclose it; retain an appropriate authorized in-session watch or persist and report checkpoint/paused status with the normal resume invocation. Never imply an unarmed continuation will run.
 
 ## Choosing the wake source
 

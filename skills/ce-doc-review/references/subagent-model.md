@@ -2,20 +2,22 @@
 
 This rule decides the model and reasoning effort for every subagent this skill spawns: reviewers, the lite reviewer, checks, leaves, and validators. Read it before the first spawn. The orchestrator itself keeps the session model.
 
-**Default tier.** The step that spawns the subagent names its default tier. In Codex (the host whose subagent tool is `spawn_agent`), the default tier for every subagent is instead `gpt-6.1-terra` with reasoning effort `high`, passed as the spawn's `model` and `reasoning_effort`. That replaces the step's tier, including a step that would otherwise run the subagent on the session model or a cheaper tier.
+**Default tier.** Use the role-specific tier in `dispatch.md`. The historical Codex default (`gpt-6.1-terra`, `high`) remains compatibility context, not an OpenCode override.
 
-If the user's or project's active instructions or the live prompt name a model for this subagent, use that model instead of the default tier above. They can name it by the subagent's tier, by its prompt-asset name, or for the subagents being dispatched. Without such an instruction, a model configured for this subagent's role takes precedence over the default tier.
+The live user's or project's active model instructions take precedence over a configured role model, then the role defaults. They can name it by tier, prompt-asset name, or dispatch scope. These are preferences or route requirements, not permission grants.
 
-**Configured model.** `review_subagents` in CE config is the model configured for this subagent's role. Read it under this rule:
+**Configured model.** Read `review_subagents` under this rule:
 
 <!-- ce-config-layers:start -->
-**Resolve ordinary CE yaml keys from the two repo files.**
+**Resolve ordinary YAML keys from the two workspace files.**
 
-- **Read** `<repo-root>/.compound-engineering/config.local.yaml`, then `config.yaml` (`<repo-root>` = `git rev-parse --show-toplevel`). Missing files are skipped. Gitignore does not change resolution.
+- **Read** `<workspace-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<workspace-root>` = `jj workspace root`). Missing files are skipped. Ignore rules do not change resolution. Outside a JJ workspace, use the skill defaults unless the active user or project instructions say otherwise.
 - **Win** with the first active (non-commented) value. For scalars, empty is unset; an invalid value continues to the next layer, then the skill default. For lists and maps, a present key — including an empty list or map — replaces the whole key.
 - **Do not** use this rule for `docs_root` — that key is `config.yaml` only.
 <!-- ce-config-layers:end -->
 
-The key maps a harness name (`codex`, `claude`, `grok`, `cursor`, `opencode`, `antigravity`) to an entry with an optional `model` and an optional `effort`. Only the entry for the current harness applies, and it applies to every subagent this skill spawns. A field the entry leaves out keeps the default tier's value. A field that is not a string is ignored. Pass an effort only when the spawn tool takes one; otherwise say in Coverage that the configured effort was not applied.
+The map retains harness keys (`codex`, `claude`, `grok`, `cursor`, `opencode`, `antigravity`) with optional string fields `model` and `effort`. Only `opencode` applies to native reviewer dispatch; absent or non-string fields keep the default. `config.example.yml` describes the supported shape and is not a runtime config layer.
 
-**Refused model.** When the spawn is refused because the requested model or effort is not available, spawn that subagent once more with no model or effort override, so it inherits the session model. Do not try a different model. Say in Coverage which model was refused and, when the error lists them, which models the host offers. A spawn refused because the host is at its active-agent limit is not this case; the spawning step's own capacity handling covers it.
+**Delegation permission is not model-selection permission.** Only when permitted, use `opencode.models` (chat) to resolve the intended tier or exact `provider/model` and any supported variant. Pass only options the native tool documents. If the host requires an explicit user model request and there is none, omit `model` and any disallowed effort override, even when configuration or project instructions name a tier. Use the inherited model when suitable; disclose unapplied configured model/effort or tier limitations in Coverage. If an exact route or independent cross-model requirement cannot be met, report that coverage incomplete; same-model contexts can count as separate local reviewers, not as cross-model corroboration.
+
+**Refused model.** If the actual dispatch error rejects an unavailable model or effort (not a permission denial), an ordinary reviewer whose brief does not require the exact model may retry once without overrides, using the inherited model if suitable. Report which request was rejected and any relevant advertised alternatives. Do not retry a denial, depth rejection, or missing tool with different arguments. Cross-model model rejection uses only the bounded rule in `cross-model-review.md`; an explicit pin cannot be substituted.

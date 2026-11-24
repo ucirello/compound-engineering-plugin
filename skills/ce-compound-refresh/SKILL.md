@@ -20,5 +20,5 @@ Do these in order:
 
    If your arguments contain `mode:non-interactive` or `mode:headless`, end the notice with this instead, because nobody is present and the plain word would run a capture: Next time, use `/ce-compound mode:refresh mode:non-interactive`.
 
-2. Invoke the `ce-compound` skill with `mode:refresh` followed by every argument you received, unchanged. `mode:refresh` must be present: without it, an unattended run does a capture rather than a refresh.
+2. Load `ce-compound` with OpenCode's native skill tool and follow it in this session, using `mode:refresh` followed by every argument you received, unchanged. `mode:refresh` must be present: without it, an unattended run does a capture rather than a refresh.
 3. When that finishes, print the notice again as your last line. A refresh report is long, and a scheduled run may show only its final message.

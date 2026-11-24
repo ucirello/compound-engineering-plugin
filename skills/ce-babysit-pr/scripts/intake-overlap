@@ -4,11 +4,12 @@
 Answers "did the base move under this PR's paths since it branched off" from
 freshly fetched refs:
 
-  intake-overlap --repo-dir DIR --remote NAME --base BRANCH --pr N
+  intake-overlap --repo-dir DIR --repo HOST/OWNER/REPO --remote NAME
+                 --base BRANCH --pr N [--head-remote NAME]
 
-Fetches the base branch and refs/pull/<N>/head into refs/ce-babysit/intake/<N>/,
-takes their merge-base, and compares the PR's changed paths with the base's
-changes since then. Overlap kinds:
+Fetches the exact base bookmark and the PR's actual head bookmark with JJ.
+GitHub identifies the PR head; the fetched head must match its full OID.
+Compares both tips to their common ancestor. Overlap kinds:
 
   same-path       a base change (either rename name) is a PR path (either name)
   directory-gone  a PR path's ancestor directory existed at the merge-base and
@@ -28,29 +29,25 @@ import subprocess
 import sys
 
 FETCH_TIMEOUT_SECONDS = 300
-GIT_TIMEOUT_SECONDS = 120
-
-STATUS_NAMES = {
-    "A": "added",
-    "C": "copied",
-    "D": "deleted",
-    "M": "modified",
-    "R": "renamed",
-    "T": "type-changed",
-}
+READ_TIMEOUT_SECONDS = 120
 
 _BAD_BRANCH = re.compile(r"[\x00-\x20\x7f~^:?*\[\\]|\.\.|@\{|//|/\.|\.lock$|^/|/$|\.$")
+_OID = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?")
 
 
-class GitError(Exception):
+class IntakeError(Exception):
     pass
 
 
-def git(repo_dir, *args, timeout=GIT_TIMEOUT_SECONDS, check=True):
-    env = dict(os.environ, GIT_TERMINAL_PROMPT="0")
+def run(repo_dir, cmd, *, timeout=READ_TIMEOUT_SECONDS, env=None):
+    env = dict(os.environ if env is None else env, GIT_TERMINAL_PROMPT="0",
+               GH_PROMPT_DISABLED="1", NO_COLOR="1")
+    env.pop("CLICOLOR_FORCE", None)
+    env.pop("GH_FORCE_TTY", None)
     try:
         r = subprocess.run(
-            ["git", "-C", repo_dir, *args],
+            cmd,
+            cwd=repo_dir,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -58,60 +55,107 @@ def git(repo_dir, *args, timeout=GIT_TIMEOUT_SECONDS, check=True):
             timeout=timeout,
         )
     except subprocess.TimeoutExpired:
-        raise GitError(f"git {args[0]} timed out after {timeout}s")
+        raise IntakeError(f"{cmd[0]} timed out after {timeout}s") from None
     except OSError as e:
-        raise GitError(f"could not run git: {e}")
-    out = r.stdout.decode("utf-8", errors="replace")
-    if check and r.returncode != 0:
+        raise IntakeError(f"could not run {cmd[0]}: {e}") from e
+    if r.returncode != 0:
         err = r.stderr.decode("utf-8", errors="replace").strip()
-        raise GitError(f"git {args[0]} failed ({r.returncode}): {err}")
-    return r.returncode, out
+        raise IntakeError(f"{cmd[0]} failed ({r.returncode}): {err}")
+    return r.stdout.decode("utf-8")
 
 
-def refs_for(pr):
-    prefix = f"refs/ce-babysit/intake/{pr}"
-    return f"{prefix}/base", f"{prefix}/head"
+def jj(repo_dir, *args, timeout=READ_TIMEOUT_SECONDS):
+    env = os.environ.copy()
+    for key in ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE"):
+        env.pop(key, None)
+    return run(repo_dir, ["jj", "--ignore-working-copy", "--no-pager", "--color=never",
+                          *args], timeout=timeout, env=env)
 
 
-def fetch(repo_dir, remote, base, pr, extra=()):
-    base_ref, head_ref = refs_for(pr)
-    git(
-        repo_dir, "fetch", "--no-tags", "--quiet", *extra, remote,
-        f"+refs/heads/{base}:{base_ref}",
-        f"+refs/pull/{pr}/head:{head_ref}",
-        timeout=FETCH_TIMEOUT_SECONDS,
-    )
-    return git(repo_dir, "rev-parse", "--verify", base_ref)[1].strip(), \
-        git(repo_dir, "rev-parse", "--verify", head_ref)[1].strip()
+def exact(name):
+    return "exact:" + json.dumps(name, ensure_ascii=False)
+
+
+def fetch_bookmark(repo_dir, remote, bookmark):
+    jj(repo_dir, "git", "fetch", "--config", "git.abandon-unreachable-commits=false",
+       "--remote", exact(remote), "--branch", exact(bookmark),
+       timeout=FETCH_TIMEOUT_SECONDS)
+    revset = f"remote_bookmarks({exact(bookmark)}, remote={exact(remote)})"
+    oid = jj(repo_dir, "log", "--no-graph", "-r", revset,
+             "-T", 'commit_id ++ "\n"').strip()
+    if not _OID.fullmatch(oid):
+        raise IntakeError(f"could not resolve exact fetched bookmark {bookmark}@{remote}")
+    return oid
+
+
+def fetch(repo_dir, repo, remote, base, pr, head_remote):
+    # The caller verifies the URLs of the supplied remotes against these PR
+    # repositories; an exact SHA comparison also catches head movement.
+    parts = repo.split("/")
+    host = parts[0] if len(parts) == 3 else "github.com"
+    owner, name = parts[-2:]
+    git_dir = jj(repo_dir, "git", "root").strip()
+    env = dict(os.environ, GIT_DIR=git_dir)
+    info = json.loads(run(repo_dir, ["gh", "api", "--hostname", host,
+                                     f"repos/{owner}/{name}/pulls/{pr}"], env=env))
+    base_ref, head_ref = info["base"], info["head"]
+    if (base_ref["ref"] != base
+            or base_ref["repo"]["full_name"].casefold() != f"{owner}/{name}".casefold()):
+        raise IntakeError("PR base repository or branch changed during intake")
+    head_branch, expected_oid = head_ref["ref"], head_ref["sha"]
+    if not head_branch or _BAD_BRANCH.search(head_branch) or not _OID.fullmatch(expected_oid):
+        raise IntakeError("PR head did not provide an exact valid branch and OID")
+    base_oid = fetch_bookmark(repo_dir, remote, base)
+    if head_ref.get("repo") and head_ref["repo"]["id"] == base_ref["repo"]["id"]:
+        head_remote = remote
+    if head_remote and head_ref.get("repo"):
+        head_oid = fetch_bookmark(repo_dir, head_remote, head_branch)
+        if head_oid != expected_oid:
+            raise IntakeError("fetched head bookmark differs from the current PR head")
+    else:
+        # A fork may be gone or have no configured remote. Use the exact
+        # GitHub-proven PR object only if it is already present, never a local
+        # branch or another ref as a substitute.
+        try:
+            head_oid = jj(repo_dir, "log", "--no-graph", "-r", expected_oid,
+                          "-T", "commit_id").strip()
+        except IntakeError as e:
+            raise IntakeError("no verified head remote and exact PR head object unavailable") from e
+        if head_oid != expected_oid:
+            raise IntakeError("exact PR head object unavailable")
+    return base_oid, head_oid
 
 
 def merge_base(repo_dir, a, b):
-    code, out = git(repo_dir, "merge-base", a, b, check=False)
-    return out.strip() if code == 0 and out.strip() else None
+    common = jj(repo_dir, "log", "--no-graph", "-r",
+                f"heads(::{a} & ::{b}) ~ root()", "-T", 'commit_id ++ "\n"').splitlines()
+    if len(common) != 1 or not _OID.fullmatch(common[0]):
+        raise IntakeError("no unique common ancestor for the exact base and PR head")
+    return common[0]
 
 
 def changes(repo_dir, a, b):
-    """[(status, old, new)] for `git diff -M a b`; old == new unless renamed/copied."""
-    out = git(repo_dir, "-c", "diff.renameLimit=0", "diff", "--no-ext-diff",
-              "--name-status", "-M", "-z", a, b)[1]
-    tokens = out.split("\0")
+    """[(status, old, new)] for the exact JJ tree comparison."""
+    out = jj(repo_dir, "diff", "--from", a, "--to", b, "-T",
+             'json({"status" => status, "old" => source.path(), "new" => target.path(), '
+             '"old_type" => source.file_type(), "new_type" => target.file_type()}) ++ "\n"')
     result = []
-    i = 0
-    while i < len(tokens) and tokens[i]:
-        letter = tokens[i][0]
-        if letter in ("R", "C"):
-            old, new = tokens[i + 1], tokens[i + 2]
-            i += 3
-        else:
-            old = new = tokens[i + 1]
-            i += 2
-        result.append((STATUS_NAMES.get(letter, letter), old, new))
+    for line in out.split("\n"):
+        if not line:
+            continue
+        entry = json.loads(line)
+        status = entry["status"]
+        if status == "removed":
+            status = "deleted"
+        elif status == "modified" and entry["old_type"] != entry["new_type"]:
+            status = "type-changed"
+        result.append((status, entry["old"], entry["new"]))
     return result
 
 
 def directories(repo_dir, commit):
-    out = git(repo_dir, "ls-tree", "-r", "-d", "--name-only", "-z", commit)[1]
-    return {d for d in out.split("\0") if d}
+    out = jj(repo_dir, "file", "list", "-r", commit, "-T", 'json(path) ++ "\n"')
+    return {d for line in out.split("\n") if line for d in ancestors(json.loads(line))}
 
 
 def ancestors(path):
@@ -158,7 +202,7 @@ def overlap_reasons(pr_changes, base_changes, dirs_at_mb, dirs_at_base):
     ]
 
 
-def assess(repo_dir, remote, base, pr):
+def assess(repo_dir, repo, remote, base, pr, head_remote=None):
     result = {
         "base_oid": None,
         "head_oid": None,
@@ -168,21 +212,10 @@ def assess(repo_dir, remote, base, pr):
         "error": None,
     }
     try:
-        base_oid, head_oid = fetch(repo_dir, remote, base, pr)
+        base_oid, head_oid = fetch(repo_dir, repo, remote, base, pr, head_remote)
         result.update(base_oid=base_oid, head_oid=head_oid)
 
         mb = merge_base(repo_dir, base_oid, head_oid)
-        if mb is None:
-            shallow = git(repo_dir, "rev-parse", "--is-shallow-repository")[1].strip() == "true"
-            if not shallow:
-                result["error"] = "no merge-base between base and PR head (unrelated histories)"
-                return result
-            base_oid, head_oid = fetch(repo_dir, remote, base, pr, extra=("--unshallow",))
-            result.update(base_oid=base_oid, head_oid=head_oid)
-            mb = merge_base(repo_dir, base_oid, head_oid)
-            if mb is None:
-                result["error"] = "no merge-base between base and PR head after unshallowing"
-                return result
         result["merge_base"] = mb
 
         if mb == base_oid:
@@ -198,7 +231,7 @@ def assess(repo_dir, remote, base, pr):
         result["reasons"] = reasons
         result["overlap"] = bool(reasons)
         return result
-    except GitError as e:
+    except (IntakeError, KeyError, TypeError, ValueError) as e:
         result["error"] = str(e)
         return result
 
@@ -206,21 +239,31 @@ def assess(repo_dir, remote, base, pr):
 def main():
     p = argparse.ArgumentParser(prog="intake-overlap")
     p.add_argument("--repo-dir", required=True)
+    p.add_argument("--repo", required=True)
     p.add_argument("--remote", required=True)
+    p.add_argument("--head-remote")
     p.add_argument("--base", required=True)
     p.add_argument("--pr", type=int, required=True)
     args = p.parse_args()
 
     if args.pr <= 0:
         p.error("--pr must be a positive integer")
-    if not args.remote or args.remote.startswith("-"):
-        p.error("--remote must be a remote name or URL")
+    if not re.fullmatch(r"(?:[\w.-]+/)?[\w.-]+/[\w.-]+", args.repo):
+        p.error("--repo must be [HOST/]OWNER/REPO")
+    if not args.remote or args.remote.startswith("-") or (args.head_remote or "").startswith("-"):
+        p.error("remotes must be configured JJ remote names")
     if not args.base or args.base.startswith("-") or _BAD_BRANCH.search(args.base):
         p.error("--base must be a valid branch name")
     if not os.path.isdir(args.repo_dir):
         p.error("--repo-dir must be an existing directory")
 
-    print(json.dumps(assess(args.repo_dir, args.remote, args.base, args.pr)))
+    repo_dir = os.path.realpath(args.repo_dir)
+    try:
+        if not os.path.samefile(repo_dir, jj(repo_dir, "workspace", "root").strip()):
+            p.error("--repo-dir must be the workspace root")
+    except (IntakeError, OSError) as e:
+        p.error(str(e))
+    print(json.dumps(assess(repo_dir, args.repo, args.remote, args.base, args.pr, args.head_remote)))
 
 
 if __name__ == "__main__":

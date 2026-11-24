@@ -36,22 +36,22 @@ A case a stated condition already covers is not a finding; answer it with the co
   - artifacts already on disk.
 
   A fresh subagent inherits none of the parent's context. The dispatch also says what happens on capacity backpressure versus other failures.
-- Prompts and documents go to peer CLIs on stdin or as a file, so they never hit the OS argument limit.
+- Dispatch peers through permitted OpenCode subagents. Put large documents in private local scratch and pass their absolute paths, so payloads do not hit argument limits. Check delegation permission, model override permission and nesting depth separately; report unmet independence or coverage rather than substituting another harness.
 - When a diff edits one copy of a mirrored block (the code-review/doc-review workers, the ce-pov copies, paired references), the twin changes identically or a parity test pins it.
 
-## Git and targets
+## JJ and targets
 
-- A step that commits, stashes, switches branches, or pushes keeps pre-existing user changes, including staged and untracked files, out of its result, and restores exactly what it saved.
-- The target (host, owner, repo, PR, ref) is resolved once and passed to every read and mutation. A bare `gh` or `git` call falls back to the checkout, which is the wrong repo for forks and Enterprise hosts.
-- The default branch and remote are stated as conditions ("the default branch on its tracking remote; unknown means create a branch"), never as literal `main`, `master`, or `origin` and never as an enumerated list of fallback commands.
-- In a runnable template, a placeholder filled from branch, PR, or remote metadata is double-quoted, and positional git refs follow `--`.
+- A step that commits, changes the working-copy revision, or pushes keeps pre-existing user changes, including ignored and untracked files, out of its result and leaves unrelated work intact.
+- Resolve the target (host, owner, repo, PR, ref) and pass it to every read and mutation. Run JJ from the target's absolute workspace root. For repository-scoped `gh`, set `GIT_DIR` to the successful `jj git root` result from that root; also pass the verified repository when targeting a fork or Enterprise host. Do not run the Git executable.
+- State the default bookmark and remote as conditions ("the verified default bookmark on its tracking remote"), not as assumed literals or an enumerated cascade of fallback commands. If a required target cannot be verified, report the blocker instead of substituting another ref.
+- In a runnable template, double-quote placeholders filled from bookmark, PR, or remote metadata and use the relevant JJ command's option and argument boundaries.
 
 ## Temp directories
 
-The authoring statement is "Temp directories" in `docs/solutions/skill-design/portable-agent-skill-authoring.md`; review checks:
+Review checks for workspace-local storage:
 
 - A directory that something must rediscover without being handed its path (a later invocation that resumes state, attaches to a live session, or polls a job it did not start) is created under the scratch-root preamble copied from a shipped skill. Only a known root makes it findable.
-- A directory whose absolute path is passed to everything that uses it, including a worker the run starts and later polls, may be a unique `mktemp -d "${TMPDIR:-/tmp}/<name>-XXXXXX"`. It is created private (0700) and atomically, so moving it under the scratch root adds no privacy. Asking for that move is not a finding.
+- Create private unique run directories, including ones passed explicitly to workers, under `<absolute-workspace-root>/.tmp/`; outside JJ use local `.tmp/`. Verify the parent is owned, contained and not symlinked before creating it, then use an explicitly rooted `mktemp -d "$scratch_root/<name>-XXXXXX"` or equivalent. Include fallback and error artifacts in the same storage rule.
 - No skill creates a temp directory with a fixed name or a name from an optional tool such as `openssl`. Two runs then share a path, or a missing tool collapses every run onto one.
 
 ## Edits that move or shrink text

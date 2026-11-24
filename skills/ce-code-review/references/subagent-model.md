@@ -1,21 +1,42 @@
-# Choosing the model for a spawned subagent
+# OpenCode subagent permissions and model selection
 
-This rule decides the model and reasoning effort for every subagent this skill spawns: reviewers, the lite reviewer, checks, leaves, and validators. Read it before the first spawn. The orchestrator itself keeps the session model.
+Apply this before every native OpenCode subagent launch in this skill, including
+reviewers, leaves, judges, peers, and validators. The orchestrator keeps its model.
 
-**Default tier.** The step that spawns the subagent names its default tier. In Codex (the host whose subagent tool is `spawn_agent`), the default tier for every subagent is instead `gpt-6.1-terra` with reasoning effort `high`, passed as the spawn's `model` and `reasoning_effort`. That replaces the step's tier, including a step that would otherwise run the subagent on the session model or a cheaper tier.
+**Dispatch and model overrides are separate permissions.** This loaded skill
+explicitly requests its described subagents and satisfies a user-or-skill
+delegation gate. Respect unconditional denial, a missing tool, and higher-priority
+limits. Do not use a shell, subprocess, plugin, CLI, or another agent to bypass
+them. An explicit model/effort override requires its own permission; an
+instruction or config value does not override a denial.
 
-If the user's or project's active instructions or the live prompt name a model for this subagent, use that model instead of the default tier above. They can name it by the subagent's tier, by its prompt-asset name, or for the subagents being dispatched. Without such an instruction, a model configured for this subagent's role takes precedence over the default tier.
+Resolve ordinary YAML keys from `<workspace-root>/.rocketclaw/config.local.yaml`
+then `config.yaml`; use the shipped `config.example.yml` (or `.yaml` if so
+named) as the key/schema guide, not an active override. Missing files are skipped; use the first active valid scalar
+(empty means unset) or present list/map (including empty, replacing the whole
+key). `docs_root` remains `config.yaml` only. Use the `opencode` entry of
+`review_subagents` (optional string `model` and `effort`); other harness entries
+(`codex`, `claude`, `grok`, `cursor`, `antigravity`) are not OpenCode routes.
+User or active project instructions for the role override this config, which
+overrides the stage default (session, balanced mid-tier, or cheapest capable).
+Find exact provider/model IDs and offered variants with `opencode.models`.
+Pass only options the native dispatch tool actually supports.
 
-**Configured model.** `review_subagents` in CE config is the model configured for this subagent's role. Read it under this rule:
+When an override is disallowed or unavailable, inherit the session model if
+that fulfills a non-fixed role. For a non-fixed role whose model/effort was
+rejected on launch, retry once without the override when suitable; report the
+rejected value and whether inheritance was used. Do not upgrade silently or
+claim an unsupported effort. A fixed/cross-model route not actually fulfilled
+is incomplete; follow only its explicit recovery/fallback rules.
 
-<!-- ce-config-layers:start -->
-**Resolve ordinary CE yaml keys from the two repo files.**
-
-- **Read** `<repo-root>/.compound-engineering/config.local.yaml`, then `config.yaml` (`<repo-root>` = `git rev-parse --show-toplevel`). Missing files are skipped. Gitignore does not change resolution.
-- **Win** with the first active (non-commented) value. For scalars, empty is unset; an invalid value continues to the next layer, then the skill default. For lists and maps, a present key — including an empty list or map — replaces the whole key.
-- **Do not** use this rule for `docs_root` — that key is `config.yaml` only.
-<!-- ce-config-layers:end -->
-
-The key maps a harness name (`codex`, `claude`, `grok`, `cursor`, `opencode`, `antigravity`) to an entry with an optional `model` and an optional `effort`. Only the entry for the current harness applies, and it applies to every subagent this skill spawns. A field the entry leaves out keeps the default tier's value. A field that is not a string is ignored. Pass an effort only when the spawn tool takes one; otherwise say in Coverage that the configured effort was not applied.
-
-**Refused model.** When the spawn is refused because the requested model or effort is not available, spawn that subagent once more with no model or effort override, so it inherits the session model. Do not try a different model. Say in Coverage which model was refused and, when the error lists them, which models the host offers. A spawn refused because the host is at its active-agent limit is not this case; the spawning step's own capacity handling covers it.
+Distinguish actual OpenCode nesting-depth exhaustion, dispatch denial, override
+denial, missing tool, model/effort rejection, and active-agent capacity. Batch
+capacity contention can be retried when a slot opens; it is not depth.
+For a depth failure report the failing stage and, as a repair for a later run,
+point to the user's existing OpenCode V2 JSON/JSONC found via
+`opencode debug paths` or `opencode debug paths config`: merge
+`experimental.subagent_depth` to at least 3 (preserve other keys and any higher
+value; default user file `~/.config/opencode/opencode.json`; avoid competing
+files and higher-precedence lower overrides). Package config alone does not
+enable consumer nesting. Do not edit config, restart, retry denied dispatch, or
+raise claimed coverage to disguise the failed step.

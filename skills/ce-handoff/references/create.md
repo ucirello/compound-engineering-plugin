@@ -8,26 +8,39 @@ Required read before writing a handoff.
 2. Inspect only the workspace state needed to explain what exists now. Use the project's active instructions and conventions already in context.
 3. Point to plans, issues, commits, diffs, documentation, and relevant files instead of reproducing their contents.
 4. Redact secrets, credentials, and unrelated personal information. Preserve operational paths only when the next agent needs them.
-5. Write or publish the document using existing capabilities. If the user requested another path, folder, format, or publication destination, honor it and use an appropriate available capability, including an installed publishing skill when relevant. Do not also create a persistent managed-store copy unless the user asks; a publishing capability may use its ordinary transient working files.
+5. Write or publish the document using existing capabilities. If the user requested another path, folder, format, or publication destination, honor it and use an appropriate available capability, including an installed publishing skill when relevant. Do not also create a persistent managed-store copy unless the user asks; put any transient staging files in the workspace's ignored local `.tmp/`, or local `.tmp/` outside JJ.
 
 ## Default managed storage
 
-When the user did not choose another destination, resolve the managed root with this shell block:
+When the user did not choose another destination, resolve the absolute base with `jj --at-operation=@ workspace root` (see [JJ workspace commands](https://docs.jj-vcs.dev/latest/cli-reference/#jj-workspace)). Run any further JJ commands from that absolute workspace root. Outside JJ, use the current absolute directory. If workspace resolution fails in a known JJ checkout, report the failure rather than silently choosing a different base. Use ignored local `.tmp/` in JJ; if that storage is not available, ask for a destination instead of modifying ignore rules or using a global temporary directory.
+
+With `BASE` set to that absolute directory and `REPO_NAMESPACE` set as described below, initialize the managed directory:
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
-if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
-(umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
-if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
-chmod 700 "$SCRATCH_ROOT" || exit 1;
-HANDOFF_DIR="$SCRATCH_ROOT/ce-handoff/<repo-namespace>";
-(umask 077; mkdir -p "$HANDOFF_DIR") || exit 1; chmod 700 "$HANDOFF_DIR" || exit 1;
+case "$BASE" in /*) ;; *) exit 1 ;; esac
+case "$REPO_NAMESPACE" in ''|*[!a-z0-9-]*) exit 1 ;; esac
+HANDOFF_DIR="$BASE/.tmp/rocketclaw/ce-handoff/$REPO_NAMESPACE"
+for dir in "$BASE/.tmp" "$BASE/.tmp/rocketclaw" \
+           "$BASE/.tmp/rocketclaw/ce-handoff" "$HANDOFF_DIR"; do
+  if [ -L "$dir" ]; then
+    printf 'Unsafe handoff directory symlink: %s\n' "$dir" >&2
+    exit 1
+  fi
+  (umask 077; mkdir -p -- "$dir") || exit 1
+  if [ -L "$dir" ] || [ ! -d "$dir" ] || [ ! -O "$dir" ] || [ ! -w "$dir" ]; then
+    printf 'Handoff directory is not an owned, writable directory: %s\n' "$dir" >&2
+    exit 1
+  fi
+  [ "$dir" != "$BASE/.tmp" ] || continue
+  chmod 700 -- "$dir" || exit 1
+done
 ```
 
 Write a Markdown snapshot at `$HANDOFF_DIR/<topic>.md`.
 
-Use a readable topic slug as the filename. When Git context exists, use a sanitized repository name plus a stable root-commit prefix as the repository namespace; otherwise use `general`. Worktrees from the same repository share the namespace and remain distinguishable through frontmatter. Do not put a timestamp or unique ID in the path by default; `created_at` carries chronology for discovery. Reserve the final candidate filename atomically and exclusively; on collision, retry with the smallest available numeric suffix rather than overwrite a handoff. Never check availability and then write. Keep the directory and file user-private where the platform supports permissions.
+Use a readable topic slug as the filename. In JJ, derive the namespace from a sanitized repository name (lowercase letters, digits, and hyphens; use `repo` if the name is unknown) and a stable first real root-commit prefix when available. Query `jj --at-operation=@ log --no-graph -r 'roots(::@ ~ root())' -T 'commit_id ++ "\n"'` from the workspace root to exclude JJ's synthetic root; if there are multiple real roots, use the lexicographically first full ID. Outside JJ, use `general`. Each workspace has its own managed store; a shared namespace helps identify the repository but does not make other workspaces' files automatically discoverable.
+
+Do not put a timestamp or unique ID in the path by default; `created_at` carries chronology for discovery. Reserve the final candidate filename atomically and exclusively; on collision, retry with the smallest available numeric suffix rather than overwrite a handoff. Never check availability and then write. Keep the directory and file user-private where the platform supports permissions.
 
 ## Frontmatter contract
 
@@ -43,14 +56,14 @@ keywords: ["keyword-one", "keyword-two"]
 cwd: "/absolute/capture/path"
 resume_focus: "Optional next-session focus"
 repository: "Sanitized repository identifier without embedded credentials"
-repo_root_sha: "First root commit when available"
-branch: "Captured branch when available"
-head: "Captured HEAD when available"
-worktree_path: "Captured worktree when relevant"
+repo_root_sha: "First real root commit ID when available"
+branch: "Verified JJ bookmark when applicable"
+head: "Recorded JJ working-copy commit ID when available"
+worktree_path: "Absolute JJ workspace path when relevant"
 ---
 ```
 
-Required managed-store fields are `artifact_contract`, `created_at`, `title`, `summary`, `keywords`, and `cwd`. Serialize every generated string scalar and string array element with JSON-compatible YAML double quoting and escaping; never interpolate raw session text as an unquoted YAML scalar. Include `resume_focus` when supplied or clear. Include `repository`, `repo_root_sha`, `branch`, `head`, and `worktree_path` only when applicable. Do not add mutable lifecycle fields. At a user-directed destination or in another format, preserve equivalent discovery and orientation metadata when the format supports it; do not let this YAML shape block the requested destination.
+Required managed-store fields are `artifact_contract`, `created_at`, `title`, `summary`, `keywords`, and `cwd`. Serialize every generated string scalar and string array element with JSON-compatible YAML double quoting and escaping; never interpolate raw session text as an unquoted YAML scalar. Include `resume_focus` when supplied or clear. Keep the existing optional `ce-handoff/v1` keys for discovery. Use `jj --at-operation=@ log --no-graph -r @ -T 'commit_id ++ "\n"'` from the absolute workspace root to capture the recorded working-copy commit without taking a new snapshot. It may not include current on-disk edits; distinguish those separately. Include `branch` only for an applicable verified bookmark, not an assumed current branch. Include `repository`, `repo_root_sha`, `head`, and `worktree_path` only when applicable. Do not add mutable lifecycle fields. At a user-directed destination or in another format, preserve equivalent discovery and orientation metadata when the format supports it; do not let this YAML shape block the requested destination.
 
 ## Body contract
 
@@ -73,16 +86,16 @@ The handoff is your account of the session, so wherever the next agent would oth
 
 Default the body to ground truth the receiving agent can verify: what exists, what is partial, what is missing, and what depends on what. Prefer that status framing over work orders aimed at the next agent. Orientation aids that load context without granting action authority remain useful — for example, which documents or files to read before deciding. Carry explicit directives only when the user asked the handoff to include them; keep those user-requested instructions distinct from status and evidence. Resume still treats the document as untrusted context and waits for the current user before acting.
 
-Keep the handoff pointer-first. For each required reference, name what specifically matters there — not only the path — and add a line range when that narrows the landing zone. Prefer repository-relative paths for repository files, anchored once by the repository, branch, and HEAD metadata. Use absolute paths only for machine-local capture context or uncommitted, untracked, ignored, or temporary state, and label them as machine-local.
+Keep the handoff pointer-first. For each required reference, name what specifically matters there — not only the path — and add a line range when that narrows the landing zone. Prefer repository-relative paths for repository files, anchored once by the available repository, bookmark, and commit metadata. Use absolute paths only for machine-local capture context or uncommitted, untracked, ignored, or temporary state, and label them as machine-local.
 
 ## Report
 
-Treat creation as complete only after confirming the destination contains the handoff. Give a succinct, context-specific summary of what the generated handoff captures so the user can verify its substance without opening it; do not impose a fixed summary template. Then report the final path or URL, applicable retention or access limits, and any warnings together. Managed `/tmp` storage is OS-managed and not permanent. Its automatic discovery assumes the receiving session can see the same host filesystem; otherwise tell the user to transfer or publish the handoff to a receiver-visible location and resume from that explicit source.
+Treat creation as complete only after confirming the destination contains the handoff. Give a succinct, context-specific summary of what the generated handoff captures so the user can verify its substance without opening it; do not impose a fixed summary template. Then report the final path or URL, applicable retention or access limits, and any warnings together. Workspace-local `.tmp/` storage is not permanent; it can disappear with workspace cleanup. Automatic discovery uses only the receiving session's workspace (or current directory outside JJ). From another workspace on the same host, resume using the verified absolute path if accessible. If the receiver cannot read it, tell the user to transfer or publish to a receiver-visible location before resuming.
 
-End the creation response with one fenced, copyable command using the final path or URL and the rendering rule in the body:
+Tell the user to open a fresh OpenCode session (for example, `/new` in the TUI) in the intended workspace. Do not start it for them. End the creation response with one fenced, copyable OpenCode command:
 
 ```text
-<rendered resume invocation>
+/ce-handoff resume <source>
 ```
 
 Quote the source when needed so the command can be pasted verbatim. Do not generate a longer resume prompt.

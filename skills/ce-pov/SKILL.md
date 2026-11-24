@@ -6,7 +6,7 @@ argument-hint: "[question, document, or approaches] [cross-check] — or bare"
 
 # Form a Point of View
 
-Produce a decisive, project-grounded point of view in the subject's own shape: a **graded verdict** on an external-adoption question, a **holistic take** on a document, or a **position** on a supplied approach set. The subject is whatever this skill was invoked with, in the prompt or the conversation. Stay read-only while forming and reconciling the POV. You are done when the POV is delivered with its attribution and required disclosure, or when an explicit blocker is returned. Use `ce-bakeoff` to develop competing solutions, `ce-ideate` to explore opportunities, or `ce-brainstorm` to establish goals.
+Produce a decisive, project-grounded point of view in the subject's own shape: a **graded verdict** on an external-adoption question, a **holistic take** on a document, or a **position** on a supplied approach set. The subject is whatever this skill was invoked with, in the prompt or the conversation. Stay read-only while forming and reconciling the POV. You are done when the POV is delivered with its evidence citations and required disclosure, or when an explicit blocker is returned. Use `ce-bakeoff` to develop competing solutions, `ce-ideate` to explore opportunities, or `ce-brainstorm` to establish goals.
 
 
 ## Grounding is not optional
@@ -25,14 +25,14 @@ Identify the question from the request and conversation, then look up facts you 
 
 ## Artifact Root
 
-Resolve `<root>` the first time you compose a `<root>/` path; a read of `<root>/solutions/` counts as composing one. Pass the resolved path to scouts, never the config. A non-git project has no `<root>`, so its prior-decision scan uses local ADRs and design docs instead.
+Resolve `<root>` the first time you compose a `<root>/` path; a read of `<root>/solutions/` counts as composing one. Pass the resolved path to scouts, never the config. A project outside a JJ workspace has no `<root>`, so its prior-decision scan uses local ADRs and design docs instead.
 
 <!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
-- **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
+- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only (resolve `<workspace-root>` with `jj workspace root`; see the [JJ workspace reference](https://docs.jj-vcs.dev/latest/cli-reference/#jj-workspace)). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither its root nor under `.jj/` or `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Use** `<root>` as the sole artifact location, composing each path as `<root>/<subdir>`. Create it only for an authorized write-up, not a read-only scan; never also read `docs`.
 <!-- ce-docs-root:end -->
 
 ### Phase 0: Frame and Classify
@@ -43,7 +43,7 @@ Resolve `<root>` the first time you compose a `<root>/` path; a read of `<root>/
 
 **Read `references/grounding.md` now, before grounding by either path.** It defines the model tiers (the POV reasoning itself is never dispatched), where scratch files may go, what scouts receive and how many run, which capabilities gate which steps, and how grounded facts are kept apart from unconfirmed ones.
 
-Send scouts directly to candidate-specific current evidence, never a generic repo profile. They search in their own context and return a dossier path plus a gist, which you read on demand. Where the facts the verdict depends on are already located, confirm them with bounded reads of the authoritative source instead of dispatching scouts; unscoped or noisy grounding still dispatches. A claim made in the conversation is a pointer to check, never self-verifying. The prior-decision scan (`<root>/solutions/`, ADRs, design docs) stays mandatory on either path.
+Send native scouts directly to candidate-specific current evidence, never a generic repo profile. They search in their own context and return a dossier path plus a gist, which you read on demand. Where the facts the verdict depends on are already located, confirm them with bounded reads of the authoritative source instead of dispatching scouts; unscoped or noisy grounding requests dispatch under `references/grounding.md`'s permission, model and capacity rules. A claim made in the conversation is a pointer to check, never self-verifying. The prior-decision scan (`<root>/solutions/`, ADRs, design docs) stays mandatory on either path.
 
 When the judgment requires an explanation of unresolved behavior or design rationale, invoke `ce-explain`. Pass the question, its scope, and the decision it informs. Use adequate current evidence instead of repeating an investigation. Treat its cited findings as evidence to assess under the same grounding standard, not as authority for the recommendation. Keep ownership of the judgment here. If `ce-explain` is unavailable, gather the evidence directly or report what is missing.
 
@@ -55,7 +55,7 @@ When the judgment requires an explanation of unresolved behavior or design ratio
 
 First form ce-pov's own independent POV under the active subject-shape contract in `references/method.md`, but do not emit it. Freeze that position. Keep it out of an independent peer's initial context; expose it only when the task is to critique that position, or in a later reconciliation round.
 
-A panel request is an explicit ask to consult or reconcile other models: a panel, a cross-check, or `oracle`, anywhere in the invocation context. Declining one, or merely mentioning one, is not a request. When a panel is requested, or when a POV formed without one may qualify for a proactive offer, read `references/cross-model-panel.md` before resolving participation or deciding whether to offer. Finish the panel branch before composing the result. A POV that follows a panel request states which peers ran, or that none did and why. A POV with no panel request carries no panel note.
+A panel request is an explicit ask to consult or reconcile other models: a panel, a cross-check, or `oracle`, anywhere in the invocation context. Declining one, or merely mentioning one, is not a request. When a panel is requested, or when a POV formed without one may qualify for a proactive offer, read `references/cross-model-panel.md` before resolving participation or deciding whether to offer. Finish the panel branch before composing the result. A POV that follows a panel request states which peers ran (or that none did and why), which results establish different-model independence, and which required coverage is incomplete. A POV with no panel request carries no panel note.
 
 Only then deliver the position with the content required by `references/method.md`. Adapt its presentation to the intended use; cite supporting evidence rather than reprinting dossiers or raw peer output.
 

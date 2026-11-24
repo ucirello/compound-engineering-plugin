@@ -35,13 +35,15 @@ Read this when Phase 0 classifies a bare prompt, and again at Phase 1 before rea
 
 ## Compound Pack rules
 
-Compound Packs declared in CE config are rules that work in their domain must honor. A plan carries only the rules its planner matched, and a bare prompt carries none, so match them against the work itself. Do this once the files likely to change are known and before the first implementation write, on every route including Trivial. Resolve the declared packs by running this skill's resolver as one command:
+Compound Packs declared in repository config are rules that work in their domain must honor. A plan carries only the rules its planner matched, and a bare prompt carries none, so match them against the work itself. Do this once the files likely to change are known and before the first implementation write, on every route including Trivial. Resolve the declared packs by running this skill's resolver as one command from the absolute target JJ workspace root:
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
 PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c '' >/dev/null 2>&1 && { echo "$c"; break; }; done)"; [ -n "$PY" ] || { echo "no working Python 3 interpreter on PATH" >&2; exit 1; };
 "$PY" "$SKILL_DIR/scripts/packs-resolve.py"
 ```
+
+When binding discovery is read-only, defer this command until the discovery gate has ended: remote pack resolution can populate the ignored local cache. Include matched rules before dispatch or implementation.
 
 The JSON result carries `roots` (pack `id` + absolute `dir`), `warnings`, and `errors`. With no `packs:` key the result is empty and nothing else changes. For each root, read the frontmatter of every top-level markdown file except the pack's `README.md`, and read the full text of each file whose `applies_when` (or title and tags, when it has no `applies_when`) fits the files and behavior this work changes. A rule the plan cites as `(pack: <id>, <path within the pack>)` is already matched. Plans cite rule text without restating it, so read the cited file unless its text is already in your context.
 

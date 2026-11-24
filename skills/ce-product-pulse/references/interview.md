@@ -1,6 +1,6 @@
 # Product Pulse First-Run Interview
 
-Loaded from `references/setup.md` at the start of Phase 1. Captures the configuration that will be merged into `.compound-engineering/config.local.yaml` (the optional local override; interviews write here) as `pulse_*` keys. Subsequent runs re-read those keys from the local file first, then from `config.yaml`.
+Loaded from `references/setup.md` at the start of Phase 1. Captures the configuration that will be merged into `.rocketclaw/config.local.yaml` (the optional local override; interviews write here) as `pulse_*` keys. Subsequent runs re-read those keys from the local file first, then from `config.yaml`.
 
 For each section: ask the opening question, evaluate the answer against the quality bar, push back when it falls into a named anti-pattern, and capture the final answer in the user's own language.
 
@@ -137,10 +137,10 @@ Do not silently skip. Every un-instrumented strategy metric must land in exactly
 
 After each unique source is named, check MCP coverage:
 
-1. Call `search_mcp_registry` with the tool name to see if an official or community MCP exists. Do not guess from memory.
-2. If one exists and the user already has it connected (ask: "Is the `{{tool}}` MCP already connected?"), note `using MCP for {{tool}}` in the config.
-3. If one exists but the user hasn't connected it, suggest: "There's an MCP for `{{tool}}`. Connecting it is the fastest way to let the agent query on each run - I can call `suggest_connectors` to walk you through it, or we can skip and I'll note the source as `manual - agent will need credentials or another path`."
-4. If no MCP exists, capture `manual` and note what shape of query the agent should use (CLI, API, etc.).
+1. Check for a matching connected server in the exposed OpenCode tools or with `opencode mcp list` from the absolute workspace root. If none is connected, use an available MCP registry search or the provider's documentation to check for a server. Do not guess from memory.
+2. If a matching server is connected and exposes the required read-only query, note `using MCP for {{tool}}` in the config.
+3. If a server exists but isn't connected, point the user to the [OpenCode V2 MCP setup guide](https://opencode.ai/v2/docs/mcp-servers), or offer to skip and record `manual - agent will need credentials or another path`.
+4. If no server is found or coverage cannot be verified, say which, capture `manual`, and note what shape of query the agent should use (CLI, API, etc.).
 
 Do not set up MCP connections inside this interview - that's a separate flow. Just record which tools have MCP coverage and which do not.
 
@@ -212,7 +212,7 @@ After the config is written and shown to the user, make a scheduling offer befor
 
 **Handling the answer:**
 
-- **Yes (daily or weekly)** -> "I'll hand this to the `schedule` skill. Confirm the time/day and it'll set up the recurring job." Do not schedule inline - hand off to the `schedule` skill explicitly, which is the single source of truth for recurring tasks. On Claude Code, this uses the Routines feature.
+- **Yes (daily or weekly)** -> confirm the schedule details, then hand off to OpenCode's native `/automation` command if exposed. Provide the verified workspace, `/ce-product-pulse` invocation, and confirmed cadence. Do not create the job inline or claim it exists without confirmation from OpenCode. If automation is unavailable or denied, report the blocker and give a brief manual hint for what the schedule would need to run (e.g., for cron or GitHub Actions); do not create it through another route.
 - **Not now** -> capture `schedule: manual` in the config. No nag.
 - **Later** -> capture `schedule: ask-again-after-3-runs` in the config. The Phase 3 rule in `SKILL.md` re-surfaces the offer after 3 manual runs.
 
@@ -224,9 +224,7 @@ Skipping this entirely is fine - the skill does not require a schedule to functi
 
 ## Config File Shape
 
-After the interview completes, merge a `pulse_*` block into `<repo-root>/.compound-engineering/config.local.yaml`. Resolve the repo root with `git rev-parse --show-toplevel`. Preserve any non-pulse keys that already exist in the file (e.g., `plan_*`); only add or update `pulse_*` keys.
-
-If the file does not yet exist, create the directory and file. If `.compound-engineering/config.local.yaml` is not already covered by `.gitignore`, offer to add the entry before writing.
+After the interview completes, merge a `pulse_*` block into `<repo-root>/.rocketclaw/config.local.yaml` using the verified JJ workspace root and write procedure in `references/setup.md`. Preserve any non-pulse keys that already exist in the file (e.g., `plan_*`); only add or update `pulse_*` keys.
 
 The pulse block uses skill-prefixed flat keys so it can share the config file without owning unrelated settings:
 
@@ -254,7 +252,7 @@ pulse_excluded_metrics: "{{metric,metric}}"          # strategy metrics intentio
 - **Strategy metrics carried forward**: surfaced in the report, not stored as config — they live in `STRATEGY.md` and are re-read each run from there.
 - **Per-source connection details** (URLs, API keys, query specifics): live with the user's MCP configuration, not in this config.
 - **Hardcoded operational settings** (15-minute trailing buffer, top-N error count, p50/p95/p99 latencies, "no PII in reports", "parallel analytics + tracing, serial DB"): these are skill behavior, not user config; they live in `SKILL.md` and `references/run.md` and stay constant.
-- **Schedule cadence**: handled by the `schedule` skill (or platform-native cron), not pulse config. The pulse skill only hands off; it does not own the cadence record.
+- **Schedule cadence**: handled by OpenCode automation (or a user-managed scheduler), not pulse config. The pulse skill only hands off; it does not own the cadence record.
 - **Tracing top-N count and latency on/off**: not configurable in this version. The report always includes top 5 errors and full p50/p95/p99 latency. Add config keys later if a real need surfaces.
 
 After writing, surface the resulting `pulse_*` block to the user in chat. Offer one round of edits. Then return to `SKILL.md` Phase 2.

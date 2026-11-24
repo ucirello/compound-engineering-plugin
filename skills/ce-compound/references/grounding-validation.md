@@ -7,9 +7,9 @@ Read this when Phase 2.45 runs. The doc just written becomes permanent, trusted 
 Two claim categories verify against different trees:
 
 - **Code-behavior claims** (enum values, status semantics, limits, defaults) verify against the **local working tree**. They describe what this session's work produced and verified here.
-- **Merge-state claims** ("fixed in #1608", "landed", "shipped") verify against **remote truth**. The checkout may predate a merge, so `gh pr view` (or the tracker equivalent) is primary and local git reachability is only the fallback. The script's `INFO: worktree is N commits behind …` line tells you how much to distrust the local tree for this category.
+- **Merge-state claims** ("fixed in #1608", "landed", "shipped") verify against **remote truth**. The checkout may predate a merge, so query the PR with the repository-scoped `gh` command below (or the tracker equivalent); local JJ reachability is only the fallback. The script's `INFO: worktree is N commits behind …` line tells you how much to distrust the local tree for this category.
 
-Before running the script, optionally run `git fetch --quiet` (best-effort; skip silently on failure or offline, because the network is never a correctness dependency). When remote state cannot be checked at all, keep the claim, add an as-of qualifier ("as of this writing"), and record degraded verification in the run report.
+Before running the script, optionally run `jj git fetch --quiet` from the absolute workspace root (best-effort; skip silently on failure or offline, because the network is never a correctness dependency). When remote state cannot be checked at all, keep the claim, add an as-of qualifier ("as of this writing"), and record degraded verification in the run report.
 
 ## Step 1: Adjudicate the mechanical flags
 
@@ -36,14 +36,15 @@ After any body edit from this step or Step 2, re-run the script until it reports
 
 Dispatch **one generic read-only subagent** covering the written solution doc plus any `CONCEPTS.md` entries added or edited this run. Phase 2.4's entries are claims too; a glossary entry written from a session-level summary is exactly how wrong semantics enter the vocabulary. Use the same mid-tier model class as other reviewer subagents when the platform exposes one.
 
-If the user's or project's active instructions or the live prompt name a model for this subagent, use that model instead of the default tier above. They can name it by the subagent's tier, by its prompt-asset name, or for the subagents being dispatched. Without such an instruction, a model configured for this subagent's role takes precedence over the default tier.
+If the user's or project's active instructions or the live prompt name a model for this subagent, it supersedes the default tier; otherwise a model configured for the role takes precedence over the default. Resolve a permitted override with `opencode.models`. If the host does not permit an override, use a suitable inherited model; if a required model cannot be used, report that coverage incomplete. The skill explicitly requests native OpenCode delegation where the host permits user-or-skill authorization. If dispatch fails, distinguish missing tool, permission, exhausted depth, model rejection, and malformed arguments from the actual result. Never retry a denial or bypass depth. Do not replace the independent semantic pass with a self-review; report it unperformed if it cannot run.
 
 Build its prompt from this template:
 
 ```
 You are a grounding validator for documentation about to enter a permanent
 knowledge store. You are read-only: never edit files. Inspect with Read,
-Grep, Glob, git (non-mutating), and gh when available.
+Grep, Glob, non-mutating JJ commands from the absolute workspace root,
+and gh with a verified JJ Git backend when available.
 
 Inputs: the doc content below, the CONCEPTS.md entries below (if any), and
 this staleness context: <INFO line from the mechanical script, or "none">.
@@ -58,8 +59,10 @@ Check every factual claim in three categories:
    (defining source not found).
 
 2. MERGE-STATE CLAIMS — assertions that a change landed ("fixed in",
-   "merged", "shipped in", "resolved by #N"). Primary check: gh pr view
-   <n> --json state,mergedAt,baseRefName (remote truth). Fallback: git
+   "merged", "shipped in", "resolved by #N"). Primary check, from the
+   absolute workspace root after verifying jj git root succeeds:
+   GIT_DIR=$(jj git root) gh pr view <n> --json state,mergedAt,baseRefName
+   (remote truth). Fallback: JJ revset ancestry against the verified
    reachability from the upstream default branch. Verdict: verified,
    contradicted (e.g. PR open, not merged), or unverifiable (offline / no
    gh) — mark unverifiable as "degraded", do not guess.

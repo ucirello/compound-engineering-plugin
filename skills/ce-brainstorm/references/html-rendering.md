@@ -51,10 +51,10 @@ alone.
 - **Unified plan navigation.** A unified plan has a visible navigation
   region near the top linking the stable section anchors below.
   Requirements-only artifacts omit links to absent implementation sections.
-- **Source and composition footer.** A visible footer at the end names the
+- **Source and timestamp footer.** A visible footer at the end names the
   composition timestamp and the source: the upstream document when there is
-  one, otherwise the user's request and the composing skill. Example shape:
-  `<footer class="composition-signal">Composed 2026-05-17T14:23Z by ce-plan from <code>docs/brainstorms/...-requirements.md</code></footer>`.
+  one, otherwise the user's request. Example shape:
+  `<footer class="composition-signal">2026-05-17T14:23Z · Source: <code>docs/brainstorms/...-requirements.md</code></footer>`.
   Output is exclusive, so this footer is how a reader judges staleness.
 - **ASCII identifiers.** Class names, element IDs, and attribute names are
   ASCII.
@@ -178,9 +178,11 @@ Diagrams are inline SVG in whatever shape conveys the content fastest.
 ## Reference links
 
 Hyperlink each entry in a Sources & References section to its canonical
-destination when that destination is established. For a GitHub `origin`
-(`git remote get-url origin`), a repo path links to
-`<repo-url>/blob/main/<path>` and `PR #636` links to `<repo-url>/pull/636`.
+destination when that destination is established. Get the exact `origin` URL
+from [`jj git remote list`](https://docs.jj-vcs.dev/latest/cli-reference/#jj-git-remote-list),
+run from the absolute workspace root. For a GitHub `origin`, a repo path links
+to `<repo-url>/blob/<verified-ref>/<path>` and `PR #636` links to
+`<repo-url>/pull/636`.
 An external tracker ID links only when its workspace URL already appears in
 context. Do not invent URLs; a guessed link is worse than plain `<code>`
 text. Inline mentions in prose stay unlinked.
@@ -189,7 +191,7 @@ text. Inline mentions in prose stay unlinked.
 
 Take visual style from the user's direction in this session, their
 project instructions, a design skill they invoke, or a DESIGN.md at the
-repository root, `docs/DESIGN.md`, or `.compound-engineering/DESIGN.md`;
+repository root, `docs/DESIGN.md`, or `.rocketclaw/DESIGN.md`;
 with none of those, choose a quiet, readable style yourself. Most DESIGN.md
 files describe a product or marketing surface, so it contributes the
 brand's identity, not its scale:
@@ -217,7 +219,7 @@ Before returning the artifact, check it against the conditions above:
 - Every stable ID appears as both `id=""` and visible text.
 - Section headings match the section-contract names; a unified plan has its
   navigation region and stable anchors.
-- The composition footer is present.
+- The source and timestamp footer is present.
 - Repeating cards with secondary content are collapsed by default, with no
   `open` attribute; sections with 6+ cards have a sub-nav.
 - No one-edge colored accent on chips, pills, or cards.

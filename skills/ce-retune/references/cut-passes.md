@@ -9,10 +9,10 @@ A pass applies **one problem class** across the corpus and stops. The work fails
 1. Pick one class from the Phase 3 findings (`references/corpus-audit.md`), or one regression class from `references/halt-taxonomy.md`. One class per pass, no bundling.
 2. Write the **file-assignment manifest**: unit -> the agent that edits it -> exact paths. Every copy of a shared asset goes to a single named agent (below).
 3. If the rewrite has cross-referencing strings, author the **contract file** first, serially (below).
-4. Dispatch one agent per unit through whatever sub-agent primitive the platform provides. Each prompt carries the class, the contract path if any, its own paths, and the forbidden paths.
+4. Dispatch one native OpenCode subagent per unit under `references/workflow-shapes.md`’s permission and model rules. Each prompt carries the class, the contract path if any, its own paths, and the forbidden paths.
 5. **Reconcile** every block touched (below). This is the step that gets skipped.
 6. Run the project's own test suite. A pinned string that disappeared is a finding to report with its test path, never a test to edit.
-7. Collect each agent's applied/skipped report. Then measure (Phase 5) and commit the pass alone.
+7. Collect each agent's applied/skipped report. Then measure (Phase 5) and record the pass as its own JJ change using the [message standards and scope below](#ship-phase-6).
 
 Eight passes landed in the engagement that produced this skill. Every one reduced to the same class. Resist widening a pass to "also fix the obvious thing". A pass that changed two classes cannot be attributed by the next measurement.
 
@@ -32,18 +32,41 @@ Fan out by **unit** instead: one agent edits one skill directory and applies the
 
 State the forbidden set in the prompt as paths, not as a rule to infer. An agent told "do not touch shared files" will decide for itself what is shared.
 
-## Isolation: separate worktrees or disjoint paths in one tree
+## Isolation: separate JJ workspaces or disjoint paths in one tree
 
 Disjoint paths in one tree are enough when nothing an agent runs mutates state outside its own paths. That covers most cut passes: edits are text, the manifest is a partition, and a single tree keeps the diff readable and the commit trivial.
 
-Pay for a worktree (or equivalent per-agent checkout) when any of these is true:
+Pay for a separate JJ workspace when any of these is true:
 
 - Agents run builds, formatters, generators, or anything that writes outside its unit, such as lockfiles, caches, generated output, or a repo-root config.
-- An agent needs to run the suite or the harness to check its own edit. Concurrent runs in one tree race on scratch and on git index state.
-- Agents commit, stage, or use branch operations. One git index shared by parallel agents corrupts staging.
+- An agent needs to run the suite or the harness to check its own edit. Concurrent runs in one tree race on scratch and build state.
+- Agents need independent working-copy revisions for committing or other JJ change operations. Separate workspaces do not isolate shared bookmarks and history; have the coordinator serialize shared mutations and integration.
 - A pass may need to be abandoned wholesale, and a clean discard is worth more than a shared diff.
 
-Otherwise the isolation cost is real: N checkouts to create, N results to merge, and merge conflicts reintroduced on exactly the files the manifest was designed to keep apart.
+Otherwise the isolation cost is real: N workspaces to create, N results to integrate, and merge conflicts reintroduced on exactly the files the manifest was designed to keep apart.
+
+### Create and verify isolation
+
+Use this lifecycle for worker, measurement-arm, and temporary positive-control workspaces. Run JJ commands from the relevant absolute workspace root, not with `-R` as a substitute for changing directory. See the [JJ workspace reference](https://docs.jj-vcs.dev/latest/cli-reference/#jj-workspace).
+
+1. Detect existing isolation first. Verify its registered name, absolute root, base, colocation, and suitability for the assigned arm or worker; reuse it under its existing name when suitable. Never rename, recreate, or change colocation on an existing workspace just to satisfy new-creation rules. Do not reuse a single working copy as both A/A arms.
+2. For new workspaces, resolve and record the exact base commit before creation. Capture the local creation date once; use `YYYYMMDD-<meaningful-kebab-case-slug>` for both the JJ registration and the destination basename. Derive the slug from the task or revision and arm/worker role; normalize supplied names without double-prefixing. Place the destination under the source run’s ignored local `.tmp/` parent. Check both the registration and destination for collisions; suffix `-2`, `-3`, etc. as needed and record the chosen name and absolute path so retries and resumes keep the same identity. Leave PR/source bookmarks unchanged.
+3. When the harness supplies isolation, request its supported colocated JJ workspace with that base and name, honor its ownership and adoption lifecycle, and verify what it returned. If it cannot supply the requested isolation, report the blocker rather than bypassing the harness. Otherwise, for authorized inline creation use:
+
+   ```bash
+   (cd "$source_root" && jj workspace add --colocate --name "$workspace_name" --revision "$verified_base" "$workspace_path") &&
+   (cd "$workspace_path" && jj git colocation status)
+   ```
+
+   Verify colocation from the destination’s absolute root in both cases, and verify the exact name, path, and base before handing the workspace to a worker or runner. If the active OpenCode session must work in that workspace, use supported session adoption (for example, `opencode.session.move` to the verified absolute path), not just a shell `cd`. Stop and report unmet compatibility requirements rather than silently falling back to another checkout.
+
+### Retire run-owned workspaces
+
+Retirement is separate from shipping and requires cleanup authorization; a completed run is not permission to delete a user or harness-owned workspace. Honor harness ownership and lifecycle authority. For an authorized, run-owned workspace:
+
+1. Stop its workers and runners, leave the target directory, and move any active OpenCode session to a surviving workspace before removal. From that surviving absolute root, verify the target’s exact registered name, absolute path, and run ownership. If the workspace contains accepted pass edits, verify their integration; if it contains an abandoned candidate or a measurement arm, verify it is no longer needed for ongoing work and that its revision remains recoverable.
+2. Preserve best, archive, and recovery bookmarks and verify their targets. If a needed candidate revision is not otherwise retained, pin the exact revision with an authorized run-owned recovery bookmark before removal; never repoint an existing best, archive, recovery, or source bookmark for this purpose. Copy all required measurement evidence, raw artifacts, and worker receipts out of the target and read them back from the surviving location. Inspect tracked changes, conflicts, and ignored or untracked files in the target; `jj workspace remove` snapshots the working copy but does not protect ignored files or files left untracked. Retain anything ambiguous, still in use, or not demonstrably disposable.
+3. From the surviving absolute workspace root run `jj workspace remove VERIFIED_NAME`, then verify both deregistration and disappearance of the recorded directory. If either check fails, report the blocker and what remains; do not force-delete or fall back to another removal command. Use `jj workspace forget` only for intentional unregistering that preserves the files. Bookmark cleanup is a separate decision; never delete best, archive, recovery, or other still-needed bookmarks as workspace cleanup.
 
 ## The shared-asset trap
 
@@ -52,7 +75,8 @@ Some corpora hold byte-identical copies of a file inside several units, delibera
 Discover them before dispatch. Shape (POSIX shell; hash every candidate file, key by basename, report pairs appearing in more than one path):
 
 ```
-find . -type f \( -name '*.md' -o -name '*.py' -o -name '*.sh' \) -exec shasum {} + \
+find . \( -name .tmp -o -name .jj -o -name .git \) -prune -o \
+  -type f \( -name '*.md' -o -name '*.py' -o -name '*.sh' \) -exec shasum {} + \
   | awk '{ n = $2; sub(/.*\//, "", n); print $1, n }' \
   | sort | uniq -c | awk '$1 > 1'
 ```
@@ -124,6 +148,37 @@ A failure that moves to a later phase is progress and names the next target. A f
 
 ## Ship (Phase 6)
 
-Commit each pass separately with its own message so the history says which change was made and why, and so release tooling can classify intent. Keep the measurement artifacts.
+Commit each pass separately from its target workspace’s absolute root. Verify the measured diff, confirm the pass-owned paths against the manifest, and exclude unrelated edits; stop and resolve ambiguous ownership rather than sweeping another change into the pass. The description should explain which single problem class changed and why, so history preserves attribution and local release tooling can classify intent. Keep the measurement artifacts.
 
-Then write the finding down where the next person will hit it: the mechanism, the before and after, the measured numbers, and the hypotheses that died. **Record the ones that died.** They are what stops the next attempt from re-running a dead end, and they are the part every write-up omits.
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards.
+
+Before composing, read the full Go guide and resolve the history head relevant to the task (the verified base or integration line, not a guessed default branch). From the target workspace’s absolute root, read and compare several recent full subjects **and bodies**, for example `jj log --no-graph -r "::$history_head" -n 10 -T 'description ++ "\n"'`. Identify the local pattern for prefixes or package names, casing, verb tense, subject/body separation, wrapping, and issue-reference placement. Project instructions and the observed repository syntax take precedence over the Go example; apply compatible Go guidance for clarity and structure. If no history exists, use explicit project/user instructions and compatible Go guidance without inventing precedent.
+
+**Source guidance from the Go Wiki, not a mandatory repository template:**
+
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+
+```text
+net/http: handle foo when bar
+
+[longer description here in the body]
+
+Fixes #12345
+```
+
+> Notably, for the subject (the first line of description):
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+
+> For the body (the rest of the description):
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
+
+Use `jj commit -m "<message composed from the standards above>" -- <pass-owned paths>` with the verified path list, then confirm the recorded change contains only this pass and capture its commit ID alongside the results.
+
+Then write the finding down where the next person will hit it: the mechanism, the before and after, the measured numbers, and the hypotheses that died. **Record the ones that died.** They are what stops the next attempt from re-running a dead end, and they are the part every write-up omits. Retire only eligible workspaces under the procedure above.

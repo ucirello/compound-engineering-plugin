@@ -1,12 +1,12 @@
 # Install riffrec live mode into the host app
 
-Load this from `references/live-start.md` when the detect script shows the app is missing the riffrec dependency, has no installed live-capable build, or has no live-capable provider mount. The result is one setup commit on the current feature branch that leaves the app able to run a live session; the riffer already accepted this when they chose live mode, so do not ask again.
+Load this from `references/live-start.md` when the detect script shows the app is missing the riffrec dependency, has no installed live-capable build, or has no live-capable provider mount. The result is one local setup commit in the verified feature workspace that leaves the app able to run a live session; the riffer already accepted this when they chose live mode, so do not ask again.
 
 ## Where riffrec comes from
 
 `RIFFREC_MIN_VERSION` = `2.2.1`
 
-Live mode with the seeing interviewer (clicks announced, `look_at_screen`, no zip once the endpoint confirmed Done) ships in the npm package `riffrec` from `RIFFREC_MIN_VERSION` on, so the registry range `riffrec@^2.2.1` is the install path (step 1). Name the installed version in the setup commit message and in the report.
+Live mode with the seeing interviewer (clicks announced, `look_at_screen`, no zip once the endpoint confirmed Done) ships in the npm package `riffrec` from `RIFFREC_MIN_VERSION` on, so the registry range `riffrec@^2.2.1` is the install path (step 1). Name the installed version in the report.
 
 ## What to change
 
@@ -28,7 +28,36 @@ Follow riffrec's own README when it names a different mount point for the framew
 
 ## Commit
 
-Commit the dependency change, the lockfile, and the mount edit as one setup commit on the current branch through `ce-commit`, with a message that says it adds riffrec live mode for polish sessions. Keep its hash: the live-mode report names it, including when the riffer later declines the consent screen and no session runs (the commit stays; riffrec remains in the app after the session, as disclosed).
+Use `ce-commit` from the verified absolute feature workspace root to save only the dependency change, the lockfile, and the mount edit in one local setup commit. The description should explain that the change adds riffrec live mode for polish sessions and record the installed version. Keep the commit ID: the live-mode report names it, including when the riffer later declines the consent screen and no session runs (the commit stays; riffrec remains in the app after the session, as disclosed).
+
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards.
+
+Before composing, read the full Go guide and compare several full subjects and bodies from the verified history head for this feature, using `(cd "$workspace_root" && jj log --no-graph -r "::$verified_history_head" -n 10 -T 'description ++ "\n"')`. Follow repository instructions and observed local conventions for prefixes, casing, verb tense, subject/body separation, wrapping, and placement of issue references. Repository conventions win when they differ; apply compatible Go advice to clarity and structure. If there is no history, follow explicit project/user instructions and the Go guidance without inventing precedent.
+
+Go source guidance (illustrative, not a repository template):
+
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+
+```text
+net/http: handle foo when bar
+
+[longer description here in the body]
+
+Fixes #12345
+```
+
+> Notably, for the subject (the first line of description):
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+
+> For the body (the rest of the description):
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
 
 ## When it fails
 

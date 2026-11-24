@@ -22,7 +22,7 @@ These reviewers are broadly applicable but not automatically useful. Spawn one o
 | `testing` | `testing-reviewer` | Test files, test infrastructure, fixtures, mocks, or harness behavior; or meaningful runtime behavior changed without corresponding test work. Behavioral triggers include new or changed branches, state mutation, API/control-flow behavior, and error handling. Production-file presence alone and non-behavioral edits do not select it. |
 | `maintainability` | `maintainability-reviewer` | Large or structural work: substantial refactors, new abstractions, file moves, coupling/type-boundary changes, or at least 200 executable changed lines. |
 | `agent-native` | `agent-native-reviewer` | Agent-facing product surfaces: the diff changes an agent tool surface (MCP tools, agent tool or function definitions, system-prompt construction), or adds or changes a user-facing capability in a product that already has such a surface. Editing only the prose of skills, agent definitions, or instruction files does not select it. |
-| `learnings` | `learnings-researcher` | The change has institutional knowledge to be checked against: an existing `<root>/solutions/` corpus has a plausible path/title match for the changed modules or patterns (run a cheap search first; corpus existence alone does not select it), or, in local scope, the repo's CE config declares Compound Packs (Stage 1b `declared_packs`, semantics in `references/scope.md`). Declared packs select it without a pre-search; the persona matches every rule's `applies_when` itself. |
+| `learnings` | `learnings-researcher` | The `<root>/solutions/` corpus has a plausible path/title match (check with a cheap search first), or in local scope the project config declares Compound Packs (Stage 1b `declared_packs`). Declared packs select it without a pre-search; the persona matches rules' `applies_when` itself. |
 
 ## Conditional (7 personas)
 
@@ -35,7 +35,7 @@ Spawn one of these when you identify relevant patterns in the diff. Read the ful
 | `api-contract` | `api-contract-reviewer` | An externally consumed boundary changes: route/request/response definitions, serializers, published event schemas, API versioning, or a public package signature with evidenced downstream callers. A new or changed exported symbol inside one module is insufficient by itself. |
 | `data-migration` | `data-migration-reviewer` | Migration files, schema dumps (`db/schema.rb`, `structure.sql`), backfill scripts, data transformations — **not** model/query-only changes without migration artifacts |
 | `reliability` | `reliability-reviewer` | Error handling, retry logic, circuit breakers, timeouts, background jobs, async handlers, health checks |
-| `adversarial` | `adversarial-reviewer` fallback | The Adversarial selection condition in `references/modes-and-output.md` applies: an explicit user request or an evidenced failure scenario with material consequences, including a verification mechanism that could conceal it. The lens runs through the independent cross-model peer when a sanctioned peer starts. Spawn this in-process persona when the peer cannot start, when fold-in runs the did-not-run fallback, or when fold-in restores local after a failed same-route rate-limit retry. A started peer that produced a review artifact and the fallback are mutually exclusive. |
+| `adversarial` | `adversarial-reviewer` fallback | The Adversarial selection condition in `references/modes-and-output.md` applies: an explicit user request or an evidenced failure scenario with material consequences, including a verification mechanism that could conceal it. A usable native peer artifact and the ordinary fallback are mutually exclusive. Follow Stage 3d and the named recovery rules; a launch receipt is not coverage. |
 | `previous-comments` | `previous-comments-reviewer` | **PR-only AND comment-gated.** Reviewing a PR that has existing review comments or review threads from prior review rounds. Skip entirely when no PR metadata was gathered in Stage 1, OR when Stage 1's `hasPriorComments` flag is false (no `reviews` and no `comments` on the PR). |
 
 ## Stack-Specific Conditional (1 persona)
@@ -46,7 +46,7 @@ These reviewers cover specialized runtime behavior. Structural and maintainabili
 |---------|-------|---------------------------|
 | `frontend-races` | `frontend-races-reviewer` | Browser UI code in any framework (React, Turbo/Stimulus, plain DOM, or others) whose changed behavior can race: async fetches or polling that update UI state, timers or animation loops, event listeners, component or controller lifecycle and cleanup, or interactions that can overlap |
 
-## CE Conditional Local Prompt Assets (migration-specific)
+## Conditional Local Prompt Assets (migration-specific)
 
 Use `deployment-verification-agent` when the migration-artifact condition (selection rule 5 below) applies **and** the change is risky (destructive DDL, backfills, NOT NULL without default, column renames/drops). Schema drift and migration safety belong to the `data-migration` persona — not a separate typed agent.
 
@@ -61,5 +61,5 @@ Use `deployment-verification-agent` when the migration-artifact condition (selec
 3. **For each cross-cutting conditional persona**, read the diff and decide whether its domain is relevant. This is a judgment call, not a keyword match.
 4. **For each stack-specific conditional persona**, use file types and changed patterns as a starting point, then decide whether the diff actually introduces meaningful work for that reviewer. Do not spawn language-specific reviewers just because one config or generated file happens to match the extension.
 5. **For `data-migration`**, spawn only when the diff includes migration or schema artifacts (`db/migrate/*`, `db/schema.rb`, `db/structure.sql`, Alembic/Flyway/Liquibase paths, or explicit backfill/data-transform scripts). Do **not** spawn for model-only or query-only changes without those files.
-6. **For CE conditional prompt assets**, use `deployment-verification-agent` when the migration-artifact condition applies and the change is risky (see above).
+6. Use `deployment-verification-agent` when the migration-artifact condition applies and the change is risky (see above).
 7. **Announce the team** before spawning with a one-line justification per conditional reviewer selected.

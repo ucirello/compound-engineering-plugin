@@ -17,6 +17,14 @@ PR_NUMBER=$1
 ROOT_COMMENT_ID=$2
 IFS= read -r -d '' BODY || true
 
+if WORKSPACE_ROOT=$(jj workspace root 2>/dev/null); then
+    GIT_DIR=$(cd "$WORKSPACE_ROOT" && jj git root)
+    export GIT_DIR
+elif [ -z "$3" ]; then
+    echo "Error: repository discovery requires the target JJ workspace; otherwise pass OWNER/REPO." >&2
+    exit 1
+fi
+
 if [ -n "$3" ]; then
     OWNER=$(echo "$3" | cut -d/ -f1)
     REPO=$(echo "$3" | cut -d/ -f2)

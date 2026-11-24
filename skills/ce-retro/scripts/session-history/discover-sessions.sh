@@ -13,7 +13,7 @@
 #   --cwd      Absolute repo root. Used for exact Pi encoded-CWD discovery
 #              and the omp raw-bucket probe. Claude listing is unfiltered;
 #              extract-metadata.py --cwd-filter matches recorded cwd.
-#              Repeatable: each further root (e.g. a linked worktree) adds its
+#              Repeatable: each further root (e.g. a linked workspace) adds its
 #              own Pi directory, omp raw bucket, and Cursor basename match.
 #   --platform Restrict to a single platform. Omit to search all.
 #   --include-subagents
@@ -140,8 +140,8 @@ discover_pi() {
 }
 
 # --- oh-my-pi (omp) ---
-# Encode omp's raw bucket name for a cwd: home-relative "-<rel>",
-# tmp-relative "-tmp-<rel>", and otherwise "--<abs>--", with path separators
+# Encode omp's raw bucket name for a cwd: home-relative "-<rel>"
+# or "--<abs>--", with path separators
 # and ":" encoded as "-" (session-paths.ts getDefaultSessionDirName /
 # encodeLegacyAbsoluteSessionDirName). This raw scheme predates the hashed
 # scheme and is current again since omp 17.2.9 (#7646 restored it and removed
@@ -149,7 +149,7 @@ discover_pi() {
 # with physical paths so symlinked cwds resolve to the same bucket, mirroring
 # omp's resolveEquivalentPath. Prints nothing when the cwd cannot be resolved.
 encode_omp_raw_cwd() {
-    local cwd canon_home canon_tmp rel
+    local cwd canon_home rel
     cwd="$(cd "$1" 2>/dev/null && pwd -P)" || return 0
     canon_home="$(cd "$HOME" 2>/dev/null && pwd -P)" || canon_home="$HOME"
     case "$cwd" in
@@ -161,20 +161,8 @@ encode_omp_raw_cwd() {
             printf -- '-%s' "$rel"
             ;;
         *)
-            canon_tmp="$(cd "${TMPDIR:-/tmp}" 2>/dev/null && pwd -P)" || canon_tmp=""
-            case "$cwd" in
-                "$canon_tmp")
-                    printf -- '-tmp'
-                    ;;
-                "$canon_tmp"/*)
-                    rel="$(printf '%s' "${cwd#"$canon_tmp"/}" | sed 's/[/\\:]/-/g')"
-                    printf -- '-tmp-%s' "$rel"
-                    ;;
-                *)
-                    rel="$(printf '%s' "${cwd#/}" | sed 's/[/\\:]/-/g')"
-                    printf -- '--%s--' "$rel"
-                    ;;
-            esac
+            rel="$(printf '%s' "${cwd#/}" | sed 's/[/\\:]/-/g')"
+            printf -- '--%s--' "$rel"
             ;;
     esac
 }
@@ -244,8 +232,9 @@ discover_omp() {
                 find "$root/$encoded" -maxdepth 1 -name "*.jsonl" -mtime "-${DAYS}" 2>/dev/null
             done
         done
-        # Each extra root (a linked worktree) can have a basename unlike the repo's.
-        local name sanitized extra
+        # The basename scans also find historical temp-relative buckets;
+        # derive the encoded basename without guessing the old temp root.
+        local name sanitized raw_name extra
         local names=("$REPO_NAME")
         for extra in ${EXTRA_CWDS[@]+"${EXTRA_CWDS[@]}"}; do
             names+=("$(basename "$extra")")
@@ -253,6 +242,7 @@ discover_omp() {
         for name in "${names[@]}"; do
             sanitized="$(printf '%s' "$name" | sed -E 's/[^a-zA-Z0-9._-]+/-/g; s/^-+//; s/-+$//' | tail -c 80)"
             [ -n "$sanitized" ] || sanitized="project"
+            raw_name="$(printf '%s' "$name" | sed 's/[/\\:]/-/g')"
             for root in "$agent_dir/sessions" \
                         "$HOME/$config_dir"/profiles/*/agent/sessions \
                         ${xdg_omp:+"$xdg_omp/sessions"} \
@@ -262,12 +252,14 @@ discover_omp() {
                     [ -d "$dir" ] || continue
                     find "$dir" -maxdepth 1 -name "*.jsonl" -mtime "-${DAYS}" 2>/dev/null
                 done
-                if [ "$name" != "$sanitized" ]; then
-                    for dir in "$root"/*"$name"*/; do
+                for raw in "$name" "$raw_name"; do
+                    [ "$raw" != "$sanitized" ] || continue
+                    for dir in "$root"/*"$raw"*/; do
                         [ -d "$dir" ] || continue
                         find "$dir" -maxdepth 1 -name "*.jsonl" -mtime "-${DAYS}" 2>/dev/null
                     done
-                fi
+                    [ "$name" != "$raw_name" ] || break
+                done
             done
         done
     # The probe and the globs can hit the same bucket; emit each path once.

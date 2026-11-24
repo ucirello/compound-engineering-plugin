@@ -46,6 +46,8 @@ Refresh recommendation: <none | /ce-compound refresh <scope>>
 Documentation complete
 ```
 
+For delegated Full, additionally report `Source session: <ID/title, reduced export read>` and any degraded supplemental research or validation. If an interactive discoverability edit would be offered, include the substantive instruction file path and proposed line. If assembly found a prescriptive lesson and a writable declared pack, include `Pack destination: eligible, not applied` with the eligible destinations; otherwise say `not applicable`. A failed source export or reduction is a specific `Documentation skipped` reason, not “no relevant prior sessions.”
+
 `Documentation complete` means the run wrote something, including when the only file written is a test or a standard. Track, Category, Overlap, and Grounding then read `n/a`.
 
 When the run wrote nothing (e.g., non-interactive invoked on a session where the problem is not yet solved), emit a structured failure instead and end with `Documentation skipped` so callers can distinguish success from no-op:
@@ -60,6 +62,13 @@ Documentation skipped
 ```
 
 ### Interactive mode
+
+**Delegated Full:** Relay the child's actual report and learning path, including a skipped result if nothing was written. Then offer only the applicable handoffs the child reported but did not apply:
+
+- Show the proposed instruction-file edit and get consent per `references/refresh-and-discoverability.md`.
+- Offer the eligible Compound Pack options using `references/assembly.md` and get consent before any pack write or scaffold/config write. Treat an accepted pack destination as a separate, explicitly selected pack rule sourced from the child's learning; leave the child's learning unchanged. Do not write to Git-sourced packs.
+
+No second Full pass, parent rewrite, or additional enhancements. In the interactive Lightweight fallback, report why native delegation was unavailable and advise re-running the skill from the **same** session once delegation works (`references/lightweight.md`).
 
 ```
 ✓ Documentation complete
@@ -114,7 +123,7 @@ File updated:
 
 | ❌ Wrong | ✅ Correct |
 |----------|-----------|
-| Subagents write product files into `docs/` or edit tracked paths | Subagents write only scratch artifacts under `<run-dir>/` and return the path; orchestrator writes the final form |
+| Research subagents write product files into `docs/` or edit tracked paths | Research subagents write only scratch artifacts under `<run-dir>/`; the capture orchestrator (the Full child when delegated) writes the final form |
 | Subagent returns a long prose body only as its inline response | Subagent writes full output to its run artifact; orchestrator Reads it back (inline return is fallback only) |
 | Research and assembly run in parallel | Research completes → then assembly runs |
 | Non-interactive Discoverability Check edits AGENTS.md/CLAUDE.md | non-interactive Full reports `Instruction-file edit: gap noted, not applied`; non-interactive Lightweight emits a discoverability tip; only interactive Full applies the edit after consent |

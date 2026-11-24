@@ -51,6 +51,8 @@ Detection is reasoning-based. Do not maintain an enumerated checklist of files t
 
 ## Probe timing and caching
 
+For every repository-scoped `gh` probe or issue creation below, run from the target workspace's absolute root. First resolve `GIT_DIR=$(jj git root)` successfully and export it in that shell. If the root cannot be verified, report that sink as unavailable rather than guessing a repository. Authentication checks alone do not establish a repository.
+
 Availability probes run **at most once per session** and **only when Defer execution is imminent**. Never speculatively at review start, never per-Defer, never per-walk-through-finding. The cached tuple is reused for every Defer action in the same run.
 
 Typical probe sequence:

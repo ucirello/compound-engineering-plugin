@@ -8,7 +8,7 @@ The audit is not evidence. It ranks candidates; only the harness says whether a 
 
 **The two waves must run as separate dispatched agents.** A defender's ruling is only worth recording when it can genuinely disagree with the proposal that reached it, which one context holding both roles cannot do. If the host exposes no way to run them as independent agents, report that as a blocker and stop the audit. Do not run the waves inline and hand the result to Phase 4. The same context arguing both sides still emits confident `cut` rulings, and Phase 4 deletes on them. That is the demolition this reference warns about below, arriving through the dispatch layer instead of a weak model tier.
 
-Two waves, one agent per unit each way.
+Use the native OpenCode dispatch and permission checks in `references/workflow-shapes.md`. Run two waves, one agent per unit each way.
 
 **Wave 1, the proposers.** One agent per corpus unit. Give it the unit's **full directory**, not just its entry file. Conditionally-loaded reference files are usually the bulk of a unit, and the entry file alone hides them. Instruct it to return the finding schema below and nothing else: no summary prose, no recommendations about other units.
 
@@ -16,13 +16,15 @@ Two waves, one agent per unit each way.
 
 1. The project's own documented learnings and solution docs.
 2. The test suite. Grep a distinctive substring of the target text.
-3. Version history. Run `git log -S '<substring>'` for the commit that introduced the line, then read that commit message and the PR it belongs to.
+3. Version history. From the absolute root of the corpus’s JJ workspace, resolve the history head containing the audited version and search its ancestry (`jj log --no-graph -r "::$history_head" -T 'commit_id ++ "\n"'`).
+   - Find the revision that introduced the distinctive **literal** substring. For candidate revisions, compare its occurrence count in the whole file at the revision and its parents using `jj file show -r REVISION PATH`. A path verified absent counts as zero; unreadable or conflicted content does not. Search relevant changed paths in `jj diff --summary --from PARENT --to CHILD`; follow verified old paths across renames or copies and track the relevant ancestry at merges rather than attributing a line to a merge that merely brought it in. A changed-line match alone is not proof that the count changed or that this is the introduction.
+   - Read the introducing revision’s full description (`jj log --no-graph -r "$introduced" -T 'description ++ "\n"'`) and the associated PR when available. For repository-scoped PR lookup, resolve `GIT_DIR=$(jj git root)` successfully from that same absolute root before invoking `gh` with it in the environment; do not guess the PR.
 
-Source 3 is unavailable in a corpus checkout with no history, which is the normal shape of an installed or vendored copy. A defender working without history must say so in `sources_searched` and cannot return `cut` on the strength of the other two alone. That combination is "no provenance found in two of three sources", which is a verification task, not a cut. Point defenders at a checkout that has history, or record the whole audit's provenance basis as partial.
+Source 3 is unavailable in a corpus checkout with no history, which is the normal shape of an installed or vendored copy. A defender working without usable history must say so in `sources_searched` and cannot return `cut` on the strength of the other two alone. That combination is "no provenance found in two of three sources", which is a verification task, not a cut. Point defenders at a checkout that has history, or record the whole audit's provenance basis as partial.
 
 **Pipeline the waves.** Start a unit's defense as soon as its proposal set returns. Do not wait for wave 1 to finish; the two waves share no state across units. It is 2N dispatches on N units, so plan the wave count against the host's concurrency cap (`references/workflow-shapes.md`).
 
-Keep defenders on a capable model tier. A defender that cannot read a test suite and reconstruct intent from a commit message returns "no provenance found" for everything, which silently converts the audit into a demolition.
+Keep defenders on a capable model tier using the permission-aware routing above. If the allowed model cannot read a test suite and reconstruct intent from a commit message, mark that defense incomplete rather than treating its lack of provenance as grounds to cut.
 
 ## Finding schema
 
@@ -125,4 +127,4 @@ Expect roughly half of `reduce` items to be pinned by a test asserting exact str
 - **A cut with no provenance found after a real search is a confident cut. A cut the defender saves with a citation is off the list.** Do not relitigate a defended keep.
 - **Absence of evidence is weaker than the project's own standard for a change.** Where the guidance requires a reproduced failure or an exact failing path, a search that found nothing is a verification task, not a change. Say which of your cuts rest on that weaker basis.
 
-Dispatch shape: one agent per skill, each reading that skill's full directory and proposing cuts with a target and a reason; then a second agent per skill whose job is the opposite, to **defend the existing prose** using the project's own documented learnings, its tests, and git history. Expect the audit to contradict the premise you started with. That is its value.
+Dispatch shape: one agent per skill, each reading that skill's full directory and proposing cuts with a target and a reason; then a second agent per skill whose job is the opposite, to **defend the existing prose** using the project's own documented learnings, its tests, and JJ history. Expect the audit to contradict the premise you started with. That is its value.

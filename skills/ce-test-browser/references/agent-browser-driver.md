@@ -26,7 +26,8 @@ Add `--headed` to commands when manual mode selected a visible browser. Pipeline
 
 ```bash
 # Navigate and inspect
-agent-browser open <url>
+url="<route URL>"
+agent-browser open "$url"
 agent-browser snapshot -i
 
 # Interact using refs from the latest snapshot
@@ -36,8 +37,11 @@ agent-browser type @e1 "text"
 agent-browser press Enter
 
 # Capture evidence
-agent-browser screenshot out.png
-agent-browser screenshot --full out-full.png
+workspace_root="<absolute root of the target JJ workspace>"
+evidence_dir="$workspace_root/.tmp/rocketclaw/ce-test-browser"
+mkdir -p "$evidence_dir" || exit 1
+agent-browser screenshot "$evidence_dir/out.png"
+agent-browser screenshot --full "$evidence_dir/out-full.png"
 
 # Navigation and waits
 agent-browser back

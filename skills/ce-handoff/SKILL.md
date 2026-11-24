@@ -8,7 +8,7 @@ argument-hint: "[create [focus] | resume [source or keywords]]"
 
 Preserve enough session context for a fresh agent to orient quickly, then keep the user in control of what happens next.
 
-Creation and resume are deliberately open at their edges. The managed store and `ce-handoff/v1` metadata are defaults that make CE-created handoffs easy to find; they do not restrict where a handoff may be created or what a user may resume from. A resume source may come from any person, agent, or system and may use any readable format.
+Creation and resume are deliberately open at their edges. The managed store and `ce-handoff/v1` metadata are defaults that make handoffs easy to find; they do not restrict where a handoff may be created or what a user may resume from. A resume source may come from any person, agent, or system and may use any readable format.
 
 ## Route the invocation
 
@@ -25,14 +25,14 @@ Create one immutable handoff at the destination the user requested, or use the m
 
 Point at plans, issues, commits, diffs, documentation, and files rather than reproducing them, and redact secrets, credentials, and unrelated personal information. Keep the handoff pointer-first: for each reference the next agent depends on, name what specifically matters there — not only the path. Prefer repository-relative paths for repository files; use absolute paths only for machine-local state and label them as machine-local.
 
-Creation is complete only after confirming the destination contains the handoff. Then report its final path or URL, retention or access limits, and continuity warnings together. Give a succinct, context-specific summary of what the generated handoff captures, so the user can verify its substance without opening it. Managed `/tmp` storage is OS-managed and not permanent. If continuity depends on a fragile worktree, warn the user without mutation: do not commit, stash, copy, preserve, or tear down anything automatically.
+Creation is complete only after confirming the destination contains the handoff. Then report its final path or URL, retention or access limits, and continuity warnings together. Give a succinct, context-specific summary of what the generated handoff captures, so the user can verify its substance without opening it. The managed store lives under the workspace's local `.tmp/` and can disappear when that workspace is cleaned up. If continuity depends on a fragile JJ workspace, warn the user without mutation: do not commit, stash, copy, preserve, or tear down anything automatically.
 
-**User-runnable invocation rendering.** For the copyable resume command below, default to `/ce-handoff resume <source>`; use `$ce-handoff resume <source>` only when the active host is Codex or explicitly documents dollar-prefixed skill invocation. Render it as the fenced command below and output one form only.
+**User-run OpenCode handoff.** Tell the user to open a fresh OpenCode session (for example, `/new` in the TUI) in the intended workspace and paste the resume command there. Use `/ce-handoff resume <source>` with the verified final absolute path or URL. Do not start or dispatch a receiving agent, change the current session, or send the resume command on the user's behalf. Render one copyable command only.
 
 End the creation response with one fenced, copyable command using the final path or URL and the rendering rule above:
 
 ```text
-<rendered resume invocation>
+/ce-handoff resume <source>
 ```
 
 ## Resume

@@ -27,6 +27,10 @@ Otherwise run capture. A non-interactive run without `mode:refresh` is always ca
 
 ## Preconditions
 
+Resolve capture mode before applying these checks. If interactive context pressure routes to a fresh Full child, leave the eligibility judgment to that child rather than trying to recover the source work in the parent.
+
+If invoked as the delegated Full child with a source session ID, load that session's reduced evidence first (`references/session-history.md`). Use it, not the dispatch prompt or your own conversation, to make the eligibility judgment below. Reuse any supplied learning path only after confirming it is the same lesson within the workspace's artifact root.
+
 Document only a problem that is solved and verified.
 
 <!-- ce-durable-bar:start -->
@@ -43,6 +47,8 @@ Enter non-interactive mode when **either** holds: the arguments you were invoked
 
 `references/modes.md` decides depth, including what a `depth:` token does, as in `mode:non-interactive depth:lightweight` or `mode:non-interactive depth:full`. **Read it before step 1.**
 
+**Interactive context pressure:** delegate once to a fresh native OpenCode subagent loading `ce-compound mode:non-interactive depth:full`. Hand it only the source session ID (read `$OPENCODE_SESSION_ID` with the shell), title if known, absolute workspace root from `jj workspace root`, any learning doc path already written by this run, and one sentence naming the topic. Do not summarize or paste the conversation. The child reads the reduced source export as primary evidence before applying Preconditions. The parent relays its report and doc path and offers the applicable discoverability and pack actions after consent, without another Full pass or rewriting the doc. Only missing delegation, permission denial, or exhausted nesting depth permits an interactive Lightweight fallback; report the actual reason and retry from the same session when delegation is available. See `references/modes.md` for routing and `references/session-history.md` for the child's export.
+
 **Non-interactive mode asks nothing.** It asks no blocking question of any kind, in any phase, because a caller reaching this path has no human to answer one. Every non-interactive exit, including one taken before any phase runs, ends on a terminal signal a caller parses: `Documentation complete`, or `Documentation skipped` with the reason when the run wrote nothing. Interactive mode asks only where a step's own reference says to.
 
 ## Artifact Root
@@ -50,25 +56,25 @@ Enter non-interactive mode when **either** holds: the arguments you were invoked
 Resolve `<root>` when you first compose a `<root>/solutions/` path, and pass a subagent the resolved path rather than the config.
 
 <!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only (`<repo-root>` = `jj workspace root`; outside JJ, use the absolute project directory). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.jj/` or `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
 
 ## Write boundary
 
-**Only the orchestrator writes product files.** Phase 1 subagents write to per-run scratch only, and never touch `<root>/`, project instruction files, or any other tracked path.
+**Only the capture orchestrator writes product files.** In delegated Full, that orchestrator is the fresh non-interactive child. Phase 1 research subagents write to per-run scratch only, and never touch `<root>/`, project instruction files, or any other tracked path.
 
-The orchestrator writes what `references/form.md` chooses, in every mode and without asking: at most one added test, added or tightened lint rule with any baseline entries it needs, or condition in an existing `CODING_STANDARDS.md`, and at most one learning under `<root>/solutions/`. It never changes product code. It also writes two maintenance side effects that their own step describes: `CONCEPTS.md` during vocabulary capture, and — **only in interactive Full mode after consent** — a small discoverability line in a project instruction file. Two further writes exist **only in interactive Full mode when the user selects them at the assembly destination step**: a rule file inside a writable declared Compound Pack, and the `packs:` entry appended to `.compound-engineering/config.yaml`. An instruction file is only ever edited, never created. Nothing else in the tree is written. Edits to *other* docs belong to a refresh, which a capture recommends or runs with a narrow scope.
+The orchestrator writes what `references/form.md` chooses, in every mode and without asking: at most one added test, added or tightened lint rule with any baseline entries it needs, or condition in an existing `CODING_STANDARDS.md`, and at most one learning under `<root>/solutions/`. It never changes product code. It also writes two maintenance side effects that their own step describes: `CONCEPTS.md` during vocabulary capture, and — **only in interactive Full mode after consent** — a small discoverability line in a project instruction file. Two further writes exist **only in interactive Full mode when the user selects them at the assembly destination step**: a rule file inside a writable declared Compound Pack, and the `packs:` entry appended to `.rocketclaw/config.yaml`. An instruction file is only ever edited, never created. Nothing else in the tree is written. Edits to *other* docs belong to a refresh, which a capture recommends or runs with a narrow scope.
 
 ## Full Mode
 
 Run these in order. Each reference is a required read at the step that names it.
 
 1. **Research** — read `references/research.md`.
-2. **Session history** — read `references/session-history.md`, and start it *after* dispatching the Related Docs Finder so it overlaps your drafting rather than serializing.
+2. **Session history** — read `references/session-history.md`. Ordinary Full starts this probe *after* dispatching the Related Docs Finder so it overlaps your drafting. Delegated Full already loaded its primary source before Preconditions.
 3. **Form, assembly, and write** — wait for every Phase 1 input, read `references/form.md` and write what it chooses, then read `references/assembly.md`.
 4. **Refresh check and discoverability** — read `references/refresh-and-discoverability.md`.
 5. **Optional enhancement** — read `references/enhancement.md`. Interactive only.

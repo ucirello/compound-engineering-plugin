@@ -66,23 +66,24 @@ Avoid:
 - unnecessary animation
 - details that imply exact UI commitments
 
-Label the artifact as directional. State what the user should judge and what they should ignore.
+Label the artifact as directional. State what the user should judge and what they should ignore. If a generic title is needed, use “Brainstorm Visual Probe”; do not add a tool badge or byline.
 
 ## Display Helper
 
 Use the bundled display-only helper when the current platform can run a bundled skill script. Invoke it via the `SKILL_DIR` anchor: set `SKILL_DIR` to the absolute path of the directory containing the `ce-brainstorm` `SKILL.md` you loaded (the Bash tool's cwd is the user's project, not the skill dir), and re-set it in the same command on each call since shell vars don't persist between Bash invocations. Do not resolve the helper from the user's project CWD.
 
-Start (detached):
+Start (detached). Set `WORKSPACE_ROOT` to the absolute root returned by `jj workspace root`, or the absolute project directory when outside JJ. Keep the validated `PROBE_DIR` for status and stop:
 
 ```bash
 SKILL_DIR="<absolute path of the ce-brainstorm skill directory>";
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
-if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
-(umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
-if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
-chmod 700 "$SCRATCH_ROOT" || exit 1;
-PROBE_DIR="$SCRATCH_ROOT/ce-brainstorm-visual/<run-id>"; (umask 077; mkdir -p "$PROBE_DIR") || exit 1; chmod 700 "$PROBE_DIR" || exit 1;
+WORKSPACE_ROOT="<absolute workspace or project root>";
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw";
+PROBE_DIR="$SCRATCH_ROOT/ce-brainstorm-visual/<run-id>";
+for dir in "$WORKSPACE_ROOT/.tmp" "$SCRATCH_ROOT" "$SCRATCH_ROOT/ce-brainstorm-visual" "$PROBE_DIR"; do
+  [ ! -L "$dir" ] && (umask 077; mkdir -p "$dir") && [ ! -L "$dir" ] &&
+    [ -O "$dir" ] && [ -w "$dir" ] || { echo "unsafe or unavailable scratch directory: $dir" >&2; exit 1; }
+done
+chmod 700 "$PROBE_DIR" || exit 1;
 node "$SKILL_DIR/scripts/light-webserver.js" start --root "$PROBE_DIR"
 ```
 
@@ -90,18 +91,13 @@ Append `--foreground` to that `start` command for foreground mode. Status and st
 
 ```bash
 SKILL_DIR="<absolute path of the ce-brainstorm skill directory>";
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
-if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
-(umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
-if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
-chmod 700 "$SCRATCH_ROOT" || exit 1;
-PROBE_DIR="$SCRATCH_ROOT/ce-brainstorm-visual/<run-id>"; (umask 077; mkdir -p "$PROBE_DIR") || exit 1; chmod 700 "$PROBE_DIR" || exit 1;
+PROBE_DIR="<same validated absolute probe directory>";
+[ -d "$PROBE_DIR" ] && [ ! -L "$PROBE_DIR" ] && [ -O "$PROBE_DIR" ] || exit 1;
 node "$SKILL_DIR/scripts/light-webserver.js" status --root "$PROBE_DIR"
 # stop: the same command with `stop` in place of `status` (re-set SKILL_DIR again)
 ```
 
-If `SKILL_DIR` cannot be resolved to a concrete skill directory, do not guess from the project CWD — use the text path.
+If `SKILL_DIR` cannot be resolved to a concrete skill directory or safe local scratch is unavailable, use the text path. Do not guess the helper path or use a global temporary directory.
 
 The helper creates `screens/` and `state/`, serves the newest `.html` file in `screens/`, writes `state/display-info.json`, and exposes `/version` so the browser can poll for screen changes. The browser reloads only when the newest screen changes; it must not continually reload on a timer. `/version` polling does not count as activity, so an abandoned browser tab cannot keep the server alive forever. Detached servers monitor the owning harness process when it can be resolved, and all servers exit after an idle timeout. The helper has no click tracking or browser-to-agent event path.
 
@@ -111,6 +107,7 @@ If the helper path is unavailable or the platform cannot display a local URL cle
 
 The server is the same everywhere; only the launch mode changes.
 
+- **OpenCode:** use the permitted shell tool. If a detached process is not retained, use `start --foreground` with the shell tool's native long-running mode when available; otherwise use the text path.
 - **Claude Code / Claude desktop app:** detached `start` is the default path. If the app opens localhost URLs, show the returned URL and continue. If the browser surface is unavailable, use the text path.
 - **Codex CLI / Codex app:** if detached processes are reaped or the URL dies after the tool call, use `start --foreground` through the platform's long-running/background terminal mechanism. If there is no stable browser surface, use the text path.
 - **Plain terminal UI:** print the returned URL for the user to open manually. If opening a browser would interrupt the flow, keep the decision in chat.
@@ -151,14 +148,14 @@ The user's chat response is authoritative. The visual artifact is supporting con
 
 ## File Placement
 
-Use OS temp by default because visual probes are disposable scratch:
+Use the workspace's ignored `.tmp/` by default because visual probes are disposable scratch:
 
 ```text
-<scratch-root>/ce-brainstorm-visual/<run-id>/
+<workspace-or-project-root>/.tmp/rocketclaw/ce-brainstorm-visual/<run-id>/
   screens/
     001-<decision>.html
   state/
     display-info.json
 ```
 
-Use `.context/compound-engineering/ce-brainstorm-visual/<run-id>/` only when the user explicitly wants to inspect, preserve, or curate the sketches after the session. The probe is disposable scratch; the durable artifact is the Phase 3 requirements-only unified plan under `<root>/plans/`.
+Use `.context/ce-brainstorm-visual/<run-id>/` only when the user explicitly wants to inspect, preserve, or curate the sketches after the session. The probe is disposable scratch; the durable artifact is the Phase 3 requirements-only unified plan under `<root>/plans/`.

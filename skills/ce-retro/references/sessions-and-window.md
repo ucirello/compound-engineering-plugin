@@ -6,7 +6,7 @@
 
 Run the bundled state helper for the repo's directories, the ledger location, and earlier decisions. It is the only writer of the ledger, so never edit ledger files by hand.
 
-Run each command in this skill as its own tool call. Some hosts refuse a command they cannot check, such as one that changes directory, loops, or pipes a script in through a heredoc. When a step needs several commands, make several calls. When a bundled subcommand does the job, use it instead of a loop or script of your own. The interpreter lookup that opens each block below only finds a working Python. Once a call has found one, later calls can name it directly, and when a host refuses a block, run its pieces as separate calls.
+Run each command in this skill as its own tool call. Set the shell working directory to the absolute root of the active JJ workspace for repository operations. Some hosts refuse a command they cannot check, such as one that changes directory, loops, or pipes a script in through a heredoc. When a step needs several commands, make several calls. When a bundled subcommand does the job, use it instead of a loop or script of your own. The interpreter lookup that opens each block below only finds a working Python. Once a call has found one, later calls can name it directly, and when a host refuses a block, run its pieces as separate calls.
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
@@ -14,25 +14,13 @@ PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c 
 "$PY" "$SKILL_DIR/scripts/retro-state.py" roots
 ```
 
-Run `store` and `read` the same way, each in its own call. `"$PY" "$SKILL_DIR/scripts/retro-state.py" --help` lists every subcommand, its flags, and its exit statuses.
+Run `store --inspect` and `read` the same way, each in its own call. `"$PY" "$SKILL_DIR/scripts/retro-state.py" --help` lists every subcommand, its flags, and its exit statuses.
 
-- `roots` names the git common directory, the main checkout, and every worktree. "This repo" means all of them, not only the directory you were started in. Outside a git repository, say so and stop: the ledger and the current-tree check both need git.
-- `store` resolves the ledger directory, shared by every worktree. When it reports `.context/compound-engineering/` is not gitignored at the main checkout, offer to add that line to the main checkout's `.gitignore` before any write. When the user declines, the ledger still lives there. Keep the answer: `references/approval-and-apply.md` uses it to decide where backups of files outside the repo go. When `store` reports the ledger cannot be written, as in a sandbox limited to the current worktree, finish as the no-user branch does and tell the user to rerun from the main checkout or with write access to it.
+- `roots` names the shared JJ repository directory, the owning checkout (if registered), and the registered workspace roots. "This repo" means all of them, not only the directory you were started in. Carry warnings about unrecorded workspace paths into coverage. Outside a JJ workspace, say so and stop: the ledger and current-tree check both need [JJ](https://docs.jj-vcs.dev/latest/cli-reference/#jj-workspace).
+- `store --inspect` resolves the ledger directory without creating it. When `ignored` is `false`, the helper could not verify that the owning checkout's root `.gitignore` excludes `.context/` and that no path there is already tracked. Offer to add `.context/` to that file before any ledger write; do not edit it without approval or untrack existing files. If the user declines, the ledger still lives at the reported path; `references/approval-and-apply.md` uses the ignore result to decide where backups of files outside the repo go. Run `store` without `--inspect` before applying approved items or writing ledger records. If it cannot write there, finish as the no-user branch does and tell the user to rerun from the owning checkout or with write access to the ledger directory.
 - `read` returns the latest decision per item and the per-harness cutoff from earlier runs.
 
-Create this run's scratch directory for extraction output. Never write transcript extracts into the repo. Keep the printed path: shell state does not carry between tool calls, so every later block that uses `RUN_DIR` sets it again on its first line. The directory's basename is this run's name.
-
-```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
-if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
-(umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
-if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
-chmod 700 "$SCRATCH_ROOT" || exit 1;
-(umask 077; mkdir -p "$SCRATCH_ROOT/ce-retro") || exit 1;
-RUN_DIR="$(mktemp -d "$SCRATCH_ROOT/ce-retro/$(date +%Y%m%d)-XXXXXX")" || exit 1;
-echo "$RUN_DIR";
-```
+Run `scratch` the same way to create this run's private directory under the active workspace's ignored `.tmp/rocketclaw/ce-retro/`. If `.tmp/` is not ignored and untracked, or the path cannot safely be created, report the blocker instead of using global temporary storage. Never put transcript extracts in paths JJ tracks. Keep the printed `scratch` path: shell state does not carry between tool calls, so every later block that uses `RUN_DIR` sets it again. The directory's basename is this run's name.
 
 ## Choose the scope
 
@@ -48,7 +36,9 @@ A single session is not filtered by the ledger's run cutoffs. Earlier decisions 
 
 ## Find sessions
 
-A single current session needs no search. For the last session or a wider scope, the `sessions` subcommand finds this repo's sessions from every worktree, with their subagent transcripts, and drops sessions started only from a parent folder unless their content names a path inside the repo:
+A single current session needs no search. In OpenCode, when earlier turns are missing from context, read the current ID from `$OPENCODE_SESSION_ID`, never from a directory name. Use `opencode session export --sanitize <verified-session-id>` to save the export in the private run directory, and reduce it to in-scope user and assistant text, tool names, and short tool results before reading it. Use only supported OpenCode interfaces, not its internal storage. For an authorized wider search, run `opencode session list --format json` from the registered workspace roots, deduplicate by ID, and use recorded paths and times to select in-scope sessions. Export only those sessions and include child sessions only when the supported interface verifies the parent link. Do not treat a truncated listing, inaccessible data, or unknown child coverage as a complete search.
+
+For the last session or a wider scope, the `sessions` subcommand finds supported file-backed harness sessions from every registered JJ workspace, with their subagent transcripts, and drops sessions started only from a parent folder unless their content names a path inside the repo. Combine its results with the authorized OpenCode results before applying the scope and count limits:
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
@@ -62,7 +52,7 @@ This search opens the first lines of recent session files from every project on 
 
 It prints counts per harness, plus `warnings` when part of the search failed, which coverage then names. It writes `sessions.jsonl` to the scratch directory: sessions newest first, each with its subagent count and size, then the subagent rows, which carry `parent_session`. Optional fields are omitted, not null. Fold subagents into their parent when you count evidence, so one session with twelve subagents counts as one session, and list subagents separately in coverage.
 
-Leave out the session this run is in. Match it by the harness session id or its transcript file, never by a scratch or worktree directory name, which can carry a different id. Leave out sessions that are themselves skill evaluations or synthetic runs, such as a prompt that begins by pointing at a skill file to test, and sessions that only processed other transcripts, such as an earlier retro's readers, which some hosts log as sessions of their own. Their first prompt shows it. They show friction no real user hit.
+In a wider search, leave out the session this run is in. Match it by the harness session id or its transcript file, never by a scratch or workspace directory name, which can carry a different id. Leave out sessions that are themselves skill evaluations or synthetic runs, such as a prompt that begins by pointing at a skill file to test, and sessions that only processed other transcripts, such as an earlier retro's readers, which some hosts log as sessions of their own. Their first prompt shows it. They show friction no real user hit.
 
 The bundled scripts recognize the session file shapes and folder layouts that Claude, Codex, Cursor, Pi, and oh-my-pi use today, and a harness update can change them. A file is not recognized when its skeleton comes back empty or the skeleton's `_meta` carries a `warning`; `extract` lists such files under `unrecognized`. A harness whose store holds recent files that `sessions` keeps none of may have changed format too. The search's `files_without_metadata` count alone does not mean that: it spans every project on the machine and is mostly stub files with no user turn. Then work from the raw JSONL instead; it is plain text. Raw session logs often run to tens of megabytes, mostly tool output and repeated context, so never read one whole: search it for the user's turns, the commands run, and the failures, and write what you find to the run's scratch directory as that session's extract.
 

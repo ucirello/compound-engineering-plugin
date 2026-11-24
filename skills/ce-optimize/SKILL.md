@@ -6,7 +6,7 @@ argument-hint: "[path to optimization spec YAML, or describe the optimization go
 
 # Optimize a measurable target
 
-**Outcome:** confirmed improvements to the named target live on an `optimize/<spec-name>` branch, with a disk log. The user takes over at wrap-up.
+**Outcome:** confirmed improvements to the named target live on an `optimize/<spec-name>` JJ bookmark, with a disk log. The user takes over at wrap-up.
 
 **Intent:** the next action is the cheapest step that would change what gets implemented. Attribute the cost of a named workload before searching implementations. Search and keep a scored variant space without requiring a profile.
 
@@ -28,15 +28,17 @@ Use the host's blocking question tool already in the current tool list (match by
 
 ## Execution Surface
 
-Three capabilities decide where run state lives, how the loop waits, and where experiments run. A **durable state root** is a writable location the harness names that persists across turns and context resets, outside the repo checkout; without one, state lives under `.context/compound-engineering/ce-optimize/<spec-name>/`. A **wake after turn end** is a way to be re-invoked by an external event or timer without holding a tool call open; without one, the loop runs inside this session, and a wait it cannot hold ends the turn as a checkpoint with a resume invocation. A **detached worker** is a dispatch whose result arrives as a pushed ref, a store file, or a host-delivered message, not as edits in the local tree; `execution.backend: remote` needs one; without one that spec runs on `worktree`. Presence in the current tool list, or in context the harness gave you, is proof; a missing binary or environment variable proves nothing. Take a fallback without asking.
+Three capabilities decide where run state lives, how the loop waits, and where experiments run. A **durable state root** is a writable location the harness names that persists across turns and context resets, outside the repo checkout; without one, state lives under `.context/ce-optimize/<spec-name>/`. A **wake after turn end** is a way to be re-invoked by an external event or timer without holding a tool call open; without one, the loop runs inside this session, and a wait it cannot hold ends the turn as a checkpoint with a resume invocation. A **detached worker** is a dispatch whose result arrives as a pushed ref, a store file, or a host-delivered message, not as edits in the local tree; `execution.backend: remote` needs one; without one that spec runs on `worktree`. Presence in the current tool list, or in context the harness gave you, is proof; a missing binary or environment variable proves nothing. Take a fallback without asking.
+
+Use native OpenCode delegation as described in `references/loop.md` and the native JJ lifecycle in `references/workspaces.md`. Run each JJ command from its target workspace's absolute root; never launch Git directly.
 
 ## Artifact Root
 
 <!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only (discover the absolute workspace root with `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the workspace and is neither its root nor under `.jj/` or `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
 
@@ -52,7 +54,7 @@ Four phases run in order; each names the reference it cannot start without. A fr
 
 **Phase 0: Setup.** The input is a goal or a spec YAML path, from the user or a calling skill. **Read `references/spec.md`**: it asks for the input when neither supplied one, then loads or builds the spec to save (CP-0). **Read `references/measurement.md`** for the rest of Phase 0 and Phase 1.
 
-**Phase 1: Measurement scaffolding.** Build or validate the harness, write the baseline (CP-1), probe parallelism, check the worktree budget. Two gates stop the run:
+**Phase 1: Measurement scaffolding.** Build or validate the harness, write the baseline (CP-1), probe parallelism, check the workspace budget. Two gates stop the run:
 
 - **Clean-tree gate.** Do not continue while any file in `scope.mutable` or `scope.immutable` has uncommitted changes. The reference defines the check and what to ask for.
 - **User approval gate.** Present what Phase 1 assembled and offer proceed, fix issues, and adjust spec; the reference lists what to include. Disclose which spend is capped and which is uncapped. **Do not enter Phase 2 until the user explicitly approves.** Then record the approval and re-read the spec and baseline from disk.

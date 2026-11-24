@@ -2,7 +2,7 @@
 
 Use `ce-bakeoff` only when explicitly requested and the need and constraints are clear enough to develop competing product mechanisms. If the goal itself is unsettled, finish discovery first. Preserve specific settled decisions; do not invent a fork to satisfy the request.
 
-Resolve model preferences using the activation-resolution rules in `references/reasoning-elevation.md`. Pass the resolved preference, including explicit restrictions, to `ce-bakeoff` with the full grounding dossier, relevant dialogue and constraints, the specific question, settled decisions, budget, and product-mechanism fidelity. An explicit candidate model mix takes precedence. `ce-bakeoff` dispatches the fresh candidates and handles its own fallback; do not run the ordinary generation adapter for each baker. With no preference, allow Bake-off's default model-family exploration.
+Resolve model preferences using the activation-resolution rules in `references/reasoning-elevation.md`. Pass the resolved preference, including explicit restrictions, to `ce-bakeoff` with the full grounding dossier, relevant dialogue and constraints, the specific question, settled decisions, budget, and product-mechanism fidelity. An explicit candidate model mix takes precedence. `ce-bakeoff` dispatches the fresh candidates and handles its own fallback; do not run ordinary elevation dispatch for each baker. With no preference, allow Bake-off's default model-family exploration.
 
 This replaces the ordinary generation call for the selected question. The session orchestrator dispatches and persists the returned artifacts; read-only elevated authors do neither. Do not produce an ordinary approach set before or after the competition for the same question.
 

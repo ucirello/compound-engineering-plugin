@@ -2,6 +2,8 @@
 
 Read this when the invocation carries `mode:pipeline` — set by an orchestrator like `ce-babysit-pr` or `lfg`. Behave exactly as in ordinary full or targeted mode, with three differences.
 
+Pipeline inherits the caller's active authority; it is not permission to turn monitoring-only or watch-mode observation into edits or writes. Do not re-ask for an authorized fix, publish, reply, resolution, or eligible checklist tick. Report any action outside that scope as a residual.
+
 ## 1. Never call the blocking-question tool
 
 For any reason. The run is unattended. A blocking question would stall the calling orchestrator's loop; no user is there to answer it.
@@ -17,7 +19,7 @@ Return the `needs-human` object exactly as the rubric defines it: `type: "needs-
 The caller may pass a `trajectory`: a rising `unresolved_trend`, `new_threads_this_tick > 0` across passes, or any `invariant_rounds[].rounds >= 2`. When it does, group the feedback by the root decision it comes from, and decide what to do about each root before fixing anything on it:
 
 - **Escalate** — raise **one** `needs-human` about the root decision itself, at the level of the approach (e.g. "regex is the wrong tool here — options: exhaustive table / a real parser / accept known limits; lean: …"), and do it **before** any fix, commit, or push. A root decision is judgment-bound unless the rubric's authority-bound condition holds, so it goes through the rubric's "Adjudicate before escalating" step first; an adjudicated verdict inside the envelope is applied as that root's next fix, and the escalation is raised only when adjudication cannot decide it. Escalate in either of two cases. First, the root's feedback is *demonstrably* not converging: several nits share one root, "your regex misses case X" repeats for X after X, or a bot re-posts fresh nits after every commit without end. Second, a fix would begin the root's third recorded round: `invariant_rounds[].rounds >= 2` for a key this pass would continue (rounds are recorded after a fix completes).
-- **Execute an answered escalation** — when the open thread already carries a human's decision on the root, that answer authorizes the next action; apply it. Do not raise the same `needs-human` again; the caller's record store rejects a repeat.
+- **Execute an answered escalation** — when the open thread already carries the authorized human decision on the root, apply it within the caller's active scope. Do not raise the same `needs-human` again just to reconfirm an authorized decision; the caller's record store rejects a repeat.
 - **Otherwise fix as usual** — a normal batch of unrelated valid nits is just fixed, one pass.
 
 On a **fix** outcome, return a stable `invariant_key` (1–120 chars of `A-Za-z0-9._:-`) for **each** root a fix resolved, together with the threads and comments that root covered. Unrelated roots fixed in one pass carry distinct keys, so each root accumulates its own round count. Do not run `pr-snapshot`; the caller records each key on that item's dispatched mark.

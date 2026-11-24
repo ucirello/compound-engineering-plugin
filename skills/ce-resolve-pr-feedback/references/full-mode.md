@@ -6,24 +6,22 @@ The shape: **fetch once, judge centrally, dispatch subagents only for the fixes.
 
 ## 1. Fetch Unresolved Threads
 
-If no PR number was provided, detect from the current branch:
-```bash
-gh pr view --json number -q .number
-```
+Use the absolute target workspace and the `GIT_DIR` preamble from SKILL.md in every repository-scoped `gh` shell block below. If no PR number was provided, inspect bookmarks on `@` and, when `@` is empty, on `@-`. Match the bookmark and its verified remote repository to the PR's actual head repository and ref; query that explicit repository/head rather than relying on the checkout's branch inference. If no unique PR can be verified, stop rather than guessing. Record the exact PR base and head, their repositories and refs, and the local parent and pre-existing diff before editing. For a code fix, verify the workspace is on the intended PR line; an empty `@` directly above the verified head is already aligned. Do not discard unrelated work or silently change the checkout to make it match.
 
 Then fetch all feedback using the GraphQL script at [scripts/get-pr-comments](../scripts/get-pr-comments). Set `SKILL_DIR` to the absolute directory you loaded the ce-resolve-pr-feedback SKILL.md from — the Bash tool's CWD is the user's project, not the skill dir, and shell state does not persist between Bash calls, so set it inline in each block below that runs a bundled script. If the bundled script is missing on disk the call fails plainly; fall back to the `gh` commands shown after this block.
 
-**GitHub Enterprise host.** The bundled `gh api graphql` scripts hit `gh`'s default host unless told otherwise, so on a GHE PR they would wrongly target `github.com`. Derive the host: if the caller passed a full PR **URL**, take its host; otherwise read it from `gh repo view --json url -q .url`. Then — because shell state does **not** persist between separate Bash calls — pass the host as a `GH_HOST=<host>` **env prefix inline on every bundled-script call** (`gh api` honors `GH_HOST` as the request host). A single `export` in one block does **not** carry to the reply/resolve/verify blocks that run as later Bash calls, which is why each call below shows the prefix. On `github.com`, drop the `GH_HOST=<host> ` prefix entirely.
+**GitHub host.** If the caller passed a full PR **URL**, take its host; otherwise read it from `gh repo view --json url -q .url`. Pass the verified host as `GH_HOST=<host>` on every `gh` and bundled-script call, including for `github.com`, so inherited defaults cannot change the target. Set it again in each shell block.
 
 ```bash
 PR_HOST=$(printf '%s' "<pr-url-if-one-was-passed>" | sed -n 's#^https\?://\([^/]*\)/.*#\1#p');
 [ -z "$PR_HOST" ] && PR_HOST=$(gh repo view --json url -q .url 2>/dev/null | sed -n 's#^https\?://\([^/]*\)/.*#\1#p');
-echo "$PR_HOST"   # github.com -> no prefix; any other host -> prefix GH_HOST=<host> on each script call below
+test -n "$PR_HOST" || exit 1
+printf '%s\n' "$PR_HOST"
 ```
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the ce-resolve-pr-feedback SKILL.md>";
-GH_HOST=<derived-host> bash "$SKILL_DIR/scripts/get-pr-comments" PR_NUMBER OWNER/REPO   # omit GH_HOST=<derived-host> on github.com
+GH_HOST=<derived-host> bash "$SKILL_DIR/scripts/get-pr-comments" PR_NUMBER OWNER/REPO
 ```
 
 **Pass the base `OWNER/REPO`** (parsed from the PR URL, when one was given) as the second arg. `get-pr-comments` otherwise falls back to `gh repo view` in the *current checkout* — so for a fork→upstream PR handed in as a URL, omitting it would fetch review feedback from the fork (or fail) instead of the upstream base repo. Every `get-pr-comments` call below (fetch and verify) takes the same `OWNER/REPO`.
@@ -44,9 +42,12 @@ Returns a JSON object with these keys:
 
 If the script fails, fall back to:
 ```bash
-gh pr view PR_NUMBER --json reviews,comments
-gh api repos/{owner}/{repo}/pulls/PR_NUMBER/comments
+GH_HOST=<derived-host> gh pr view PR_NUMBER -R OWNER/REPO --json reviews,comments
+GH_HOST=<derived-host> gh api --paginate repos/OWNER/REPO/pulls/PR_NUMBER/comments
+GH_HOST=<derived-host> gh api --paginate repos/OWNER/REPO/pulls/PR_NUMBER/reviews --jq '.[] | select(.state == "PENDING") | .id'
 ```
+
+An error is not proof that pending-review state is empty. If the fallback cannot establish pending-review state or authoritative thread state for the requested work, report the blocker instead of treating the feedback as complete.
 
 ## 2. Triage: Separate New from Pending
 
@@ -76,7 +77,7 @@ This is where validity is decided. Judge every **new** item here, in your own co
 Working over the full set lets you do what a per-thread subagent can't:
 - **Dedup reads by file** — read a file once and judge all its threads together.
 - **Cross-item reasoning** — cluster findings by root assumption; a source (often a bot) that's wrong in one place is suspect across its siblings; converging requests from independent reviewers are a strong fix signal.
-- **Selective depth** — clear nits need only the comment plus the diff line; deep-read (callers, invariants, `git blame`/PR rationale for author intent) only where a finding is contestable or the code looks deliberate. That deep read on the contestable minority is what catches a confidently-wrong reviewer.
+- **Selective depth** — clear nits need only the comment plus the diff line; deep-read (callers, invariants, `jj file annotate` and PR rationale for author intent) only where a finding is contestable or the code looks deliberate. That deep read on the contestable minority is what catches a confidently-wrong reviewer.
 
 Produce a verdict per item and sort into three lists:
 
@@ -84,7 +85,7 @@ Produce a verdict per item and sort into three lists:
 - **reply-list** — `replied` / `not-addressing` / `declined`. No code change. Compose the reply text now per the rubric (you have the evidence) and carry it to step 7.
 - **human-list** — `needs-human`. Compose `decision_context` now and run the rubric's "Adjudicate before escalating" step on each judgment-bound item; an adjudicated verdict moves the item to the list it names, and the rest carry to steps 7 and 9.
 
-Create a task list of all new items (e.g., `TaskCreate` in Claude Code, `update_plan` in Codex) tagged with their verdict, so progress is visible.
+Create an OpenCode task list of all new items, tagged with their verdict, so progress is visible.
 
 **At scale.** If the batch is large (many threads spanning many files) and judging them all inline would overflow your context, process the consolidation in groups (e.g., file-clustered groups of ~8-10 threads), emitting the three lists incrementally. Don't fan the judgment out to subagents to avoid this — batch it instead.
 
@@ -102,7 +103,7 @@ Every fix-list item ends with one **per-item result** in the return format below
 
 ### Dispatch
 
-Read [references/agents/pr-comment-resolver.md](agents/pr-comment-resolver.md) and spawn a generic subagent seeded with that fixer prompt for each fix-list item you are delegating. Do not dispatch a standalone agent by type/name. The fixer only implements: the validity judgment is already done, so it implements and returns; it does not re-judge whether the fix is worthwhile.
+Read [references/agents/pr-comment-resolver.md](agents/pr-comment-resolver.md) and spawn a native OpenCode generic subagent seeded with that fixer prompt for each fix-list item you are delegating, subject to SKILL.md's separate delegation and model-selection rules. Do not dispatch a standalone plugin agent by type/name. The fixer only implements: the validity judgment is already done, so it implements and returns; it does not re-judge whether the fix is worthwhile.
 
 Each fixer receives:
 - The feedback_id (thread ID or comment ID) and feedback type.
@@ -113,7 +114,7 @@ Each fixer receives:
 
 For `pr_comment` / `review_body` fix-list items (no file/line), the fixer identifies the relevant files from the comment text and the PR diff.
 
-**No subagent capability — apply the fixes yourself, sequentially.** When the harness exposes no way to dispatch (or a dispatch fails), work the fix-list in this context one item at a time, using the fixer prompt as your own instructions and producing the same per-item result. This is a supported path, not a shortfall to report as lost coverage: the decision about whether each item is valid already happened in step 3, and fixers only *implement* changes you approved, so running them here costs parallelism and context headroom — never correctness. Keep the dispatch path's discipline: one item at a time, re-read each file before editing it, and stop to re-evaluate if implementing reveals a contradiction (the `blocked` handling applies unchanged). Items you apply in this context by choice follow the same discipline.
+**No usable subagent dispatch — apply the fixes yourself, sequentially.** Check the effective OpenCode `experimental.subagent_depth` and remaining nesting separately from permission and model selection. If dispatch is unavailable, classify the actual blocker (missing tool, delegation denial, nesting limit, or model-argument rejection); do not retry a denied operation or route around it through shell or another harness. When an item has no model requirement, use a suitable inherited model without an override. If native dispatch still cannot be used, work the fix-list in this context one item at a time, using the fixer prompt as your own instructions and producing the same per-item result, provided inline file edits are authorized. This is a supported implementation path, not independent review or lost judgment coverage: step 3 already decided validity centrally. Keep the dispatch path's discipline: one item at a time, re-read each file before editing it, and stop to re-evaluate if implementing reveals a contradiction (the `blocked` handling applies unchanged). Items you apply in this context by choice follow the same discipline.
 
 This skill therefore does not depend on agent-tool authorization to complete a review. That is deliberate: it runs unattended under `ce-babysit-pr`, where a permission prompt would stall the whole loop, so it needs few tools and can still fix without dispatch.
 
@@ -149,33 +150,64 @@ Each fix runs only targeted tests on its own change. This step runs the project'
 
 3. **Red, failures touch files in the change set** -> one inline diagnose-and-fix pass. Re-run validation. If still red, escalate with a `needs-human` item containing the test output; do **not** commit.
 
-4. **Red, failures touch only files outside the change set** -> treat as pre-existing. Proceed to step 6, but add a footer to the commit message: `Note: pre-existing failure in <test> not addressed by this PR.`
+4. **Red, failures touch only files outside the change set** -> treat as pre-existing. Proceed to step 6, and note the specific pre-existing failure and that the fix did not address it in the commit message.
 
 Record the validation outcome (command run, pass/fail counts, any pre-existing failures noted) for the step 9 summary.
 
 ## 6. Commit and Publication
 
-Commit only the change set, preserving unrelated work in the tree and index, with a message referencing the PR:
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards.
 
-```bash
-git add [files in the change set]
-git commit -m "Address PR review feedback (#PR_NUMBER)
+Before composing, read the full Go guide and inspect several complete subjects and bodies from the verified PR history head, from the target workspace's absolute root: `jj log --no-graph -r '::<verified-history-head>' -n 10 -T 'description ++ "\n"'`. Compare prefixes or package names, casing, verb tense, subject/body separation, wrapping, and issue-reference placement. Project instructions and established repository syntax always win; apply compatible Go guidance to clarity and structure. If the repository has no history, use explicit project/user instructions and the Go guidance without inventing a local precedent.
 
-- [list changes from per-item results]" -- [files in the change set]
+Verbatim excerpts from https://go.dev/wiki/CommitMessage (source guidance, not a mandatory repository template):
+
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+
+```text
+net/http: handle foo when bar
+
+[longer description here in the body]
+
+Fixes #12345
 ```
 
-In `mode:return-to-caller`, capture the combined fix commit SHA and follow [references/return-to-caller.md](return-to-caller.md) to save every judged action and intended checklist tick. Return after saving; do not push or enter steps 7-8 for any part of this batch. A failed commit or save reports the actual local state and incomplete handoff, never completion.
+> Notably, for the subject (the first line of description):
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
 
-Ordinary and pipeline execution publish the commit before the remote tail:
+> For the body (the rest of the description):
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
+
+Reference the PR, describe what the per-item fixes changed, and include any pre-existing failure from step 5. Commit only the fix-owned change set. Compare the pre-fix and current diffs first; if any owned path also contains pre-existing or unrelated edits, use a verified hunk selection with `jj commit --interactive` or stop if you cannot separate ownership. Do not include or discard unrelated tracked or ignored work.
+
 ```bash
-git push
+cd "$workspace_root" || exit 1
+jj commit -m "<message composed from the standards above>" -- <fix-owned-filesets>
 ```
 
-Read the PR's state immediately before pushing. If it is no longer open, a merge or close happened while this batch ran: do not push, and report the fix as an unpublished local commit along with the items left unaddressed.
+Use exact paths (not broad globs) in the owned filesets. Read the new fix commit's full SHA with `jj log --no-graph -r @- -T 'commit_id ++ "\n"'`, check `jj diff -r <fix-sha>`, and verify any unrelated working-copy changes remain in `@`. Capture that SHA, not the new working-copy tip. In `mode:return-to-caller`, follow [references/return-to-caller.md](return-to-caller.md) to save every judged action and intended checklist tick. Return after saving; do not push or enter steps 7-8 for any part of this batch. A failed commit or save reports the actual local state and incomplete handoff, never completion.
+
+Ordinary and pipeline execution publish the commit before the remote tail if publication is already authorized. Confirm fresh PR state and exact head repository, ref and SHA immediately before pushing. Verify the JJ remote URL matches the actual head repository (not the base on a fork), and that the matching local bookmark and its tracked remote bookmark point at the verified old head. Require a fast-forward containing only intended fixes; if the PR closed, the head moved, the destination or push authority is uncertain, or an unrelated commit would go along, report the unpublished local fix and residuals without resetting, rebasing or force-pushing. Move only that exact verified bookmark to the captured fix SHA, never to `@`, then push only that bookmark:
+```bash
+cd "$workspace_root" || exit 1
+jj bookmark move "exact:$head_bookmark" --from "$verified_old_head_sha" --to "$fix_sha" || exit 1
+jj git push --remote "$verified_head_remote" --bookmark "exact:$head_bookmark"
+```
+
+Re-read the PR head and verify the exact fix SHA is reachable from it before entering the remote tail. A failed or uncertain push does not authorize replies claiming the fix is published. If another fix cycle is needed, verify the new current head and snapshot the new pre-fix diff before more edits; retain the original pre-run head for cycle counting and summary.
 
 ## 7. Reply and Resolve
 
 Enter the remote tail only when the batch's fix commit is published, or the batch created no code changes. Return-to-caller batches with a fix stop at step 6; their saved reply-only and human-list items remain deferred too. No-change return-to-caller batches use this existing protocol and save observed progress even when a write fails. Resume enters here only through the publication and reconciliation conditions in [references/resume.md](resume.md), uses the saved verdicts and exact reply bodies, and returns there after completing or stopping the remote tail. Apply eligible PR checklist ticks under the entrypoint's publication condition.
+
+Do not ask again for routine remote actions inside the active authorization. Re-read the current PR body before ticking a uniquely matched finding, change only its checkbox, and preserve all other content and issue links. If the target is ambiguous or the write is outside scope or denied, report the pending action rather than replacing the description.
 
 The done condition for an ordinary review thread is one visible, submitted substantive reply plus authoritative resolution; satisfy each condition independently and never repeat a satisfied half. Post for every newly handled item: fix-list items use the `reply_text` from their per-item result; reply-list and human-list items use the reply text you composed in step 3. A **class item** carries multiple covered feedback IDs (`feedback_ids`/`feedback_types` from its fixer) — reply to and resolve *every* one, posting the shared `reply_text` on each thread, not just the first; a covered thread left unresolved shows up as new work again in the next `ce-babysit-pr` loop. The mechanism depends on the feedback type.
 
@@ -200,10 +232,10 @@ GH_HOST=<derived-host> bash "$SKILL_DIR/scripts/get-thread-for-comment" PR_NUMBE
 The returned `id` is the authoritative thread ID for resolution, and `root_comment_id` is the numeric ID of the thread's first comment for the REST reply. If the thread ID differs from what `get-pr-comments` returned, use the one from this script.
 
 1. **Reply directly to the root comment over REST** using [scripts/reply-to-pr-thread](../scripts/reply-to-pr-thread). If the bundled script is missing, use the same `POST repos/{owner}/{repo}/pulls/PR_NUMBER/comments/ROOT_COMMENT_ID/replies` endpoint. Do not substitute `addPullRequestReviewThreadReply`, `gh pr review`, or a `/reviews` POST: those operations go through review-submission state, so the reply can sit unsubmitted, while a successful reply must be immediately submitted and visible.
-Feed the body from a private OS scratch file. For a fresh reply, the quoted heredoc below writes multiline Markdown without shell expansion; never use `echo "..."` or `printf` to interpret escape sequences. For a saved reply, write its exact decoded `reply_body` bytes to that file with a tool instead of running the illustrative heredoc, which would add a terminal newline. Preserve all existing line breaks, including terminal ones:
+Feed the body from a private file created under the local `.tmp/` directory defined in SKILL.md. For a fresh reply, the quoted heredoc below writes multiline Markdown without shell expansion; never use `echo "..."` or `printf` to interpret escape sequences. For a saved reply, write its exact decoded `reply_body` bytes to that file with a tool instead of running the illustrative heredoc, which would add a terminal newline. Preserve all existing line breaks, including terminal ones:
 ```bash
 SKILL_DIR="<absolute path of the directory containing the ce-resolve-pr-feedback SKILL.md>";
-REPLY_BODY_FILE="<absolute private OS scratch reply file>";
+REPLY_BODY_FILE="<absolute private reply file under local .tmp/>";
 cat > "$REPLY_BODY_FILE" <<'EOF'
 > the specific sentence being addressed from the reviewer's comment
 
@@ -250,7 +282,7 @@ GH_HOST=<derived-host> bash "$SKILL_DIR/scripts/resolve-pr-thread" THREAD_ID
 These cannot be resolved via GitHub's API. Reply with a top-level PR comment referencing the original (pass `-R OWNER/REPO` — the parsed base repo — so a fork→upstream reply posts on the watched upstream PR, not the fork namespace):
 
 ```bash
-REPLY_BODY_FILE="<absolute private OS scratch reply file>";
+REPLY_BODY_FILE="<absolute private reply file under local .tmp/>";
 cat > "$REPLY_BODY_FILE" <<'EOF'
 > the specific sentence being addressed from the reviewer's comment
 
@@ -276,7 +308,7 @@ The `review_threads` array should be empty (except `needs-human` items).
 
 In resume, verify only the saved actions and report new feedback through its caller result; return to [references/resume.md](resume.md) without entering another fix cycle.
 
-**For fresh-feedback modes, if new threads remain**, check the iteration count -- counting rounds **for this PR**, not just this invocation. An orchestrator such as `ce-babysit-pr` re-invokes this skill fresh each round, so a per-invocation counter never trips; count instead the earlier review-fix commits already on the branch (`git log <base>..HEAD` subjects that address review feedback) plus this run's own cycles.
+**For fresh-feedback modes, if new threads remain**, check the iteration count -- counting rounds **for this PR**, not just this invocation. An orchestrator such as `ce-babysit-pr` re-invokes this skill fresh each round, so a per-invocation counter never trips; inspect complete descriptions with `jj log --no-graph -r '<verified-base>..<verified-pre-run-pr-head>' -T 'description ++ "\n"'`, count earlier review-fix rounds already on the branch, then add this run's own cycles without double-counting.
 
 - **First or second fix-verify cycle**: Repeat from step 2 for the remaining threads.
 
@@ -302,7 +334,7 @@ Not addressing (count): [what was skipped and the evidence]
 Declined (count): [what was declined and the harm or scope reason cited; name out-of-scope items separately so the user can carry them forward]
 
 Validation: [one line -- e.g., "bun test passed (893/893)" or "bun test passed with pre-existing failure in X noted"; omit when no code changes were committed]
-Diff change: [`git diff --shortstat` from the head before this run's first fix commit to the head after its last, e.g., "+42 / -7 across 3 files"; omit when no code changes were committed]
+Diff change: [totals from `jj diff --stat --from <head-before-first-fix> --to <last-fix-sha>`, e.g., "+42 / -7 across 3 files"; omit when no code changes were committed]
 ```
 
 If any item is `needs-human`, append a decisions section. These are rare but high-signal. Each carries the `needs-human` object composed in step 3: quoted feedback, investigation, the reason autonomous action is unsafe or ambiguous, concrete options with tradeoffs, a recommendation if any, and links to every still-open thread it covers.
@@ -332,7 +364,7 @@ Still pending from a previous run (count):
    [Re-present the decision options if available, or summarize what was asked]
 ```
 
-If a blocking question tool is available, use it to ask about all pending decisions (both new `needs-human` and previous-run pending) together. If there are only pending decisions and no new work was done, the summary is just the pending items.
+Only in ordinary execution, if a blocking question tool is available, use it to ask about all pending decisions (both new `needs-human` and previous-run pending) together. Pipeline returns them under its structured protocol without asking. If there are only pending decisions and no new work was done, the summary is just the pending items.
 
 Use the host's blocking question tool already in the current tool list (match by capability, not by a host-specific name). Presence in the current tool list is proof the tool exists; never call a user-facing question tool to discover whether it exists. If a matching tool is listed but unloaded, use the host's tool-discovery mechanism to load that capability — do not search for another host's tool name. Use it to present the decisions and wait for the user's response. After they decide, process the remaining items: fix the code, compose the reply, post it, and resolve the thread.
 

@@ -14,7 +14,7 @@ Parse the arguments you were invoked with for optional tokens. Strip each recogn
 | `mode:headless` | `mode:headless` | **Deprecated alias** for `mode:agent` |
 | `mode:report-only` | `mode:report-only` | **Deprecated — ignored.** Former no-artifacts mode; default behavior is review-only without checkout |
 | `apply:local` | `apply:local` | Explicitly authorize Stage 5c to apply verified findings to the reviewed local checkout. This is authority, not an output mode; bare review remains report-only. |
-| `base:<sha-or-ref>` | `base:abc1234` or `base:origin/main` | Diff base on the **current checkout** (explicit; skips auto base detection) |
+| `base:<sha-or-ref>` | `base:abc1234` or `base:main@origin` | Exact diff base against this JJ workspace's captured head (skips auto base detection) |
 | `plan:<path>` | `plan:<root>/plans/2026-03-25-001-feat-foo-plan.md` | Plan file for requirements verification (explicit). Supports markdown and HTML unified plans. |
 | `plan_group:<label>` | `plan_group:PR2` | With `plan:`, the PR group of a multi-PR plan this diff builds, named by the label that starts its heading (`PR2` in `PR2: Report headline and summary`). Scopes plan completeness to that group (see `references/intent-and-plan.md`). |
 | `depth:full` | `depth:full` | **Force the full spine** — skip the Review depth gate's lite and focused paths. Use when a deep/thorough review is explicitly requested (the one override the gate cannot infer). Does not change conditional selection, merge, or scope on the full path. |
@@ -25,7 +25,7 @@ Parse the arguments you were invoked with for optional tokens. Strip each recogn
 
 **Grouping is presentation, not a mode.** The `grouping:` tokens change how the finding set is organized for triage — never reviewer selection, merge logic, scope rules, or the Stage 5c apply decision.
 
-**Mode alias:** `mode:headless` normalizes to `mode:agent`. `mode:agent` + `mode:headless` is not a conflict. `mode:non-interactive` is **not** an alias for `mode:agent` — that token means “suppress prompts” in other CE skills; if it appears here, treat it as an unrecognized, conflicting `mode:` token and stop rather than guessing what was meant.
+**Mode alias:** `mode:headless` normalizes to `mode:agent`. `mode:agent` + `mode:headless` is not a conflict. `mode:non-interactive` is **not** an alias for `mode:agent` — if it appears here, treat it as an unrecognized, conflicting `mode:` token and stop.
 
 **Conflicting arguments:** Stop without dispatching reviewers when:
 - Multiple incompatible scope selectors appear together (e.g. `base:` **and** a PR number/branch target — `base:` means "review the current checkout against this base")
@@ -44,7 +44,7 @@ Emit a one-line failure reason. In `mode:agent`, return JSON: `{"status":"failed
 |------------|-------------|
 | **Default** | Report-only markdown (pipe-delimited finding tables) + Actionable Findings summary |
 | **Explicit local apply** | The same markdown report plus verified local fixes and an Applied section |
-| **`mode:agent`** | One JSON object (see ## JSON output format below) + the same `/tmp/.../ce-code-review/<run-id>/` artifacts |
+| **`mode:agent`** | One JSON object (see JSON output format below) + the same `.tmp/rocketclaw/ce-code-review/<run-id>/` artifacts |
 
 Default and `mode:agent` are **report-only**. `mode:agent` changes only the serialization from markdown to JSON for programmatic callers; it does not change reviewer selection, merge logic, or scope rules. `apply:local` is separate mutation authority, not an output mode. The default markdown is the human view; keep it ASCII-safe (pipe tables, `->` not middot `·`, no box-drawing) so it degrades gracefully across terminals.
 
@@ -58,8 +58,8 @@ If the invocation arguments indicate the user wants a quick, fast, or light code
 
 Sequence:
 
-1. **Run the harness's built-in code review.** Forward any review target after stripping tokens. Then stop — do not dispatch the multi-agent pipeline.
-2. **Exemption:** If no built-in review exists, continue into the full multi-agent review.
+1. **Capture the exact JJ scope** through Stage 1. A native OpenCode quick-review capability may be used only if it accepts that exact pinned input without invoking Git or changing the workspace. Otherwise perform a quick inline read of the staged diff, with evidence and artifacts from the lite-path instructions. Report it as quick, with areas not checked.
+2. **Exemption:** A full-spine floor, material adversarial risk, or apply authority takes the ordinary depth gate and workflow. Do not label a quick inline pass as full or independently verified.
 3. **`mode:agent` bypasses this short-circuit only.** It still self-sizes through the Review depth gate and returns JSON from whichever path that gate selects.
 
 **Deprecated:** `mode:autofix` is no longer supported. If passed, ignore it and proceed report-only; it does not grant local apply authority.
@@ -91,8 +91,8 @@ Every run, lite, focused, or full, leaves its receipt (`review.json` in `mode:ag
 ```json
 {
   "run_id": "<run-id>",
-  "branch": "<git branch --show-current at dispatch time>",
-  "head_sha": "<git rev-parse HEAD at dispatch time>",
+  "branch": "<verified workspace bookmark at dispatch or null>",
+  "head_sha": "<captured reviewed head ID>",
   "verdict": "<Ready to merge | Ready with fixes | Not ready>",
   "completed_at": "<ISO 8601 UTC timestamp>"
 }
@@ -117,7 +117,7 @@ Minimum shape:
   "scope": {
     "base": "<merge-base sha, pr:NNN marker, or base: ref>",
     "branch": "<current branch name>",
-    "head_sha": "<git rev-parse HEAD>",
+    "head_sha": "<captured reviewed head ID>",
     "pr_url": "<url or null>",
     "files_changed": 0
   },

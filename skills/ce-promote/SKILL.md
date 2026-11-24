@@ -17,10 +17,12 @@ It works **with or without Spiral**: with nothing installed it drafts directly f
 
 A free-form description in the arguments is the source of truth. Otherwise derive it from context, using what is available and never waiting on any single source:
 
-- **Merged/active PR** — `gh pr view --json title,body,url` (the title and body usually state the user-facing value)
-- **The diff** — `git diff main...HEAD --stat`, skimming notable changes so the claim is grounded in what actually changed
+For repository evidence, resolve the absolute root with [`jj workspace root`](https://docs.jj-vcs.dev/latest/cli-reference/#jj-workspace-root) and run all subsequent JJ and repository-scoped `gh` commands from that root. If there is no JJ workspace, use the other available sources.
+
+- **Merged/active PR** — use the verified PR URL, or resolve the workspace bookmark and corresponding PR (check `@-` if `@` is an empty working-copy change). From the absolute workspace root: `backend=$(jj --ignore-working-copy git root) && GIT_DIR="$backend" gh pr view "<verified-pr-url>" --json title,body,url,baseRefName,headRefOid`. For a PR number, supply `--repo` with the verified repository. The title and body usually state the user-facing value. If the repository or PR can't be verified, skip this source.
+- **The diff** — identify the verified shipment head and comparison base from the PR or release context. For a PR comparison, resolve the unique merge base of the verified base and head with `jj --ignore-working-copy log --no-graph -r 'heads(::<base> & ::<head>)' -T 'commit_id ++ "\n"'` (substitute verified revisions). Use `jj --ignore-working-copy diff --from "<verified-range-start>" --to "<verified-head>" --stat`, then skim notable changes in the same range without `--stat`. Skip if the range isn't available locally or is ambiguous; don't substitute an unverified branch or the current working copy.
 - **Changelog** — the top or `[Unreleased]` entry in `docs/changelog.md`, `CHANGELOG.md`, or similar
-- **Recent commits** — `git log --oneline -15` for the arc of the change
+- **Recent changes** — `jj --ignore-working-copy log --no-graph -r '::<verified-history-head>' -n 15 -T 'description ++ "\n"'` for the arc of the change. Anchor it to the PR, release, or other shipment evidence; unrelated workspace history is not evidence that something shipped.
 
 Then write a 1-3 sentence summary of the **user-facing value**: what a user can now do that they couldn't before, and why they'd care. Outcome, not implementation — "You can now export any report to CSV in one click", not "Added a CsvSerializer and an export endpoint." If you can't confidently tell what shipped, ask one short question rather than guessing.
 

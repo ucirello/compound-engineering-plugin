@@ -23,7 +23,10 @@ If the CLI exists but cannot launch its browser, follow that guide's troubleshoo
 Pass `--headed` so the user can watch the run, unless the machine has no display to show it on. Give each test user its own `--session <name>` so logins never leak between users.
 
 ```bash
-SHOTS="$(mktemp -d "${TMPDIR:-/tmp}/ce-dogfood-XXXXXX")"   # once per run; reuse for every screenshot
+# workspace_root is the verified absolute JJ workspace under test.
+SCRATCH="$workspace_root/.tmp/rocketclaw"
+mkdir -p "$SCRATCH" &&
+  SHOTS="$(mktemp -d "$SCRATCH/ce-dogfood-XXXXXX")" || exit 1  # once per run; reuse for every screenshot
 
 agent-browser --headed open "http://localhost:${PORT}/<route>"
 agent-browser snapshot -i            # interactive elements with refs

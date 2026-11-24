@@ -15,7 +15,7 @@ Reviewer personas are selected in layers. The persona catalog in `references/per
 - `testing-reviewer` — test files, test infrastructure, mocks, fixtures, or harness behavior changed; or the diff changes meaningful runtime behavior without corresponding test work. Behavioral triggers include new or changed branches, state mutation, API/control-flow behavior, and error handling. Production-file presence alone and non-behavioral edits do not select it.
 - `maintainability-reviewer` — a large or structural diff: substantial refactor, new abstractions, file moves, coupling/type-boundary changes, or at least 200 executable changed lines.
 - `agent-native-reviewer` — an agent-facing product surface changed: an agent tool surface (MCP tools, agent tool or function definitions, system-prompt construction), or a user-facing capability added or changed in a product that already has such a surface. Editing only the prose of skills, agent definitions, or instruction files does not select it.
-- `learnings-researcher` — there is institutional knowledge to check the change against: `<root>/solutions/` exists and a cheap path/title search finds a plausible match for the changed modules or patterns (the existence of a corpus alone is not enough), or, in local scope, the repo's CE config declares Compound Packs (Stage 1b `declared_packs`). Declared packs need no pre-search; the persona matches their rules itself.
+- `learnings-researcher` — `<root>/solutions/` has a plausible path/title match for the changed modules or patterns, or the local project config declares Compound Packs (Stage 1b `declared_packs`). Declared packs need no pre-search; the persona matches their rules itself.
 
 **Cross-cutting conditional (per diff):**
 
@@ -24,16 +24,16 @@ Reviewer personas are selected in layers. The persona catalog in `references/per
 - `api-contract-reviewer` — routes, serializers, type signatures, versioning
 - `data-migration-reviewer` — migration files / schema dumps / backfills (see the `data-migration` spawn gate in Stage 3)
 - `reliability-reviewer` — error handling, retries, timeouts, background jobs
-- `adversarial-reviewer` lens — the Adversarial selection condition in `references/modes-and-output.md` applies. Satisfy this lens with the independent cross-model adversarial pass when a peer job on the approved route starts successfully. Dispatch the in-process `adversarial-reviewer` when the peer cannot start, or when the fold-in step later finds the peer never ran, or gives up after a retry on the same route fails on a rate limit and restores the local reviewer; do not run both reviews on the same brief.
+- `adversarial-reviewer` lens — the Adversarial condition in `references/modes-and-output.md` applies. A usable native peer artifact or a permitted ordinary fallback covers the lens; a start acknowledgment does not. Stage 3d and its recovery rules own that exclusive routing.
 - `previous-comments-reviewer` — PR with existing review comments (PR-only, comment-gated)
 
 **Stack-specific conditional (per diff):** `frontend-races-reviewer` (async UI state, timers, listeners, or lifecycle cleanup that can race, in any browser UI framework).
 
-**CE conditional (migration-specific):** local prompt asset `deployment-verification-agent` — deployment checklist + rollback when the migration gate applies and the change is risky.
+**Migration-specific conditional:** `deployment-verification-agent` — deployment checklist + rollback when the migration gate applies and the change is risky.
 
 ## Review Scope
 
-A full review always spawns correctness, adds project-standards when applicable files exist, then adds only the generic, cross-cutting, stack-specific, and CE conditionals justified by the diff. This file runs only on the full spine; it does not invent irrelevant domains. A Rails auth feature might add security, reliability, and adversarial while still skipping agent-native and learnings when those surfaces are absent.
+A full review always spawns correctness, adds project-standards when applicable files exist, then adds only conditionals justified by the diff. This file runs only on the full spine; it does not invent irrelevant domains. A Rails auth feature might add security, reliability, and adversarial while still skipping agent-native and learnings when those surfaces are absent.
 
 ## Language-Aware Conditionals
 
@@ -47,7 +47,7 @@ Read the diff and file list from Stage 1 and the helper JSON from Stage 1b. Corr
 
 **`previous-comments` is PR-only AND comment-gated.** Only select this persona when both conditions hold:
 
-1. Stage 1 gathered PR metadata (PR number or URL was provided as an argument, or `gh pr view` returned metadata for the current branch).
+1. Stage 1 gathered PR metadata (PR number or URL was provided, or `GIT_DIR=$(jj git root) gh pr view` from the workspace root matched the verified bookmark).
 2. `hasPriorComments` from Stage 1 is true (the PR has at least one review submission or issue comment).
 
 Skip it for standalone branch reviews with no associated PR, and skip it for PRs with no prior feedback yet -- there is nothing for the persona to verify, and a spawned subagent that returns empty findings still costs the full subagent startup overhead (persona spec, diff, schema, plus its own gh calls).
@@ -74,16 +74,15 @@ The Review depth gate in `references/modes-and-output.md` already chose lite, fo
 
 Complete this stage **before reading persona prompt assets, `references/dispatch-reviewers.md`, or entering Stage 4** (Dispatch reviewers). That reference's persona-file instructions are valid only once you have settled which single route covers the adversarial lens: the peer, or the in-process fallback. This stage makes that exclusive choice between a cross-model adversarial peer and the in-process `adversarial-reviewer`. Later stages use that choice and must not decide it again, except when the fold-in step finds the peer never ran, or restores the in-process reviewer after a retry on the same route fails on a rate limit.
 
-Both routes share the run directory Stage 1b created; do not create another.
-
-When adversarial was selected and the working tree is the reviewed head (standalone, `base:`, or `local-aligned` scope), read `references/cross-model-review.md` from this skill's directory in full, verify the host as that reference requires, resolve one fixed route and approve it, and make the announcement that reference requires before anything is sent to the peer (its egress announcement, which tells the user what leaves the machine). Before start, write both inputs the reference defines; you, the orchestrator, write them, not the peer. They are the dedicated host-vetted constraints file, and the separate untrusted semantic brief containing intent plus material risk divisions inferred from the current file inventory and diff. Do not embed the diff, mechanically copy every path, or combine the two files. Then start the detached peer job using the reference's exact invocation and persist its job ID, target, requested model/reasoning, and start epoch in working state, recording `--start peer` in the stage log (`references/scope.md`) in that same shell call.
-
-- If the runner returns a job ID, the peer covers the adversarial lens for this run. Remove `adversarial-reviewer` from the local roster immediately. Do not read its local persona asset or dispatch it later — except when the owning fold-in rules in `references/cross-model-recovery.md` require the did-not-run fallback or the in-process restore after a failed same-route rate-limit retry.
-- If no job starts because of a dispatch-infrastructure failure (a non-zero exit before any job id, an unresolved `$SKILL_DIR`/script path), read `references/cross-model-recovery.md` at that point and first attempt its bounded same-route hand recovery before accepting the fallback. Re-run the identical resolved route, holding target/model and read scope fixed. Keep retrying only while each failure is a new, plausibly recoverable one and the shared peer deadline holds. If recovery returns a job id, treat it as the branch above (the peer covers the lens; remove `adversarial-reviewer`). Keep `adversarial-reviewer` in the local roster as the fallback, and record the peer skip reason for Coverage, only in two cases: recovery is exhausted (a failure repeats or the deadline is spent), or the peer was never eligible to start (selection condition not met, disabled by checkout config, host un-attestable, no different provider, or CLI missing).
-- In `pr-remote` / `branch-remote`, do not start the peer; keep the selected in-process adversarial reviewer because it can inspect the reviewed refs.
-
-When a job ID is returned and task tracking is active, add a distinct task that names the independent cross-model adversarial review. Keep it in progress while the detached job runs, then record its terminal outcome when the artifact is collected. Never create this task before a peer starts or leave it behind when the local adversarial fallback runs.
-
-Do not proceed until the final local roster is settled. This is a hard rule, not a preference: a started peer and the in-process adversarial reviewer must never both receive the same review brief.
+Both routes share the run directory from Stage 1. For local scope resolve the
+fixed route, stage its distinct constraints and risk brief, disclose, and
+start native collection as `references/cross-model-review.md` specifies.
+Reserve the lens for that route until its result is classified; a launch
+receipt alone is not coverage. If task tracking is active, show the peer as
+in progress only after native launch and update it with the terminal outcome.
+Use `references/cross-model-recovery.md` for the only permitted retries and
+fallbacks. In `pr-remote` / `branch-remote` keep the ordinary adversarial
+reviewer to inspect pinned evidence. Never run the ordinary persona in
+parallel with the peer, or after a usable peer result.
 
 Announce that final team before spawning, as a user-facing summary: name the always-on reviewers plainly, and for each conditional reviewer give the one-line reason it was added (the real concern, not the keyword that matched). Do **not** put local reviewer model-tier labels (`[session model]`/`[mid-tier]`) or the internal names of the scope modes in this announcement — those are internal. Still decide each local reviewer's tier here and keep it in working state for Stage 4. The cross-model line is separate; it uses the model/reasoning and route wording from its reference, which depends on what the peer's receipt attests. This is progress reporting, not a blocking confirmation.

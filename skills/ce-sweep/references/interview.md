@@ -1,8 +1,10 @@
 # Sweep First-Run Interview
 
-Loaded by `SKILL.md` when `ce-sweep` runs with `feedback_sources` unset in both the local override file and `config.yaml`. It captures the setup that will be merged into `<repo-root>/.compound-engineering/config.local.yaml`, the optional local override file that interviews write to. Later runs re-read those keys from the local file first, then from `config.yaml`.
+Loaded by `SKILL.md` when `ce-sweep` runs with `feedback_sources` unset in both the local override file and `config.yaml`. It captures the setup that will be merged into `<repo-root>/.rocketclaw/config.local.yaml`, the optional local override file that interviews write to. Later runs re-read those keys from the local file first, then from `config.yaml`.
 
 This interview is **interactive only**. The caller refuses first-run setup in non-interactive mode. A scheduled or piped run with no config aborts and tells the user to run `ce-sweep` interactively once. Do not attempt to infer sources, actions, or approvals without asking.
+
+**OpenCode V2 delegation prerequisite:** Merge `"experimental": { "subagent_depth": 3 }` into `~/.config/opencode/opencode.json`, or use `opencode debug paths` / `opencode debug paths config` to locate the actual user config and update its existing JSON/JSONC file. Preserve unrelated settings, sibling `experimental` keys and any higher integer depth; do not create a competing config or let a higher-precedence config lower the effective value below 3. Installing the plugin or shipping a package-local config does not enable deep delegation in consuming workspaces.
 
 **User-runnable invocation rendering.** Whenever this interview prints or registers a `ce-sweep` invocation, default to `/ce-sweep` (plus any arguments); use `$ce-sweep` only when the active host is Codex or explicitly documents dollar-prefixed skill invocation. On oh-my-pi (`omp`), use `/skill:ce-sweep` (plus any arguments). Render only the invocation as inline code and output one form only.
 
@@ -86,26 +88,16 @@ For email sources there are no source-side actions, so approval does not apply. 
 
 ## 4. State location
 
+Before any setup import or scratch creation, verify that `.tmp/` is covered by the workspace's `.gitignore`; get authorization to add an ignore rule if missing, or report the blocker.
+
 Ask where the sweep's state file lives:
 
 - **Committed to the repo** (recommended when multiple agents or machines share branches, so everyone reads and writes one source of truth). Sets `sweep_state_path` to the committed default under the artifact root's `feedback-sweep/`. Resolve `<root>` to its concrete value first (e.g. the default `docs`), so the persisted value is `<resolved-root>/feedback-sweep/state.yml` and never the literal `<root>` placeholder (per the persist rule below).
-- **Machine-local under `/tmp`** (solo setups; keeps sweep bookkeeping out of the repo, with no commit noise). Resolve the path immediately with this shell block, substituting a sanitized repository slug:
+- **Machine-local under the workspace's ignored `.tmp/`** (solo setups; no commit noise). Resolve `<workspace-root>/.tmp/rocketclaw/ce-sweep/state/state.yml` to a concrete absolute path. As in Phase 2e, check each scratch directory component for symlinks, directory type and ownership, create missing components with `umask 077`, and use mode `0700` for the state directory. On failure report the blocker; do not fall back outside the workspace. Persist the absolute path as `sweep_state_path`, never a placeholder.
 
-  ```bash
-  SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-  [ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
-  if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
-  (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
-  if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
-  chmod 700 "$SCRATCH_ROOT" || exit 1;
-  SWEEP_STATE_PATH="$SCRATCH_ROOT/ce-sweep/<repo-slug>/state.yml";
-  SWEEP_STATE_DIR="$(dirname "$SWEEP_STATE_PATH")"; (umask 077; mkdir -p "$SWEEP_STATE_DIR") || exit 1; chmod 700 "$SWEEP_STATE_DIR" || exit 1;
-  echo "$SWEEP_STATE_PATH";
-  ```
+Let the user override the path if they want a different location; keep a new machine-local path within the workspace's ignored `.tmp/`. A fresh checkout or different workspace will not see machine-local state.
 
-  Persist the echoed absolute path as `sweep_state_path`; never persist a placeholder.
-
-Let the user override the path if they want a different location. If they pick machine-local, note that a fresh checkout or a teammate's machine will not see this state. It is per-machine by design.
+For committed state, keep the state itself trackable and its adjacent `<state>.lock` out of snapshots. If needed, ask before adding an exact ignore entry for the lock; never add the lock to a commit.
 
 **Capture:** `sweep_state_path` (string).
 
@@ -139,7 +131,7 @@ Offer to seed state from an existing legacy feedback-tracking file so prior work
 **Ask:** "Do you have an existing feedback state file to import? For example, a prior dogfood tracker like `<root>/dogfood-reports/cora-v2-alpha-feedback-state.yml`. Importing carries over its cursors and items so the first sweep skips what's already been processed. Skip if this is a clean start."
 
 - **No / skip** -> proceed to section 8.
-- **Yes** -> ask for the file path. Then build a `--source-map`. For each legacy channel or source id in the file, pair it with the configured source id from section 1 (the short name the live connector reads by), as a JSON object like `{"C0AQLMQBGBD":"slack-alpha"}`. This map is required. Without it, an imported `C0AQLMQBGBD` cursor lands under `C0AQLMQBGBD` while the connector reads under `slack-alpha`. That orphans the cursor and re-ingests everything on the first sweep. Run the import from **this skill's directory**; set `SKILL_DIR` inline to the absolute path of the directory containing the `SKILL.md` you loaded:
+- **Yes** -> ask for the file path. Then build a `--source-map`. For each legacy channel or source id in the file, pair it with the configured source id from section 1 (the short name the live connector reads by), as a JSON object like `{"C0AQLMQBGBD":"slack-alpha"}`. This map is required. Without it, an imported `C0AQLMQBGBD` cursor lands under `C0AQLMQBGBD` while the connector reads under `slack-alpha`. That orphans the cursor and re-ingests everything on the first sweep. Run the import from the absolute workspace root; set `SKILL_DIR` inline to the absolute path of the directory containing the `SKILL.md` you loaded:
 
   ```bash
   SKILL_DIR="<absolute path of this skill's directory>";
@@ -153,11 +145,11 @@ Offer to seed state from an existing legacy feedback-tracking file so prior work
 
 ## 8. Write config
 
-Merge the captured settings into `<repo-root>/.compound-engineering/config.local.yaml`. Resolve the repo root with `git rev-parse --show-toplevel`.
+Merge the captured settings into `<repo-root>/.rocketclaw/config.local.yaml`. Resolve the absolute workspace root with `jj workspace root`.
 
-- If the directory or file does not exist, create `.compound-engineering/` and write the file.
+- If the directory or file does not exist, create `.rocketclaw/` and write the file.
 - If the file exists, merge the sweep keys into the existing YAML, **preserving every unrelated key untouched** (e.g. `pulse_*`, `plan_*`). Only add or update the sweep keys.
-- If `.compound-engineering/config.local.yaml` is not already covered by the repo's `.gitignore`, offer to add the entry before writing.
+- If `.rocketclaw/config.local.yaml` is not already covered by the repo's `.gitignore`, offer to add the entry before writing.
 
 Write these keys (see "Config File Shape" below for the exact form):
 
@@ -175,7 +167,7 @@ Then show the user the resulting Sweep section in chat and offer **one round of 
 **Ask:** "Want the sweep to run on a recurring schedule so feedback gets triaged automatically, or run it on demand? On-demand works fully without a schedule."
 
 - **On demand** -> nothing to register. Note that the rendered `ce-sweep` invocation is ready to run any time.
-- **Recurring** -> hand off to whichever scheduling primitive the harness exposes. Use the in-plugin `schedule` skill if it is installed. Otherwise name the platform-native mechanism (cron, GitHub Actions, the host's own automation) and give a brief hint of what would need to run. **The registered invocation must include `mode:non-interactive`** (deprecated alias `mode:headless` still works if already registered) using the rendering rule above, so the scheduled run knows it is unattended and defers instead of prompting. Never schedule inline; always hand off to the scheduling primitive.
+- **Recurring** -> hand off to OpenCode's native automation when available. Otherwise name an available scheduling mechanism (e.g. cron or GitHub Actions) and give a brief hint for scheduling the same OpenCode invocation; do not dispatch or register through another agent harness. **The registered invocation must include `mode:non-interactive`** (deprecated alias `mode:headless` still works if already registered) using the rendering rule above, so the scheduled run knows it is unattended and defers instead of prompting. Never schedule inline; always hand off to the scheduling primitive.
 
 Declining a schedule leaves on-demand use fully working.
 
@@ -185,7 +177,7 @@ Declining a schedule leaves on-demand use fully working.
 
 ## Config File Shape
 
-After the interview completes, merge these flat keys into `<repo-root>/.compound-engineering/config.local.yaml`, preserving any unrelated keys already present.
+After the interview completes, merge these flat keys into `<repo-root>/.rocketclaw/config.local.yaml`, preserving any unrelated keys already present.
 
 ~~~yaml
 # --- Sweep (ce-sweep) ---
@@ -194,7 +186,7 @@ feedback_sources:
   - { type: slack, id: slack-alpha, target: C0XXXXXXX, ack_action: eyes, closeout_action: white_check_mark, sensitive: false, approved: true }
   - { type: github-issues, id: gh-issues, target: owner/repo, ack_action: "feedback:ack", closeout_action: "feedback:resolved", sensitive: false, approved: true }
 
-sweep_state_path: <resolved-root>/feedback-sweep/state.yml   # concrete path (<root> resolved before persisting); committed (multi-agent) or a /tmp path (solo)
+sweep_state_path: <resolved-root>/feedback-sweep/state.yml   # concrete path (<root> resolved before persisting); committed or workspace-local .tmp/ (solo)
 sweep_ack_cap: 25                                 # max acks per source per run before the circuit breaker
 sweep_lease_ttl_minutes: 60                       # single-writer lease staleness threshold; not asked interactively, tunable here
 sweep_shared_branch: false                        # true: push-gated lease for shared-docs-branch topology

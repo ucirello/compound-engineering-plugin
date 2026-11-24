@@ -12,7 +12,7 @@ Read this before Phase 0 and follow it for the whole run. The body states the in
 
 4. **One experiment, one log entry.** Append a new experiment entry on its first measurement. Later ladder samples for that same experiment update that entry's metrics and outcome in place so a crash can resume the ladder without losing samples or duplicating the hypothesis. Distinct `comparisons` pairings accumulate on that same entry; in-place updates must not replace a previously persisted distinct pairing. Never rewrite a different experiment's samples or gate values. Outcome, `best`, and `hypothesis_backlog` are also updated in place at batch evaluation (CP-4). Do not rebuild the file from memory.
 
-5. **Per-experiment result markers for crash recovery.** Each experiment writes a `result.yaml` marker in its worktree immediately after measurement. On resume, scan for these markers to recover experiments that were measured but not yet logged.
+5. **Per-experiment result markers for crash recovery.** Each local experiment writes `.tmp/ce-optimize/result.yaml` in its workspace immediately after measurement. On resume, scan the recorded workspace and external marker paths to recover experiments that were measured but not yet logged.
 
 6. **Write the strategy digest after every batch, before generating new hypotheses.** The agent reads the digest (not its memory) when deciding what to try next.
 
@@ -20,15 +20,14 @@ Read this before Phase 0 and follow it for the whole run. The body states the in
 
 ### The State Root
 
-`<state-root>` is the directory that holds the run's ledger. Resolve it once, in Phase 0, by the body's Execution Surface rule: when the harness names a durable state root, `<state-root>` is `<that location>/ce-optimize/<spec-name>/`, placed where that location's own conventions keep working state rather than user-facing documents; otherwise it is `.context/compound-engineering/ce-optimize/<spec-name>/` in the repo checkout, which is gitignored and survives a local resume only on this machine. A run's root is wherever its log already is: never move a ledger mid-run, and a resume that finds the log at one root uses that root even when the other is now available. Give every subagent and worker the resolved path, not the rule.
+`<state-root>` is the directory that holds the run's ledger. Resolve it once, in Phase 0, by the body's Execution Surface rule: when the harness names a durable state root, `<state-root>` is `<that location>/ce-optimize/<spec-name>/`, placed where that location's own conventions keep working state rather than user-facing documents; otherwise it is `.context/ce-optimize/<spec-name>/` in the repo checkout, which is gitignored and survives a local resume only on this machine. A run's root is wherever its log already is: never move a ledger mid-run, and a resume that finds the log at one root uses that root even when the other is now available. Give every subagent and worker the resolved path, not the rule.
 
 Examples of what the three capabilities look like on some harnesses. This table is not a tool list; the body's rule decides.
 
 | Harness | Durable state root | Wake after turn end | Detached worker |
 |---|---|---|---|
-| A coordinator harness with a persistent agent store (for example Cursor Projects' Agent Store) | The store path named in your context | Event subscriptions or a timer subscription that re-invokes the agent | A cloud-agent launch that returns a receipt and lands its work as a pushed branch or a store file |
-| Grok (CLI/TUI) | None named; `.context/` | `scheduler_create --durable` | None; `worktree` |
-| Claude Code, Codex, Cursor CLI sessions | None named; `.context/` | Whatever scheduling or wake tool the session lists; when it lists none, cron running the resume invocation is the user's escalation | None; `worktree` (or `codex` when the spec says so) |
+| OpenCode with a persistent state and wake surface | The store path named in your context | A listed event or timer capability that re-invokes this run | A listed native detached-worker capability returning a receipt and result bookmark or evidence file |
+| OpenCode without those capabilities | None named; `.context/` | Attached wait or manual resume | Native `worktree` or configured `codex` route |
 
 When the harness shows the user a status surface for this run, write a one-line run status there at CP-4 and at each stop, in addition to the log.
 
@@ -54,7 +53,7 @@ These are non-negotiable write-then-verify steps. At each checkpoint, the agent 
 
 ### File Locations (all under `<state-root>`)
 
-Anything the branch's readers need durably must be exported to a tracked path; the ledger does not travel with the branch from either root.
+Anything reviewers need durably must be exported to a tracked path; the ledger does not travel with the optimization bookmark from either root.
 
 | File | Purpose | Written When |
 |------|---------|-------------|
@@ -63,7 +62,8 @@ Anything the branch's readers need durably must be exported to a tracked path; t
 | `strategy-digest.md` | Compressed learnings for hypothesis generation | Written at CP-4 after each batch |
 | `source-digest.md` | What experiment workers need to know about the target's material and current approach | Phase 2.1; rewritten only when a keep changes what it describes |
 | `judge-cache.yaml` | Per-run judge results keyed by item content hash, so identical output is scored once (`references/experiment-log-schema.yaml`, JUDGE CACHE) | Phase 3.3, as each judge batch lands |
-| `<worktree>/result.yaml` | Per-experiment crash-recovery marker | Immediately after measurement, before CP-3 |
+| `<workspace>/.tmp/ce-optimize/result.yaml` (outside state root) | Local per-experiment crash-recovery marker | Immediately after measurement, before CP-3 |
+| `exp-<NNN>-result.yaml` | Verified copy of the local or detached result marker for recovery | Before workspace or result-bookmark cleanup |
 
 ### The Approval Record
 
@@ -79,13 +79,13 @@ Automatic resumption requires registered wakes for pending results and a timer w
 
 Write and verify `run_state` whenever a wait is registered or cleared and at CP-4. It also carries `active_seconds` (time spent inside ticks), `phase3_started_at` (the calendar anchor), the completed `tick` count, and `status` (`running`, `waiting`, `blocked`, `final`). Use `blocked` when progress needs an external change other than an outstanding result or a manual resume; report the blocker instead of spinning.
 
-**User-runnable resume syntax.** When this reference tells you to print or copy a resume invocation, default to `/ce-optimize <state-root>/spec.yaml`. Use `$ce-optimize <state-root>/spec.yaml` only when the active harness is Codex or explicitly documents dollar-prefixed skill invocation. Render only the invocation as inline code and output one form only.
+**User-runnable resume syntax.** Print or copy `/ce-optimize <state-root>/spec.yaml` as a single inline invocation.
 
 ### On Resume
 
 A wake, a scheduler fire, or a manual re-run re-enters here. When Phase 0.4 detects an existing run:
 1. Read the experiment log from `<state-root>`. It is the ground truth. Check the wall deadline before resuming work or re-registering a wait. If it has passed, persist any already-arrived results and go to Phase 4 without waiting for missing results or integrating candidates
-2. Scan worktree directories for `result.yaml` markers not yet in the log
+2. Reconcile any pending integration: if the live bookmark is the recorded new tip, verify the recorded candidate and evidence, then finalize that advance without replaying it. If it is still the old tip, no advance occurred; resume only when the tick may still integrate. On any other target, block without changing the bookmark. Verify the recorded run workspace identities and scan those workspaces and external marker copies for results not yet in the log. For legacy markers at a recorded `result.yaml` path, read the evidence if ownership is verifiable, but don't adopt, reset, or remove an unsupported workspace.
 3. Recover any measured-but-unlogged experiments. The recovered first CP-3 entry copies `opportunity` from the hypothesis backlog as of dispatch; `result.yaml` holds metrics only, so a missing forecast stays unrecorded rather than being reconstructed from the result
 4. Collect every `run_state.pending_waits` item whose result has arrived, by the shape recorded for it, and persist each at CP-3. An item whose result has not arrived stays pending; an item whose wake is gone follows The Wait Record and Ticks above, including its manual-resume fallback
 5. Continue as the SKILL.md body's resume rule directs. Skip the work the log proves finished, and re-enter any gate whose record is absent or no longer matches

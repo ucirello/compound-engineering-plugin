@@ -2,7 +2,7 @@
 
 Load this file when the active run uses a confirmed managed stack (`manager_status == "confirmed"`) and needs `gh stack` command recipes. Soft-depend on the CLI: if `gh stack` is missing or exits unavailable (e.g. code 9), surface a clear residual — do not invent managed membership from topology.
 
-Always non-interactive. Prefer JSON/view probes and explicit branch names; never rely on interactive prompts. Substitute `<tracking-remote>` with the stack branches' actual tracking remote (often `origin`, but may be `upstream` or a fork remote) — never hard-code `origin` when SKILL.md already resolved a different tracking remote.
+Always non-interactive. Use the verified absolute JJ workspace root and `GIT_DIR=$(jj git root)` from Step 1. Prefer JSON/view probes and explicit branch names; never rely on interactive prompts. Substitute `<tracking-remote>` with the stack branches' actual tracking remote (often `origin`, but may be `upstream` or a fork remote) — never hard-code `origin` when SKILL.md already resolved a different tracking remote. Do not run a manager mutation unless the installed manager can operate on the existing JJ workspace without a forbidden direct Git invocation, colocation change or other workaround. If incompatible, preserve state and return a managed-stack residual; do not emulate the manager with uncoordinated bookmark updates.
 
 ## After an owned push on the active layer (dependents exist)
 
@@ -13,13 +13,13 @@ gh stack push --remote <tracking-remote>
 
 Starting at the first dependent excludes the active target from the cascading rebase. Quote the branch name — git branch names may contain shell metacharacters. On conflict: `gh stack rebase --abort`, then surface a needs-human / stack-sync residual.
 
-## Check out a layer on a fresh checkout
+## Register a layer with a compatible manager
 
 ```bash
 gh stack checkout <PR_NUMBER>
 ```
 
-Use the PR number, which pulls the stack from GitHub. A branch name only resolves stacks already known locally, and `gh pr checkout` leaves the manager unaware of the branch.
+Only for a confirmed managed layer needing local manager registration, use the PR number, which pulls the stack from GitHub. A branch name only resolves stacks already known locally. Verify the clean, exact PR head/bookmark/remote and preserve existing isolation as in Step 1 before and after this operation. If the manager cannot preserve those conditions or needs forbidden Git execution, stop and report the incompatibility.
 
 ## Discover order / next open layer
 

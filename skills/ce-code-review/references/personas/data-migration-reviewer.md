@@ -10,20 +10,20 @@ Think in terms of the deploy window: old code on new schema, new code on old dat
 
 ## Step 0: Schema drift (when a schema dump is in the diff)
 
-Run this **first** when `db/schema.rb` or `db/structure.sql` appears in the diff. Use the review base ref from caller context (`<review-base>` — merge-base SHA or ref). **Never assume `main`.**
+Run this **first** when either dump is in scope. From the absolute review workspace root use the captured `REVIEW_BASE` and `REVIEW_HEAD` from caller context. If unavailable, use the supplied pinned diff and report the limit. Never assume `main` or use the live workspace tree.
 
 ```bash
-git diff <review-base> --name-only -- db/migrate/
+jj --ignore-working-copy diff --from "$REVIEW_BASE" --to "$REVIEW_HEAD" --name-only -- db/migrate/
 ```
 
 Then diff each dump file that is actually in the PR diff (one or both may apply):
 
 ```bash
 # When db/schema.rb is in the diff:
-git diff <review-base> -- db/schema.rb
+jj --ignore-working-copy diff --from "$REVIEW_BASE" --to "$REVIEW_HEAD" --git -- db/schema.rb
 
 # When db/structure.sql is in the diff:
-git diff <review-base> -- db/structure.sql
+jj --ignore-working-copy diff --from "$REVIEW_BASE" --to "$REVIEW_HEAD" --git -- db/structure.sql
 ```
 
 Cross-reference every change in each in-scope dump against migrations **in this PR's diff**:
@@ -32,15 +32,11 @@ Cross-reference every change in each in-scope dump against migrations **in this 
 - Every new column/table/index in the dump must come from a PR migration
 - **Drift:** columns, tables, indexes, or version bumps not explained by PR migrations
 
-When drift is present, emit a **P1** finding on the affected dump path (`db/schema.rb` or `db/structure.sql`) with `autofix_class: manual`, concrete unrelated objects listed, and `suggested_fix`:
+When drift is present, emit a **P1** finding on the affected dump path with `autofix_class: manual` and concrete unrelated objects listed. Suggest that an authorized resolver restore just the affected dump and regenerate against an isolated development database. Do not run this as a reviewer. Example from that resolver's absolute workspace root:
 
 ```bash
-# schema.rb:
-git checkout <review-base> -- db/schema.rb
-bin/rails db:migrate
-
-# structure.sql (regenerate after restoring and migrating):
-git checkout <review-base> -- db/structure.sql
+# DUMP is the affected db/schema.rb or db/structure.sql
+jj restore --from "$REVIEW_BASE" -- "$DUMP"
 bin/rails db:migrate
 ```
 

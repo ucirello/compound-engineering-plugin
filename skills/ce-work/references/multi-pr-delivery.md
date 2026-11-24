@@ -39,15 +39,15 @@ When the host can wake this session on a change to a PR, keep a watch on each PR
 
 ## Separate sessions
 
-Some hosts can start a separate long-lived session in its own checkout that outlives this turn, such as T3 delegated worktree tasks, Orca worktree children, or Codex cloud tasks. This is not a subagent: a subagent ends with the turn that started it, while a group's PR needs hours of CI, review, and merge.
+Use a separate long-lived session only if OpenCode exposes a supported durable session capability that outlives this turn. An ordinary subagent is not that capability: a group's PR may need hours of CI, review, and merge. Never start another harness to obtain a separate session.
 
-Where the host offers such sessions and its own rules let the agent start them, hand each group to its own session automatically and coordinate from this one.
+Where OpenCode offers and permits them, hand each group to its own session and coordinate from this one. Follow `references/workspace-setup.md#isolated-workspaces` before handoff: verify existing isolation first, otherwise use the authorized colocated JJ route at the exact group base, with one dated name for registration and destination, preserving the group's source/PR bookmark. Bind the session to the verified absolute root and record the session, workspace and bookmark. If the native capability cannot honor that contract, use the main thread rather than bypass it. Retire only authorized run-owned isolation after verifying integration and preserving receipts, using `references/workspace-setup.md#retire-a-run-owned-workspace`.
 
 - **What a session receives:** the plan path, its group label, the branch it builds on, the marker convention, the user's constraints and publishing authority for this run (for example, leave changes local, or open no PR), and the instruction to build only that group and ship it within that authority. A session does not inherit this conversation, so a limit not passed here does not exist for it.
 - **What the coordinator does:** keeps the group states; starts a group's session once the group it builds on is built and its start waits are met; watches each PR whose session the host does not let watch it.
 - **When a session cannot reach the branch:** a chain that builds on a branch the host's sessions cannot reach, such as a local branch from a cloud session, is built in the main thread.
 
-Without such sessions, or when the host's rules require the user to ask first, the main thread does all of the above itself.
+Without such sessions, or when OpenCode's authority prevents dispatch, the main thread coordinates the groups. Respect actual delegation, model and depth rules independently; do not retry a denial.
 
 ## Report
 

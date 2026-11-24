@@ -20,13 +20,13 @@ Either way, a question that calls for a user decision calls the tool or falls ba
 
 ## Artifact Root
 
-Resolve `<root>` **only** in the no-path interactive branch, which discovers the most recent plan under `<root>/plans/`. Every other run reads the document at the path it was handed. So an absolute-path or non-interactive review — `/tmp/plan.md`, possibly outside any repo — never depends on a repo root or a CE config it does not need.
+Resolve `<root>` **only** in the no-path interactive branch, which discovers the most recent plan under `<root>/plans/`. Every other run reads the document at the path it was handed. An absolute-path or non-interactive review can use a readable file outside any repository without depending on a repository root or project configuration.
 
 <!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only (`<workspace-root>` = `jj workspace root`; see the [JJ workspace reference](https://docs.jj-vcs.dev/latest/cli-reference/#jj-workspace)). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before. If the current directory is standalone, use its local `docs` directory.
+- **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/` or `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
 
@@ -36,7 +36,7 @@ Resolve `<root>` **only** in the no-path interactive branch, which discovers the
 
 Two of its rules apply to every later step.
 
-**Verify before any dispatch.** Every resolved path must be readable on disk. If one is not, dispatch **no** personas: reviewers read from the filesystem, so they cannot reach a path that exists only on an unchecked-out branch (issue #925).
+**Verify before any dispatch.** Every resolved path must be readable on disk. If one is not, dispatch **no** personas: reviewers read from the filesystem, so they cannot reach a path that exists only in another revision (issue #925).
 
 **Classify by content, not readiness labels or file path.** A unified artifact with only a Product Contract is **`unified-requirements`**; missing implementation sections are expected. Any implementation planning makes it **`unified-plan`**, including incomplete or blocked planning that needs review. Other artifacts use the legacy `requirements` / `plan` split.
 
@@ -50,19 +50,19 @@ Skip dispatch only when the completed-review reuse condition in `references/docu
 
 The team is `coherence-reviewer` and `feasibility-reviewer` always, plus each activated conditional persona. Announce the team briefly before any dispatch, and stay quiet while reviewers run.
 
-Dispatch generic subagents with **bounded parallelism** through the platform's subagent primitive. Give each one its `references/personas/<reviewer-name>.md` as `references/dispatch.md` describes. Never dispatch a standalone agent by type or name.
+This skill explicitly requests generic OpenCode subagents for the selected reviewers. Dispatch with **bounded parallelism** when the actual host policy allows it. Follow `references/dispatch.md` to distinguish delegation permission, model permission and nesting depth, and give each reviewer its `references/personas/<reviewer-name>.md`. Never dispatch a standalone persona as an agent type.
 
-A capacity rejection is backpressure, not reviewer failure: wait and retry. If capacity cannot recover and selected reviewers remain undispatched, collect and clean up any started cross-model jobs as `references/cross-model-review.md` describes, then stop as incomplete without synthesis, fixes, or a success handoff. Preserve collected outcomes and report which reviewers completed, failed, or could not run, and why.
+An active-slot capacity rejection is backpressure, not reviewer failure: wait for a slot before retrying. If capacity cannot recover and selected reviewers remain undispatched, collect any started reviews, then stop as incomplete without synthesis, fixes, or a success handoff. For a delegation, depth, tool, or required-model blocker, use only the fallback permitted by `references/dispatch.md` and `references/depth.md`. In all incomplete cases preserve collected outcomes and report which reviewers completed, failed, or could not run, and why.
 
 ### Cross-Model Judgment Pass
 
-Run this pass if any of the **conditional judgment trio** was activated: `adversarial-document-reviewer`, `product-lens-reviewer`, `security-lens-reviewer`. Follow `references/cross-model-review.md`, which defines the whole pass: confirming the host, the one target and route used for the whole document, the disclosure before anything leaves the machine, and how peers are launched, collected, and folded in.
+Run this pass if any of the **conditional judgment trio** was activated: `adversarial-document-reviewer`, `product-lens-reviewer`, `security-lens-reviewer`. This skill explicitly requests the eligible peer subagents as well. Follow `references/cross-model-review.md` for provider attestation, native OpenCode model discovery and dispatch, disclosure before egress, and receipt and coverage handling.
 
-The pass is additive and non-blocking: a failure or timeout stops nothing and is named in Coverage. The checkout's `cross_model_review_mode` setting is checked first and can skip the pass with a named reason. Filter recipients only when `CROSS_MODEL_PEERS` is set — unset means unfiltered, not unsanctioned. Never silently change an explicit model or recipient.
+The pass is additive and non-blocking: a failure or timeout leaves the ordinary review running but makes cross-model coverage incomplete and is named in Coverage. The checkout's `cross_model_review_mode` setting is checked first and can skip the pass with a named reason. Filter recipients only when `CROSS_MODEL_PEERS` is set and nonempty — no filter does not imply overriding host or user permission. Never silently change an explicit model or recipient.
 
 ## Phases 3-5: Synthesis, Presentation, and Next Action
 
-Wait until every dispatched agent has returned, including any cross-model `<reviewer-name>-<provider>.json` returns. Then read `references/synthesis-and-presentation.md`. It defines synthesis, how each finding is routed by confidence and fix class, fix application, the non-interactive result format, and the handoff to the routing question. When promoting agreement, only an artifact with `independence_verified: true` counts as an independent reviewer.
+Settle and account for every dispatched agent before synthesis, including any cross-model `<reviewer-name>-<provider>.json` returns, within the bounds in the dispatch references. Then read `references/synthesis-and-presentation.md`. It defines synthesis, how each finding is routed by confidence and fix class, fix application, the non-interactive result format, and the handoff to the routing question. When promoting cross-model agreement, only an artifact with `independence_verified: true` counts as independent cross-model corroboration.
 
 **Interactive mode only.** Read `references/walkthrough.md` for the routing question, the per-finding walk-through, and the completion report. Read `references/bulk-preview.md` for the preview behind the walk-through's auto-resolve. Load neither before review evidence is complete, whether newly collected or validly reused, and a non-interactive run never loads them at all — it stops at the structured review result.
 

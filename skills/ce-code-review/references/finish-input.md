@@ -6,9 +6,9 @@ A review round finishes outside the context that dispatched it. The **dispatch c
 2. the dispatch context launches the validator batch from `validator-input.json`, collects `validator-verdicts.json`, and records the terminal result in `validator-outcome.json` (Stage 5b step 4);
 3. the **report leaf** runs Stage 5b step 5, Stage 5c when authorized, and Stage 6 from those files, writes the final artifacts, and returns the report.
 
-The split exists because a six-lens round routinely uses up the dispatch context before Stage 5b, which is when subagent launches start failing (#1679, #1690). It is always on for the multi-agent path; the quick-review short-circuit never reaches it. No leaf launches a subagent: nested dispatch is unavailable on Gemini CLI, blocked one level down on Cursor, and configurable off on Claude Code and Codex, so the validator stays a parent launch on every host.
+The split keeps the dispatch context from exhausting its context before Stage 5b. It is always on for multi-agent review, never the quick-review path. No leaf launches a subagent. The validator is a native OpenCode parent launch; `references/subagent-model.md` governs permissions, model selection and actual depth errors.
 
-**Outcome:** the report leaf produces the same report the dispatch context would have, from the run directory alone, and the dispatch context emits that report verbatim and, in default mode, writes it to `report.md`. **Done:** `report.md` (default mode) or `review.json` (`mode:agent`) and `metadata.json` are on disk, every persisted peer job directory is deleted, and the dispatch context has returned the report leaf's output unchanged.
+**Outcome:** the dispatch context emits the report leaf's result verbatim. **Done:** `report.md` (default mode) or `review.json` (`mode:agent`) and `metadata.json` are on disk, any native peer work is terminal or stopped, and the dispatch context has returned the report leaf's output unchanged.
 
 ## The contract: `<run-dir>/finish-input.json`
 
@@ -25,10 +25,11 @@ The dispatch context writes this file after every local reviewer is collected, a
   "scope": {
     "mode": "local-aligned | standalone | pr-remote | branch-remote",
     "base": "<BASE: marker>",
-    "diff_a": "<DIFF_A>", "diff_b": "<DIFF_B or null>",
+    "workspace_root": "<absolute workspace root>",
+    "diff_a": "<captured DIFF_A>", "diff_b": "<captured DIFF_B>",
     "pr": { "number": null, "url": null, "title": null, "body": null, "base_ref_name": null, "head_ref_oid": null, "head_ref": null, "base_ref": null, "has_prior_comments": false },
-    "branch": "<git branch --show-current at dispatch>",
-    "head_sha": "<git rev-parse HEAD at dispatch>",
+    "branch": "<verified workspace bookmark at dispatch, or null>",
+    "head_sha": "<captured reviewed head ID>",
     "files": "<run-dir>/files.txt",
     "diff": "<run-dir>/full.diff",
     "tree_is_reviewed_head": true,
@@ -70,7 +71,15 @@ Each leaf reads, from `skill_dir`, its own finish reference (`references/finish-
 
 ## How the dispatch context launches a leaf
 
-Put the full contents of `finish-input.json` inline in the leaf's prompt, together with the absolute paths of the run directory, the leaf's own finish reference, and this reference, and tell it which stages it owns, to read its own finish reference and then this reference before anything else, and to record its own stage in the stage log with `scripts/run-log.py` under `skill_dir` (the recipe is in `references/scope.md`, Stage log). Include this sentence in the leaf's prompt exactly as written: "Give each file you read its own tool call, so its output comes back on its own, never several files in one command or one script. A read counts only when the whole file came back. Some hosts cut the middle out of a long tool output and leave a truncation marker in its place, so when a read comes back shortened, read the missing lines in smaller ranges before you act on that file." Inline the file rather than only naming it: the facts it carries are small, and a subagent that has them in its prompt cannot skip the read. Everything larger (the diff, the per-reviewer artifacts, the compact returns) stays on disk and is read by path. By default both leaves inherit the session model, with no override; `references/subagent-model.md` decides what each leaf actually passes, and in Codex it replaces this default. If the user's or project's active instructions or the live prompt name a model for this subagent, use that model instead of the default tier above. They can name it by the subagent's tier, by its prompt-asset name, or for the subagents being dispatched. Without such an instruction, a model configured for this subagent's role takes precedence over the default tier. Tell each leaf plainly that it launches no subagents.
+Inline `finish-input.json` in each leaf's prompt. Give it the absolute run
+directory and both reference paths, name its stages, tell it to read its own
+finish reference then this one, and have it record its stage with
+`scripts/run-log.py` under `skill_dir`. Include this sentence exactly:
+"Give each file you read its own tool call, so its output comes back on its own, never several files in one command or one script. A read counts only when the whole file came back. Some hosts cut the middle out of a long tool output and leave a truncation marker in its place, so when a read comes back shortened, read the missing lines in smaller ranges before you act on that file."
+Keep the diff, reviewer artifacts and compact returns on disk and pass their
+paths. Both leaves default to the session model; apply native permissions
+and model resolution in `references/subagent-model.md`. Tell each leaf
+plainly that it launches no subagents.
 
 Collect each leaf with blocking waits, each asking for as long as the host allows, repeated back to back until the leaf returns, for the same cost reason the reviewer collection rule in `references/dispatch-reviewers.md` gives. Apply the agent lifecycle rule in `references/dispatch-reviewers.md` (Agent lifecycle) to each leaf and to the validator.
 
@@ -80,13 +89,13 @@ Where `finish-report.md` routes prose through another skill (`ce-noslop`) and a 
 
 Read `finish-input.json`, then `references/finish-merge.md` from `skill_dir`, record `--start merge` in the stage log, and run Stage 5 and Stage 5b steps 1 through 3; record `--end merge --candidates <primary findings>` before returning. Wherever the reference refers to an earlier stage's result, the intent summary, the roster, the plan, the scope, or conversation context, that value is the matching field of the file, and `<root>` is `docs_root`.
 
-Every decision about the cross-model peer is already made. The dispatch context performed the single-reap finish and the fold-in classification `references/cross-model-review.md` defines, with its recovery branches in `references/cross-model-recovery.md` (including any replacement recipient, same-route recovery, or in-process `adversarial-reviewer` dispatch, all of which need a launch or a disclosure only it can make), deleted the job directory, and recorded the result in `peer.outcome`, `peer.artifact`, and `peer.coverage`. When `peer.artifact` is set, fold that file into Stage 5 as reviewer `adversarial-<provider>` under the reference's promotion rule; an in-process fallback's return is already in `raw-returns.json`. Copy `peer.coverage` into Coverage verbatim. This leaf never reads job state, waits on a peer, or starts a route.
+The dispatch context already collected and classified the native peer and recorded `peer.outcome`, `peer.artifact`, and `peer.coverage`. Fold an artifact as reviewer `adversarial-<provider>` under the attestation/promotion rule; an ordinary fallback is already in `raw-returns.json`. Copy `peer.coverage` verbatim. This leaf never waits on a peer or starts a route.
 
 Write, in the run directory: `synthesized-findings.json` (the final primary, pre-existing, and soft-bucket sets after Stage 5 steps 1 through 7, the triage groups, the hydrated detail, the fold-in outcome and every Coverage sentence Stage 5 produced) and `validator-input.json` (the Stage 5b step 3 batch: the selected findings in order, the skip count and its evidence basis, and the scope context the validator template needs). Return only a receipt: the two paths and the counts of primary and selected findings. Return nothing else; the dispatch context does not read findings.
 
 ## The validator (dispatch context)
 
-This is Stage 5b step 4; `finish-merge.md` points here for it. Record `--start validate` in the stage log as the batch launches and `--end validate` when `validator-outcome.json` is written. Build the batch prompt from `validator-input.json` with `references/validator-batch-template.md`. The validator inherits the session model unless `references/subagent-model.md` decides otherwise, as it does in Codex. Then:
+This is Stage 5b step 4. Record `--start validate` as the batch launches and `--end validate` when `validator-outcome.json` is written. Build the prompt from `validator-input.json` with `references/validator-batch-template.md`. Use the native OpenCode permissions and model rule in `references/subagent-model.md`; default to the session model. Then:
 
 Launch the validator batch and collect it with a wait that has an end. The verdicts file the template names (`$RUN_DIR/validator-verdicts.json`) is the fact; the call's own return, a blocking wait's return, or a host-delivered terminal message that names the validator launch and carries its verdict is one rendering of it. Consume a valid compact verdict from whichever arrives first, whether returned in-band or collected asynchronously. A launch receipt (the host's acknowledgement that the validator started) is uncollected, not a validator return, and a progress or status update is not a terminal outcome. Use the host's blocking collection capability with a bound: blocking waits for the validator's terminal outcome or for the verdicts file, each as long as the host allows, repeated back to back with nothing between them until verdicts arrive or the aggregate wall-clock limit the template states has passed since launch. A host whose single wait is short (tens of seconds) reaches the limit by repeating the wait, not by treating one short return as the deadline. Where the host's only in-turn collector cannot be bounded, launch the validator so that a bounded blocking wait exists (background execution plus the host's bounded wait) rather than an unbounded foreground call; a wait that cannot be bounded is not a collector for this batch. When no bounded wait exists by any means, do not launch the validator and treat the batch as validator infrastructure failure under step 5. When the bound passes with no valid verdicts file and no terminal outcome, stop the launched validator and treat the batch as validator infrastructure failure as well; classify a terminal tool error, or malformed output with no valid verdicts file, the same way. Never use shell no-ops (`echo waiting`, `noop`, `yield turn`, `end turn`, `true`, or sleeps), detached status polls, scheduled wakeups, or narrated "still waiting" turns; one bounded blocking wait is none of those.
 
@@ -98,7 +107,12 @@ Read `finish-input.json`, `synthesized-findings.json`, `validator-outcome.json` 
 
 ## What the dispatch context does with the returns
 
-In default mode, write the report leaf's return to `<run-dir>/report.md` first: the leaf renders it but cannot write that basename on every host (#1777), and this write persists only, it does not render or merge. Then emit the report leaf's return verbatim as this skill's final response. Do not summarize, reformat, or add to it; in `mode:agent` the response must begin with the JSON object. In the multi-agent path, emit only this skill's report: do not also invoke a harness-native findings or reporting tool, which belongs to the quick-review short-circuit alone. A leaf that fails to launch, returns a tool error, or returns something other than its contract (the merge receipt, or the report) is a failed finish: in `mode:agent` emit `{"status":"failed","reason":"<one sentence>"}`; otherwise say the round could not finish, name the run directory so a re-run can finish from it, and no peer job is outstanding, because the dispatch context reaped it before launching the leaves.
+In default mode, persist the report leaf's exact return to `report.md`.
+Emit its return verbatim; in `mode:agent` the response begins with the JSON
+object. A leaf that cannot launch or fails its contract is a failed finish:
+in `mode:agent` emit `{"status":"failed","reason":"<one sentence>"}`;
+otherwise name the blocker and run directory so a later run can recover.
+Report the actual lifecycle outcome; no peer should remain running.
 
 That emission is the dispatch context's last write. It ends this skill, not the turn. When a caller invoked this skill, the caller runs in this same session, and its next step follows the return; otherwise end the turn.
 

@@ -1,83 +1,11 @@
-# `gh stack` semantics this skill relies on
+# GitHub stack operations with JJ
 
-Verified against `gh stack version 0.1.0`. `gh stack <command> --help` is authoritative — if it
-disagrees with anything here, follow `--help` and say so in your report. (`gh stack help <command>`
-does not work; it prints top-level help.)
+See the official [`gh-stack` documentation](https://github.com/github/gh-stack#gh-stack-link) and `gh stack link --help`. Follow `references/context.md` for workspace root, `GIT_DIR`, and explicit repository selection. Do not install an extension or run a separate skill package in this workflow.
 
-Only the behavior that changes a decision in stack mode is listed. This file is self-contained on
-purpose: do not depend on the user having a separate `gh-stack` skill installed.
+JJ owns local bookmark creation, history, and transport. Do not use extension commands that switch checkouts, stage, commit, rebase, or push. In particular, `gh stack checkout` fetches and changes the checkout, and `gh stack init`, `add`, `submit`, and `sync` manage local branch state. Do not use their state or their exit codes to conclude a PR is standalone in JJ.
 
-## Classifying a parent
+For GitHub-only registration, `gh stack link --base "<verified-trunk-branch>" "<bottom-pr-url>" "<next-pr-url>" …` takes **existing PR URLs** in bottom-to-top order. Set `GH_REPO` to the verified base repository and require the command to target that repository. Never supply branch names: the extension would push them. This mode is intended for external branch managers such as JJ and does not create local stack tracking. Validate that the PRs already have exactly the intended bases; `link` can change bases to make the supplied chain. It updates existing stacks additively, never removes a member. Never use it to overwrite an unverified topology. Do not pass `--open`, which can mark existing drafts ready.
 
-```bash
-gh stack checkout "<parent-pr-number>"
-```
+For lookup, use the supplied GitHub stack URL or visible GitHub stack membership and `gh pr view` for each PR's exact head, base, repository, and state. A successful lookup with no membership can identify a standalone PR; a failed or unavailable lookup cannot. Do not depend on `gh stack view` to discover API-only linked layers from a JJ working copy. A published stack that cannot be verified is a residual; do not claim it was linked.
 
-Resolve a parent by **PR number** whenever one exists — that is what pulls a stack down from
-GitHub. A bare branch name resolves against **local** stacks only, so a branch-only parent can be
-classified locally and no further.
-
-Branch on the exit code; status text goes to stderr and must not be parsed.
-
-| Exit | Meaning | What it means here |
-|---|---|---|
-| 0 | Success | Parent is in a stack, and `HEAD` has moved to it |
-| 2 | Not in a stack | Parent is standalone; nothing was checked out or fetched |
-| 5 | Invalid arguments | Fix the invocation; see `--help` |
-| 6 | Disambiguation required | Branch is in several stacks — check out a non-shared branch |
-| 9 | Stacked PRs unavailable | Not enabled on this repository; tell the user and stop |
-
-```bash
-gh stack view --json    # JSON on stdout: trunk, currentBranch,
-                        # branches[] { name, head, base, isCurrent, isMerged, needsRebase,
-                        #              pr { number, url, state } }
-```
-
-`base` is the parent SHA the branch was last known to contain, not the parent's current tip;
-`needsRebase` is true when that tip is no longer an ancestor. There is no field naming the top of
-the stack and no documented branch ordering, so do not derive position from this payload — use
-`add`'s exit 5 instead.
-
-## Resolving a PR head
-
-`gh pr view "<n>" --json headRefName,headRefOid,author` identifies the head; `headRefName` alone
-does not, because a same-repo name can be absent or stale locally and can collide with an unrelated
-branch. Create a local branch at `headRefOid`, fetching `refs/pull/<n>/head` when that commit is not
-reachable — reachability leaves the commit with no branch to name.
-
-## Building
-
-```bash
-gh stack init [--base "<trunk>"] "<branch>"...
-```
-
-Processes branches bottom to top and checks out the **last** one. **Existing branches are adopted;
-missing ones are created** — the first from the trunk, each later one from the branch before it.
-There is no separate adopt mode: existence decides. `--base` selects a non-default trunk, so a
-parent branch can serve as the trunk without joining the stack.
-
-```bash
-gh stack add "<branch>"
-```
-
-Must run from the **top** branch of the stack (or the trunk while it is still empty); anywhere else
-exits **5**. Exit 5 here means "you are not on the top", and moving there with `gh stack top` is a
-decision, not a fix: it changes which layer the new branch is parented to. Whether that is correct
-belongs to the caller — when a specific parent was named, it is not. Without `-Am`, `add` does not
-touch the working tree, so staged and unstaged changes follow onto the new branch.
-
-```bash
-gh stack submit --auto [--open]
-```
-
-`--auto` avoids a title prompt per new PR. `--open` creates PRs ready for review instead of drafts,
-and also marks pre-existing drafts ready.
-
-## Never
-
-- **`gh stack link`** — GitHub-only by design, creates no local tracking, so a later
-  `gh stack submit`, `gh stack view`, or `gh stack merge` will not see the layer. It exists for
-  branches managed by external tools (jj, Sapling, git-town).
-- **`gh pr merge`** on a stack member — it cannot merge a stack. Landing uses `gh stack merge`.
-- **Bare `view` / `submit` / `init` / `add` / `checkout`** — each prompts or opens a TUI that
-  blocks under a PTY. Always pass the arguments and flags shown above.
+Do not merge managed members with `gh pr merge`. The babysitter owns any authorized stack landing after the final merge approval, using the verified GitHub stack identity for an explicit remote operation, not local checkout discovery. If the authoritative stack or supported remote merge route is unavailable, report a residual rather than substituting per-PR merges.

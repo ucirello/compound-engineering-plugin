@@ -12,7 +12,7 @@ Review every candidate idea critically. Critique runs in two layers — a fresh-
 
 2. **Orchestrator arbitration.** The orchestrator makes the final cut, weighing verifier verdicts without being bound by them — overrule a verdict when evidence in context contradicts it, and say so in the rejection reason.
 
-If verifier dispatch fails for a reason that survives correcting the invocation, fall back to orchestrator-only filtering and note the degradation in the rejection summary.
+If a fresh-context verifier or critic cannot run under the dispatch rules in `references/grounding.md`, keep any completed independent verdicts and use orchestrator-only filtering for the missing pass. Name the reason in the rejection summary; do not claim independent coverage for that pass.
 
 Do not generate replacement ideas in this phase unless explicitly refining.
 
@@ -55,11 +55,11 @@ The ideation artifact is produced **automatically** — persistence is not opt-i
    - Extension follows `OUTPUT_FORMAT` (`.html` default, `.md` on override).
    - **Repo mode:** ensure `<root>/ideation/` exists (create if absent).
    - **Elsewhere mode with `<root>/ideation/` already present:** use it.
-   - **Otherwise (no repo, or elsewhere with no `<root>/ideation/`):** write into the run's CE temp area — the `<scratch-dir>` resolved in Phase 1 (`<scratch-root>/ce-ideate/<run-id>/`). Do **not** write into the user's current working directory, and do **not** create a `<root>/ideation/` tree for a subject unrelated to the repo. Announce the absolute path and note it is temporary (`/tmp` is cleared on reboot — move it to keep it).
+   - **Otherwise (no JJ workspace, or elsewhere with no `<root>/ideation/`):** write into the run's `<scratch-dir>` resolved in Phase 1 (`<scratch-root>/ce-ideate/<run-id>/`). Do **not** write directly into the current working directory or create a `<root>/ideation/` tree for a subject unrelated to the repo. Announce the absolute path and note that this is scratch storage, not a durable archive.
 2. **Choose the file path:** `<dir>/YYYY-MM-DD-<topic>-ideation.<ext>` (or `<dir>/YYYY-MM-DD-open-ideation.<ext>` when no focus exists).
 3. **Load the section contract and rendering reference** (deferred from Phase 0.0): read `references/ideation-sections.md` and the format-rendering reference matching `OUTPUT_FORMAT` — `references/markdown-rendering.md` for `md`, `references/html-rendering.md` for `html`.
 4. **Write the document** per those references. `ideation-sections.md` defines the section contract (metadata, Grounding Context, Topic Axes, Ranked Ideas with per-idea fields, Rejection Summary); the rendering reference defines how the resolved format presents it. Content is identical across formats; only presentation differs.
-   - **On write failure** (no writable path, permissions): announce the failure and offer a custom path (validate writable; create parent dirs). Never lose the survivors silently.
+   - **On write failure** (no writable path, permissions): announce the failure and offer a user-selected durable destination (validate writable; create parent dirs). Do not silently switch to global scratch storage or lose the survivors.
 
 **Resume:** update the existing file in place, in its existing format (per the resume precedence in `references/output-mode.md`); carry the prior ideas and rejection summary forward, adding to them rather than overwriting.
 
@@ -109,8 +109,8 @@ Read `references/publishing.md` and follow it. The Phase 4 file already exists a
 
    > `<title> — <description>. Basis: <basis/evidence>. Why it matters: <rationale>. Known tradeoffs: <downsides>.`
 
-   The basis/evidence directly feeds `ce-brainstorm`'s product-pressure-test, so it won't re-derive what we already know. Append a one-line provenance pointer: `(Seeded from ce-ideate: <path>, idea "<title>")` — it records origin and lets brainstorm pull adjacent detail if it wants, without being forced to read anything.
-3. **Load the `ce-brainstorm` skill** with that seed. The saved file is already the record — no extra write step. `OUTPUT_FORMAT` does **not** propagate: ce-brainstorm re-resolves its own `brainstorm_output` config independently. Asymmetric output (`ideation.html` plus a markdown unified plan) is expected; a user who wants HTML for both sets both keys in CE config (`config.local.yaml` then `config.yaml`).
+   The basis/evidence directly feeds `ce-brainstorm`'s product-pressure-test, so it won't re-derive what we already know. Append a one-line provenance pointer: `(Source: <path>, idea "<title>")` — it records origin and lets brainstorm pull adjacent detail if it wants, without being forced to read anything.
+3. **Load the `ce-brainstorm` skill** with that seed. The saved file is already the record — no extra write step. `OUTPUT_FORMAT` does **not** propagate: ce-brainstorm re-resolves its own `brainstorm_output` config independently. Asymmetric output (`ideation.html` plus a markdown unified plan) is expected; a user who wants HTML for both sets both keys in `.rocketclaw/` configuration (`config.local.yaml` then `config.yaml`).
 
 **Repo mode only:** do **not** skip brainstorming and go straight to `ce-plan` — `ce-plan` wants a brainstorm-grounded Product Contract. In elsewhere modes, ideation is a legitimate terminal state; brainstorming is optional deeper development of one idea, not a required next rung on an implementation ladder that does not exist in these modes.
 
@@ -129,8 +129,8 @@ Then return to the Phase 5 menu. Typically the user next brainstorms a sharpened
 
 The file is already written, so there is no save step.
 
-- **Inside a git repo:** offer to commit only the ideation doc (do not create a branch, do not push; if the user declines, leave it uncommitted).
-- **Temp-area or non-repo file:** skip the commit offer.
+- **Document outside scratch but inside a JJ workspace:** offer to commit only that document. If accepted, load `ce-commit` with the verified absolute workspace root and the single workspace-relative document path. Leave all other work untouched; do not create a bookmark or push. If a doc-only commit cannot be isolated safely, leave it uncommitted and report why. If declined, leave it uncommitted.
+- **Scratch or non-workspace file:** skip the commit offer.
 
 Then narrate the path and end the session — do not return to the menu.
 
@@ -138,7 +138,7 @@ Then narrate the path and end the session — do not return to the menu.
 
 Only when the file was **created fresh this run**: delete it, confirm the deletion, and end. On a **resume** run (a pre-existing file was updated in place), do **not** delete — tell the user the existing doc at `<path>` remains and offer no destructive action. Discard is never a default; it happens only on an explicit request.
 
-Do not delete the run's scratch directory (`<scratch-dir>`) on completion — it holds the web-research cache reused across run-ids by later ideation invocations in the same session (see `references/web-research-cache.md`), the raw-candidates and survivors checkpoints, any research dossiers, and (in the no-repo case) the deliverable itself. OS handles eventual cleanup.
+Do not delete the run's scratch directory (`<scratch-dir>`) on completion — it holds the web-research cache reused across run-ids by later ideation invocations in the same session (see `references/web-research-cache.md`), the raw-candidates and survivors checkpoints, any research dossiers, and (in the no-repo case) the deliverable itself. There is no automatic cleanup.
 
 ## Quality Bar
 
@@ -150,6 +150,6 @@ Before finishing, check:
 - **no surviving idea replaces the subject** rather than operating on it
 - when Phase 1.5 produced an axis list, the survivor set spreads across axes rather than clustering on one — and any axis with zero survivors is noted as a deliberate gap in the rejection summary, not silently absent
 - every rejected idea has a reason
-- the deliverable was written automatically in both modes (Phase 4) — to `<root>/ideation/` when present, else the CE temp area, never the user's CWD
+- the deliverable was written automatically in both modes (Phase 4) — to `<root>/ideation/` for repo mode or when already present, otherwise to run-local scratch
 - the session showed a concise summary, not a reproduction of the full deliverable
 - acting on an idea routes to `ce-brainstorm` (with a substance seed, not the whole file), not directly to implementation

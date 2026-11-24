@@ -2,7 +2,7 @@
 
 All non-setup paths use the bundled analyzer through this one invocation shape. The path reference supplies a concrete `INPUT_PATH`. Set `OUTPUT_DIR` only when that path owns an override; otherwise leave it empty so the script owns its default.
 
-Set `SKILL_DIR` to the absolute directory containing the loaded `ce-riffrec-feedback-analysis` `SKILL.md`. Resolve Python by executing each candidate so a Windows Store stub is not mistaken for a working interpreter:
+Run from the target JJ workspace's absolute root, or a local working directory outside JJ. Set `SKILL_DIR` to the absolute directory containing the loaded `ce-riffrec-feedback-analysis` `SKILL.md`. Resolve Python by executing each candidate so a Windows Store stub is not mistaken for a working interpreter:
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing this SKILL.md>";
@@ -14,5 +14,7 @@ ANALYZER_ARGS=("$INPUT_PATH"); [ -z "$OUTPUT_DIR" ] || ANALYZER_ARGS+=(--output-
 ```
 
 Accepted inputs are a Riffrec `.zip` or unpacked capture directory containing `session.json` and `events.json`; `.mp4`, `.mov`, or `.webm` video; `.m4a`, `.mp3`, or `.wav` audio; or meeting-notes `.md`.
+
+The analyzer stages raw and frame snapshots under the working root's `.tmp/`. If an explicit output is on a different filesystem or the unpacked input contains that scratch path, it stages those snapshots in the output directory's local `.tmp/` to keep atomic promotion and rollback possible without altering the source.
 
 If no interpreter works or the analyzer fails, report the command's exit status and stderr and stop that path. Do not silently substitute a partial artifact set.

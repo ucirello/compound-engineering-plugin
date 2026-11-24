@@ -2,12 +2,14 @@
 
 Which orchestration shape fits each phase, and what breaks when you pick the wrong one.
 
-Two primitives are assumed, both platform-neutral:
+Use OpenCode-native delegation for agent work, and shell for local mechanical work. Two capabilities matter:
 
-- **A dispatch primitive** that launches an independent agent with its own context window and returns a result to the orchestrator (in one host it is a subagent-spawning tool; in another a job runner). Only two properties matter: fresh context per agent, and a result the orchestrator can read.
-- **A concurrency cap** the host enforces on how many agents run at once (often around 10). Dispatches above the cap queue rather than fail, so a 31-unit fan-out is three waves, not one. Plan the wave count; do not assume flat cost.
+- **Native subagents** with fresh contexts whose results return to the orchestrator. Use the applicable `config.yaml`, `config.local.yaml`, and `config.example.yml` guidance for configured model/tier routing; resolve exact configured models with `opencode.models` when a model override is permitted. Do not dispatch from shell or use another harness to launch reviewers.
+- **The actual concurrency cap** (often around 10). Plan the wave count and keep excess work pending; do not assume flat cost or confuse concurrency with nesting depth.
 
-Classify a rejected dispatch by whether an agent launched. Correct a pre-launch argument rejection once, and leave capacity-limited work queued. Any other launch failure follows the phase's own failure direction. In the corpus audit, the proposal and defense contexts must be independent for the audit to mean anything, so a launch failure there is a blocker: stop the audit rather than running the missing side inline.
+This skill explicitly requests native subagents, which satisfies a host rule allowing delegation at the user’s **or the loaded skill’s** request. An unconditional prohibition, actual denial, or missing tool still applies. Model override permission is separate: omit `model` where overrides are forbidden and use the inherited model only if suitable. Separate contexts on the same model are independent reviewers, not cross-model coverage. Report any required tier, fixed route, or cross-model pass you cannot satisfy.
+
+Check effective `experimental.subagent_depth` in OpenCode’s resolved configuration and account for the current nesting level. Classify a launch failure from the actual error: depth, concurrency, permission, model/argument rejection, or missing tool. Correct an authorized pre-launch argument error once (an inherited model is an option only if allowed and suitable); leave concurrency-limited work pending. Never retry a denial or bypass a depth limit. Follow the phase’s own allowed fallback and report missing checks as incomplete. In the audit, inability to launch either required independent context is a blocker: stop rather than running the missing side inline.
 
 ## The shapes
 
@@ -64,7 +66,7 @@ Run the mechanical suite once, as one check, not once per agent. Keep the cohere
 
 **Pass large context by path plus a short gist.** Give an agent the file paths it must read and two or three sentences of why, not the inlined contents. Inlining spends the orchestrator's context to fill an agent's, which is backwards. The fresh context window is the reason you dispatched.
 
-**Every artifact of this method needs a path decided before the phase that writes it.** The registration and the scored run table (`references/noise-floor.md`), the phase-marker map and the extractor (`references/baseline-mining.md`), the ruled finding set (`references/corpus-audit.md`), the file-assignment manifest and the rewrite contract (`references/cut-passes.md`). Pick one directory for the whole engagement and keep them together. The registration must be re-readable by a skeptic after results exist. The extractor and map must be re-runnable when the taxonomy changes. A contract or manifest passed only through a dispatch prompt cannot be checked afterward against what the agents actually did. The durable ones (registration, final scored table, write-up) belong in the repo's own docs location; per-run scratch does not.
+**Every artifact of this method needs a path decided before the phase that writes it.** The registration and the scored run table (`references/noise-floor.md`), the phase-marker map and the extractor (`references/baseline-mining.md`), the ruled finding set (`references/corpus-audit.md`), the file-assignment manifest and the rewrite contract (`references/cut-passes.md`). Keep scratch, temporary outputs, and error files together in an ignored run directory under the source workspace’s local `.tmp/` (standalone local `.tmp/` outside JJ), outside any build or worker workspace that might be retired. The registration must be re-readable by a skeptic after results exist. The extractor and map must be re-runnable when the taxonomy changes. A contract or manifest passed only through a dispatch prompt cannot be checked afterward against what the agents actually did. The durable ones (registration, final scored table, write-up) belong in the repo's own docs location; per-run scratch does not.
 
 **Give a schema to anything you will aggregate.** If the orchestrator will count, sort, dedup, or compare results, specify the fields and the enum values in the dispatch prompt. Parsing prose across dozens of returns is where item counts quietly stop matching.
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bring a repo's Compound Engineering config files up to date with the bundled template.
+"""Bring a repo's RocketClaw config files up to date with the bundled template.
 
 Subcommands (each prints one JSON object on stdout):
 
@@ -66,13 +66,13 @@ VERSION_LINE = re.compile(r"^# ce-config-template-version:(.*)$")
 ANCHOR_OR_ALIAS = re.compile(r"(?:^|:\s+|-\s+|[\[{,]\s*)[&*][A-Za-z0-9_-]")
 BLOCK_SCALAR = re.compile(r"(?:^|:\s+|-\s+)[|>][-+0-9]*\s*$")
 LEGACY_LOCAL_MARKERS = (
-    "# Compound Engineering -- local config",
-    "# Copy to .compound-engineering/config.local.yaml",
+    "# RocketClaw -- local config",
+    "# Copy to .rocketclaw/config.local.yaml",
 )
 
 MARKER = "# --- Kept from the previous file: settings this plugin does not recognize, and notes ---"
 LOCAL_HEADER = [
-    "# Compound Engineering -- checkout-local overrides. Keep this file gitignored.",
+    "# RocketClaw -- checkout-local overrides. Keep this file ignored.",
     "# A setting here wins over config.yaml for this checkout; docs_root is read",
     "# only from config.yaml. config.example.yaml lists every setting.",
 ]
@@ -103,7 +103,17 @@ def split_comment(line):
 
 
 def normalize_comment(comment):
-    return " ".join(comment.split())
+    return " ".join(canonical_template_comment(comment).split())
+
+
+def canonical_template_comment(line):
+    # Normalize only for recognizing old generated comments, not user text or values.
+    line = re.sub(r"(?i)\bCompound[ -]Engineering\b", "RocketClaw", line)
+    line = line.replace("CE-written artifact", "managed artifact")
+    line = line.replace("CE never falls back", "skills never fall back")
+    line = line.replace("CE stops with an error", "skills stop with an error")
+    line = line.replace("sole location CE reads", "sole location RocketClaw reads")
+    return line.replace("or /" + "tmp path (solo)", "or workspace-local .tmp/ path (solo)")
 
 
 def is_comment(line):
@@ -217,7 +227,8 @@ class Parsed:
         return find_version(self.raw_lines)
 
     def is_legacy_local(self):
-        return any(line.startswith(marker) for line in self.raw_lines for marker in LEGACY_LOCAL_MARKERS)
+        return any(canonical_template_comment(line).startswith(marker)
+                   for line in self.raw_lines for marker in LEGACY_LOCAL_MARKERS)
 
 
 def find_version(lines):
@@ -289,7 +300,17 @@ class Bundle:
         return None
 
     def is_known(self, line):
-        return line in self.known or line == MARKER or bool(VERSION_LINE.match(line))
+        canonical = canonical_template_comment(line)
+        # Recognize the old generated attribution block without reprinting it.
+        legacy_attribution_lines = (
+            "# --- PR branding (ce-commit-push-pr) ---",
+            "# New PRs include a generic RocketClaw badge by default. Set false to",
+            "# omit it (per-run override: branding:" + "on|off). Existing PR rewrites preserve",
+            "# pr_branding: false             # true | false (default: true; new PRs only)",
+            "# their current branding and never add or refresh it on their own.",
+        )
+        return (line in self.known or canonical in self.known or canonical in legacy_attribution_lines
+                or line == MARKER or bool(VERSION_LINE.match(line)))
 
     def candidates(self, key):
         return difflib.get_close_matches(key, sorted(self.slots), n=3, cutoff=0.75)
@@ -772,14 +793,15 @@ def repo_root(arg):
     if arg:
         return os.path.abspath(arg)
     try:
-        out = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, timeout=10)
+        out = subprocess.run(["jj", "workspace", "root"], cwd=os.getcwd(),
+                             capture_output=True, text=True, timeout=10)
         if out.returncode == 0 and out.stdout.strip():
             return out.stdout.strip()
     except (OSError, subprocess.SubprocessError):
         pass
     path = os.getcwd()
     while True:
-        if os.path.exists(os.path.join(path, ".git")):
+        if os.path.exists(os.path.join(path, ".jj")):
             return path
         parent = os.path.dirname(path)
         if parent == path:
@@ -788,7 +810,15 @@ def repo_root(arg):
 
 
 def layer_path(repo, layer):
-    return os.path.join(repo, ".compound-engineering", LAYER_FILES[layer])
+    return os.path.join(repo, ".rocketclaw", LAYER_FILES[layer])
+
+
+def scratch_root(repo):
+    path = os.path.join(os.path.realpath(repo), ".tmp")
+    os.makedirs(path, exist_ok=True)
+    if os.path.islink(path):
+        raise OSError("workspace .tmp/ is a symlink; refusing scratch writes")
+    return path
 
 
 def emit(payload, code=0):
@@ -862,7 +892,10 @@ def cmd_draft(bundle, repo, args):
         return emit({"ok": True, "layer": layer, "state": state, "action": "none", "keys": report})
 
     lines = render(bundle, layer, original, changes)
-    workdir = tempfile.mkdtemp(prefix=DRAFT_PREFIX)
+    try:
+        workdir = tempfile.mkdtemp(prefix=DRAFT_PREFIX, dir=scratch_root(repo))
+    except OSError as exc:
+        return emit({"ok": False, "layer": layer, "refused": str(exc)}, 1)
     draft_path = os.path.join(workdir, LAYER_FILES[layer])
     changes_path = os.path.join(workdir, "changes.json")
     text = to_text(original, lines)
@@ -910,11 +943,13 @@ def cmd_verify(bundle, repo, args):
     return emit({"ok": problem is None, "layer": args.layer, "verify": problem or "ok"}, 0 if problem is None else 1)
 
 
-def remove_draft_files(draft_path, changes_path):
+def remove_draft_files(repo, draft_path, changes_path):
     """Delete only the two files `draft` wrote, then their directory if it is now empty."""
     workdir = os.path.dirname(os.path.abspath(draft_path))
+    scratch = os.path.join(os.path.realpath(repo), ".tmp")
     if not (os.path.basename(workdir).startswith(DRAFT_PREFIX)
-            and os.path.dirname(os.path.realpath(workdir)) == os.path.realpath(tempfile.gettempdir())):
+            and not os.path.islink(scratch) and not os.path.islink(workdir)
+            and os.path.dirname(os.path.realpath(workdir)) == scratch):
         return
     for path in (draft_path, changes_path):
         if os.path.dirname(os.path.abspath(path)) == workdir and os.path.basename(path) in (
@@ -938,7 +973,10 @@ def cmd_apply(bundle, repo, args):
         return emit({"ok": False, "layer": args.layer, "applied": False, "verify": problem}, 1)
     with open(os.path.abspath(args.draft), "rb") as fh:
         data = fh.read()
-    fd, tmp = tempfile.mkstemp(prefix=".refresh-", dir=os.path.dirname(path))
+    try:
+        fd, tmp = tempfile.mkstemp(prefix=".refresh-", dir=scratch_root(repo))
+    except OSError as exc:
+        return emit({"ok": False, "layer": args.layer, "applied": False, "verify": str(exc)}, 1)
     try:
         with os.fdopen(fd, "wb") as fh:
             fh.write(data)
@@ -948,13 +986,13 @@ def cmd_apply(bundle, repo, args):
         if os.path.exists(tmp):
             os.unlink(tmp)
         return emit({"ok": False, "layer": args.layer, "applied": False, "verify": str(exc)}, 1)
-    remove_draft_files(args.draft, args.changes)
+    remove_draft_files(repo, args.draft, args.changes)
     return emit({"ok": True, "layer": args.layer, "applied": True, "file": path,
                  "sha256": hashlib.sha256(data).hexdigest()})
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Refresh Compound Engineering config files.")
+    parser = argparse.ArgumentParser(description="Refresh RocketClaw config files.")
     sub = parser.add_subparsers(dest="command", required=True)
     for name in ("status", "draft", "verify", "apply"):
         cmd = sub.add_parser(name)
@@ -967,7 +1005,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     repo = repo_root(args.repo)
     if repo is None:
-        return emit({"ok": False, "error": "not inside a git repository"}, 1)
+        return emit({"ok": False, "error": "not inside a JJ workspace"}, 1)
     bundle = Bundle()
     return {"status": cmd_status, "draft": cmd_draft, "verify": cmd_verify, "apply": cmd_apply}[args.command](
         bundle, repo, args)

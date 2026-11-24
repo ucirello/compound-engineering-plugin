@@ -12,8 +12,41 @@ Phases 0 through 3 run as the body defines them, with the investigation rigor un
 
 - **Phase 0:** if an issue fetch fails, continue with the input you have and record the gap in the return. Never ask the user to paste content.
 - **Phase 2 gate:** there is no fix-choice question. The caller's invocation authorized the fix, so proceed to Phase 3 with a **convergent** fix only. A **divergent** fix, one that would reverse a deliberate contract, behavior, or product decision, including a "failing" test that asserts intended behavior, is deferred as `needs-human` with a `decision_context`, never applied. When Phase 1's tracker and PR-history search finds an open PR or other fix in flight for this same bug, on a branch other than the one you are fixing, apply nothing and return `diagnosed-no-fix` with its link in `summary`; a second fix would only duplicate it. Never route to `ce-brainstorm`; a design problem is a `needs-human` residual. When reproduction cannot run in this environment, continue on the best evidence in reach; if the causal chain still has a gap, return `needs-human` naming what reproduction requires and what was tried.
-- **Phase 3:** apply the fix on the feature branch, verify it as `references/fix.md` defines (red then green where a test can run here; otherwise the reproduction check or characterization that file allows, recorded in the evidence), and commit only the fix-owned files. Follow the project's commit message conventions already in context; otherwise follow the recent log pattern, then conventional commits (`fix: <summary>` for this bug). User override wins. Do not push. A file the fix must touch that already carries the user's uncommitted edits stops the run before the first edit to it: return `blocked` naming the file, with nothing applied, since no commit could separate their edits from the fix and the caller cannot answer for the user. That holds for the reported site; another site of the same mistake in such a file is left and returned as a residual, as `references/fix.md` says. A caller's statement that the user offered those edits does not change this. Edits the caller made itself for the work the user asked for, before invoking this skill, are not the user's. When they sit in a fix-owned file, commit that file with the fix and list it in `pre_fix_scope.caller_edits`; caller edits in other files stay untouched in `dirty_files`. The pre-fix scope record makes this known before Phase 3 edits anything.
+- **Phase 3:** apply the fix on the feature bookmark, verify it as `references/fix.md` defines (red then green where a test can run here; otherwise the reproduction check or characterization that file allows, recorded in the evidence), and commit only the fix-owned files per **Describe the local fix** below. Do not push. A file the fix must touch that already carries the user's uncommitted edits stops the run before the first edit to it: return `blocked` naming the file, with nothing applied, since no commit could separate their edits from the fix and the caller cannot answer for the user. That holds for the reported site; another site of the same mistake in such a file is left and returned as a residual, as `references/fix.md` says. A caller's statement that the user offered those edits does not change this. Edits the caller made itself for the work the user asked for, before invoking this skill, are not the user's. When they sit in a fix-owned file, commit that file with the fix and list it in `pre_fix_scope.caller_edits`; caller edits in other files stay untouched in `dirty_files`. The pre-fix scope record makes this known before Phase 3 edits anything.
 - **Phase 4:** skip the Debug Summary block, the post-fix polish and review steps (`references/post-fix-handoff.md`), the commit/PR routing, and the learning-capture offer. Emit the structured return below as the last thing this skill writes. The return ends this skill, not the turn. The caller runs in this same session, and its next step follows the return.
+
+### Describe the local fix
+
+**Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards.**
+
+Before composing, read the full Go guide and examine several full subjects **and bodies** from the verified pre-fix line tip in the target workspace: `(cd "$workspace_root" && jj log --no-graph -r "::$history_head" -n 10 -T 'description ++ "\n"')`. Compare prefixes/package names, casing, verb tense, subject/body separation, wrapping, and issue-reference placement. Explicit user and project instructions and repository-local syntax win; apply only compatible Go guidance for clarity and structure. With no history use explicit instructions and compatible Go guidance without inventing precedent.
+
+Go Wiki source guidance, not a required repository template:
+
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+
+```text
+net/http: handle foo when bar
+
+[longer description here in the body]
+
+Fixes #12345
+```
+
+> Notably, for the subject (the first line of description):
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+
+> For the body (the rest of the description):
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
+
+Describe the actual defect and what corrects it; carry any existing issue reference per repository and tracker requirements. From the target root, use `jj commit -m "<message composed from the standards above>" -- <exact-fix-owned-filesets>`. Verify the resulting `@-` diff contains only the owned paths and the remaining user work is untouched in `@`. If the local feature bookmark still targets the verified pre-fix tip, move only that bookmark forward to the exact fix commit; if it already targets the fix, leave it. Report that commit's full ID as `head_sha` and the bookmark name as `branch`; push nothing.
 
 ## Structured return
 
@@ -29,7 +62,7 @@ The return is machine-readable; the caller parses it and branches on the exact `
   "branch": "<branch the fix was committed on, when fixed>",
   "prevention_signal": "<the proposed log field, metric, or assertion, or null>",
   "pre_fix_scope": {
-    "head": "<HEAD before the fix commit>",
+    "head": "<full commit ID of the verified pre-fix line tip>",
     "dirty_files": ["<files already modified or untracked before Phase 3 that are not fix-owned; left untouched>"],
     "caller_edits": ["<fix-owned files that already carried the calling session's own uncommitted edits, committed with the fix>"],
     "commits_beyond_base": ["<commits the branch carried beyond the default branch before the fix, oldest first; empty on a fresh branch>"],
@@ -56,4 +89,4 @@ The return is machine-readable; the caller parses it and branches on the exact `
 - `needs-human`: the fix would be divergent, or the causal chain could not be closed without a decision only a person can make; nothing applied; `residuals` carries the `decision_context` in the same typed residual contract `references/pipeline-mode.md` defines.
 - `blocked`: a required read failed, a fix-owned file carried the user's edits, or the workspace could not be prepared; `blockers` names it and nothing was committed.
 
-`pre_fix_scope` is present on every return and records what the branch and tree carried before the fix, as observed facts: the pre-fix `HEAD`, the files that were already dirty and are not fix-owned (the fix never touched them), the fix-owned files that carried the calling session's own edits, and the commits beyond the default branch, pushed or not. It carries no verdict about what the user offered; the caller decides that, and this record is what it decides from. `issue_of_record` is `null` when the input carried no ticket. `verification_evidence` is present on every `fixed` return; when `behavior_change` is `false` (a pure test or tooling fix), `exception_reason` says why no red-then-green was possible. `prevention_signal` is present on every return. It carries the always-on signal proposal that SKILL.md's Phase 2 findings block describes, because this mode skips the handoff that would otherwise show it, and it is `null` when that block's condition does not hold. It is a proposal, not a residual, and it is not added to the fix. `residuals` is an empty array when there are none. Do not invent a residual type; a non-blocking follow-up goes in `summary`.
+`pre_fix_scope` is present on every return and records what the branch and tree carried before the fix, as observed facts: the verified pre-fix line tip, the files that were already dirty and are not fix-owned (the fix never touched them), the fix-owned files that carried the calling session's own edits, and the commits beyond the default branch, pushed or not. It carries no verdict about what the user offered; the caller decides that, and this record is what it decides from. `issue_of_record` is `null` when the input carried no ticket. `verification_evidence` is present on every `fixed` return; when `behavior_change` is `false` (a pure test or tooling fix), `exception_reason` says why no red-then-green was possible. `prevention_signal` is present on every return. It carries the always-on signal proposal that SKILL.md's Phase 2 findings block describes, because this mode skips the handoff that would otherwise show it, and it is `null` when that block's condition does not hold. It is a proposal, not a residual, and it is not added to the fix. `residuals` is an empty array when there are none. Do not invent a residual type; a non-blocking follow-up goes in `summary`.

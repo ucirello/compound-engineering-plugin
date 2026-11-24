@@ -15,12 +15,22 @@ fi
 PR_NUMBER=$1
 COMMENT_NODE_ID=$2
 
+WORKSPACE_ROOT=$PWD
+if JJ_ROOT=$(jj workspace root 2>/dev/null); then
+    WORKSPACE_ROOT=$JJ_ROOT
+    GIT_DIR=$(cd "$WORKSPACE_ROOT" && jj git root)
+    export GIT_DIR
+elif [ -z "$3" ]; then
+    echo "Error: repository discovery requires the target JJ workspace; otherwise pass OWNER/REPO." >&2
+    exit 1
+fi
+
 if [ -n "$3" ]; then
     OWNER=$(echo "$3" | cut -d/ -f1)
     REPO=$(echo "$3" | cut -d/ -f2)
 else
     # `|| true` is load-bearing: under `set -e`, a failed command substitution
-    # in an assignment aborts the script immediately. Run outside a git repo,
+    # in an assignment aborts the script immediately. If discovery fails,
     # `gh repo view` exits 1, its stderr is swallowed by `2>/dev/null`, and the
     # script would die here with rc=1 and no output -- making the friendly error
     # below unreachable. Keep `|| true` so detection failure falls through to it.
@@ -29,7 +39,7 @@ else
 fi
 
 if [ -z "$OWNER" ] || [ -z "$REPO" ]; then
-    echo "Error: could not resolve owner/repo. Run get-thread-for-comment from inside the target git repository, or pass OWNER/REPO as the third argument (e.g., get-thread-for-comment $PR_NUMBER $COMMENT_NODE_ID EveryInc/cora)." >&2
+    echo "Error: could not resolve owner/repo. Run get-thread-for-comment from the target JJ workspace, or pass OWNER/REPO as the third argument (e.g., get-thread-for-comment $PR_NUMBER $COMMENT_NODE_ID EveryInc/cora)." >&2
     exit 1
 fi
 
@@ -37,7 +47,12 @@ fi
 # more than one page of threads can still resolve a comment to its parent
 # thread. Per-thread comments are still capped at 100 -- threads exceeding
 # that depth are not paginated here.
-tmp_threads=$(mktemp "${TMPDIR:-/tmp}/ce-pr-threads.XXXXXX")
+mkdir -p "$WORKSPACE_ROOT/.tmp"
+if [ -L "$WORKSPACE_ROOT/.tmp" ]; then
+    echo "Error: local .tmp/ must not be a symlink." >&2
+    exit 1
+fi
+tmp_threads=$(mktemp "$WORKSPACE_ROOT/.tmp/pr-threads.XXXXXX")
 trap 'rm -f "$tmp_threads"' EXIT
 
 gh api graphql --paginate --slurp \

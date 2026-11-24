@@ -6,7 +6,7 @@ The lens works against whichever tracker is reachable — GitHub, Linear, or Jir
 
 ## a. Scan call
 
-Read `references/agents/issue-intelligence-analyst.md` and dispatch a generic subagent seeded with that prompt, the focus hint, the `<scratch-dir>` resolved earlier in Phase 1, and the instruction that it is in **SCAN mode**.
+Read `references/agents/issue-intelligence-analyst.md` and dispatch a generic subagent seeded with that prompt, the focus hint, the verified absolute JJ workspace root, the `<scratch-dir>` resolved earlier in Phase 1, and the instruction that it is in **SCAN mode**.
 
 It probes tracker access, does one bounded fetch, persists that fetched set to `<scratch-dir>/issue-scan.json`, and returns the distribution, a signal count, and an ambiguity assessment. It does **not** cluster.
 
@@ -19,7 +19,7 @@ Two outcomes end the lens before the cluster call. Both are warn-and-proceed —
 - **First line is the `Issue analysis unavailable:` marker** (no reachable tracker) — log `"{that message}. Proceeding with standard ideation."` and continue with the remaining grounding.
 - **Fewer than 5 eligible issues** — note `"Insufficient issue signal for theme analysis"` and continue.
 
-In both cases Phase 2 falls back to the six default frames; the Fleet section of `references/divergent-ideation.md` says what that fallback recomputes and what it carries forward. No scoping question is asked.
+In both cases Phase 2 falls back to the six default frames; the Fleet section of `references/divergent-ideation.md` says what that fallback recomputes and what it carries forward. No scoping question is asked. Also use this fallback if SCAN or CLUSTER cannot run or the scan's scratch receipt cannot be read. Report the actual blocker instead of claiming the tracker was unavailable or that issue coverage was complete; do not re-fetch from scratch.
 
 ## b. Scoping question (the orchestrator decides; at most one question)
 
@@ -35,7 +35,7 @@ This is a grounding / subject-scoping question — the same kind as the Phase 0.
 
 ## c. Cluster call
 
-Dispatch the analyst again in **CLUSTER mode**, passing the resolved scope **and the same `<scratch-dir>`** so it reuses the persisted `issue-scan.json` rather than re-fetching. It returns the leverage-ranked themes plus coverage accounting.
+Dispatch the analyst again in **CLUSTER mode**, passing the resolved scope, the same verified workspace root, **and the same `<scratch-dir>`** so it reuses the persisted `issue-scan.json` rather than re-fetching. It returns the leverage-ranked themes plus coverage accounting.
 
 ## d. What consolidation must carry
 

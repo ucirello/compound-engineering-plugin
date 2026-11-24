@@ -106,9 +106,9 @@ Selections may be the literal option label (when the user types the label or a c
 
 Immediately load the `ce-plan` skill in the current session. Pass the unified
 plan artifact path when one exists; otherwise pass a concise summary of the
-finalized brainstorm decisions. When the Phase 1.1 grounding scout produced a
-dossier and the file still exists, also pass its path
-(`<scratch-root>/ce-brainstorm/<run-id>/grounding.md`) — it gives
+finalized brainstorm decisions. When Phase 1.1 produced a grounding dossier
+and the file still exists, also pass its actual absolute path
+(`<workspace-or-project-root>/.tmp/rocketclaw/ce-brainstorm/<run-id>/grounding.md`) — it gives
 planning verified quotes with `file:line` pointers to start from instead of
 re-scanning the repo. Do not print the closing summary first.
 
@@ -120,6 +120,8 @@ and re-render the menu (the requirements may have changed, so re-evaluate
 `Resolve Before Planning`, the software-only condition on the lfg option, and residual findings). If
 residual P0/P1 findings remain unaddressed, include the post-review nudge
 above the menu. Do not show the closing summary yet.
+If review reports incomplete coverage, carry its blocker and any findings
+back to the menu; do not turn a partial pass into "Review complete."
 
 **If user selects "Ship it autonomously with `lfg`":**
 
@@ -131,7 +133,10 @@ autonomously — plan, implement (`ce-work` in `return-to-caller` mode), simplif
 independent code review and applied fixes, commit/push/open PR, and CI watch to
 green. Do not also load `ce-work` directly; `lfg` orchestrates it. `lfg` is
 host-agnostic: it works wherever
-skills run (plus `git`/`gh` for the PR and CI steps, which it guards when absent).
+skills run (plus JJ and `gh` for the PR and CI steps, which it guards when absent).
+Run repository-scoped `gh` from the absolute workspace root with
+`GIT_DIR=$(jj git root)` supplied to `gh`; if JJ cannot resolve that context, do
+not guess a repository or run unscoped.
 
 Where the host exposes no skill-invocation primitive, print the `lfg <plan-path>`
 invocation for the user to run and note that it will plan, build, review, and

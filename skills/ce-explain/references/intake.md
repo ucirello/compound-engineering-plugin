@@ -8,7 +8,7 @@ Tokens exist so automation and chained calls can force a decision. Plain languag
 
 | Token | Example | Effect |
 |-------|---------|--------|
-| `diff:<ref-or-range>` | `diff:abc1234`, `diff:main..HEAD`, `diff:PR#42` | Forces diff mode on that change |
+| `diff:<ref-or-range>` | `diff:abc1234`, `diff:main..@`, `diff:PR#42` | Forces diff mode on that change |
 | `since:<window-or-ref>` | `since:monday`, `since:7d`, `since:v2.1.0` | Forces recap mode over that window |
 | `output:<md\|html>` | `output:md` | Overrides the artifact format (default `html`) |
 | `audience:<who>` | `audience:team`, `audience:"the design review"` | Renders for that reader instead of the user personally |
@@ -18,7 +18,7 @@ Tokens exist so automation and chained calls can force a decision. Plain languag
 - "walk me through the diff: why did we split the parser" — stripping `diff:why` leaves "walk me through the did we split the parser". Garbled, so this is prose. Classify by meaning (a diff request about the parser split), and never let the bogus ref `why` outrank that.
 - "explain how we pick the audience: engineers vs designers" — a concept request about audience selection, rendered personally. Not an `audience:` flag naming "engineers".
 - "teach me how our renderer decides output: html or terminal escape codes" — prose. Note this one fails quietly if mis-parsed, because `html` is already the default format, so nothing visible contradicts it.
-- `diff:main..HEAD`, or `audience:team` leading a request — genuine flags: nothing is left to garble.
+- `diff:main..@`, or `audience:team` leading a request — genuine flags: nothing is left to garble.
 
 - A token in flag position beats inference. A colon inside prose does not.
 - `diff:` and `since:` together conflict — resolve the intended subject under the skill body's interaction rule.
@@ -30,12 +30,12 @@ Tokens exist so automation and chained calls can force a decision. Plain languag
 
 Classify the remaining text by shape:
 
-- **Diff** — the request names a resolvable change: a sha, branch, PR, "the last commit", "what you just did", "this change".
+- **Diff** — the request names a resolvable change: a commit ID, change ID, bookmark, PR, "the last commit", "what you just did", "this change".
 - **Recap** — the request asks what happened over time ("what did I do this week", "catch me up", "prep me for standup"), **or names a time window and little else** ("since last Monday", "last week", "the past 3 days", "this sprint"). A bare window is a recap request, not a topic to be explained — do not read "since last Monday" as a concept called "since last Monday".
 - **Idea** — the request presents a proposal or notion of the user's to be understood: "explain my idea of X", "what would Y imply". The idea is a fixed given (see SKILL.md Boundaries).
 - **Concept** — everything else: a topic, pattern, subsystem, or external subject to learn.
 
-**Resolving the window (recap mode).** A window arrives either as a token value (`since:monday`) or as prose ("since last Monday", "the past 3 days") — resolve both the same way, to a concrete date range, and name that resolved range in the artifact's `Subject`. `since last Monday` and `since:monday` mean the same thing; a colon must not change the answer. Fall back to the last 7 days only when the request names no window at all, and never silently substitute that default for a window the user did name — if a named window can't be resolved confidently, say what you used.
+**Resolving the window (recap mode).** Resolve a time window from either a token value (`since:monday`) or prose ("since last Monday", "the past 3 days") to the same concrete date range. For a since-ref, keep the requested ref and let the scout verify it in the intended history; the scout reports its resolved commit and date for the artifact's `Subject`. Name the resolved window in the `Subject`. Fall back to the last 7 days only when the request names no window at all, and never silently substitute that default for a window the user did name — if a named window can't be resolved confidently, report the uncertainty and any explicitly allowed substitute.
 
 **Tiebreak — concept vs diff:** when the request is plausibly both (a repo topic that also names an identifiable recent change, e.g. "explain the retry logic we just added"), a concretely resolvable change wins: diff mode, with the concept as framing context. A topic with no resolvable change is a concept.
 

@@ -11,7 +11,7 @@ Act as a QA engineer who dogfoods the **active branch** end-to-end, autonomously
 
 **Outcome:** every user-visible change this branch introduced has been driven in a real browser along its whole journey, judged for correctness and for how it feels to the product's personas, with small breakages fixed, regression-tested, and committed. **Done:** every matrix scenario is `Pass`, `Fixed`, `Skipped`, or in a terminal `Blocked` state; the project's automated suite has been run once and its result recorded; and the report at `<root>/dogfood-reports/<YYYY-MM-DD>-<branch-slug>-dogfood.md` is finalized against its template and committed. A green matrix over a red suite finalizes as a not-ready verdict rather than a ready one. Chasing that suite green is not this run's job.
 
-This is **diff-scoped**, not whole-app exploration. You test what *this branch* introduced or modified versus the trunk.
+This is **diff-scoped**, not whole-app exploration. Test what the target introduced versus the trunk, or versus the PR's own base for a PR target.
 
 **Read `references/phases.md` before Phase 0 (Scope) and follow it.** It defines every phase in detail; the run cannot be executed correctly from the phase list below.
 
@@ -21,7 +21,7 @@ This is **diff-scoped**, not whole-app exploration. You test what *this branch* 
 - Never dogfood the trunk on a branch-name or blank target — there is no diff. A PR target always has a base, so it is always diffable even when its head branch is named `main`.
 - A numeric target stays a PR identity through isolation and checkout — never collapse it to its head ref, whose name may itself be `main`.
 - Never switch the primary checkout out from under the user. Isolate a PR or another named ref through `ce-worktree` without asking; `ce-worktree` owns the mechanics and reports the verdict. A blank or current-branch target runs in place.
-- Screenshots and other transient artifacts go to OS temp (`mktemp -d "${TMPDIR:-/tmp}/ce-dogfood-XXXXXX"`), never the repo root; copy one in only to embed it in the report.
+- Keep screenshots, server logs, and other transient artifacts, including failure output, in a run directory under the tested workspace's ignored `.tmp/rocketclaw/`. Copy a screenshot into the report's tracked directory only to embed it.
 - Auto-fix only what is small, well-understood, and low-risk. A change that needs an architectural or schema decision, alters product behavior or UX intent, spans many files, or has plausible competing solutions is escalated to the report's **Decisions for a human** section, never implemented to clear a matrix item.
 
 ## Prerequisites
@@ -36,16 +36,16 @@ This is **diff-scoped**, not whole-app exploration. You test what *this branch* 
 Reports live under `<root>/dogfood-reports/` and personas under `<root>/personas/`. Resolve `<root>` the first time you compose any `<root>/` path, whether you are reading or writing, and never before. A run that composes none skips it.
 
 <!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Read** `docs_root` from the tested workspace's `.rocketclaw/config.yaml` only. Use the absolute JJ workspace root (`jj workspace root`); do not read `docs_root` from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/` or `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
 
 ## Delegation
 
-`ce-dogfood` is an orchestrator: prefer an existing CE skill over re-deriving its behavior. Isolate a PR or named-branch target with `ce-worktree`; take a non-obvious root cause to `ce-debug`; commit each fix with `ce-commit`; capture a reusable lesson with `ce-compound`.
+`ce-dogfood` is an orchestrator: load the applicable skill in OpenCode rather than re-deriving its behavior. Isolate a PR or named-bookmark target with `ce-worktree`; take a non-obvious root cause to `ce-debug`; commit each fix with `ce-commit`; capture a reusable lesson with `ce-compound`.
 
 ## Compound Packs
 

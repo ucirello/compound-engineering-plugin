@@ -4,6 +4,8 @@ Read this once per babysit session, before acting on the first tick's output. It
 
 ## How the watch sustains itself
 
+Resume in the same workspace and state directory rather than starting a second writer for the same PR in a different workspace with a different journal.
+
 Keep monitoring until a stop condition is met. **Choosing the wake source** below decides what brings this agent back; the default is the change detector, `pr-snapshot watch`. It runs the snapshot's fetch→diff on an interval, uses **no agent tokens**, and prints one `BABYSIT_WAKE {reason,url,...}` line *only* when there is work to inspect or a stop condition, then exits. Wait for that line with the harness's tools, run one tick, and re-arm the detector. With the detector as the wake source, keep the session active while waiting, so each wake returns to this agent with the conversation's decisions intact.
 
 The tick decides from the fresh snapshot, not from the wake reason. The reason says why the detector fired and which reference owns the follow-up:
@@ -32,16 +34,19 @@ Use the harness's tools to run the detector and wait for its output. A skill dri
 
 | Harness | Run and wait tools | Durable beyond the session? |
 |---------|--------------------|-----------------------------|
+| OpenCode | Native background shell with completion notification returning to this session; handle the notified `BABYSIT_WAKE` without polling the job | No (session-bound) — authorized durable scheduler or cron for headless runs |
 | Claude Code (CLI) | background `Bash` + a `Monitor`/wait; or `ScheduleWakeup` under `/loop` | No (session-bound) — cron for durable |
 | Grok (CLI/TUI) | background `run_terminal_command` + `get_command_or_subagent_output`; `scheduler_create --durable` for a cross-session schedule | Yes via `scheduler_create --durable` (60s min, 7d) |
 | Cursor (CLI) | `Shell` background + `notify_on_output` sentinel (its `/loop` is user-typed, **not** skill-invocable) | No (session-bound) |
 | Codex (CLI) | `exec_command` to start the detector, then `write_stdin` to wait on the returned process session | No (session-bound) |
 
+In OpenCode, set the allowed shell timeout long enough for the selected wait when the tool requires one. A tool timeout or shell failure is not a PR signal; if the process cannot reliably wake this session, report the limitation and use the permitted checkpoint path rather than claiming the watch is armed.
+
 **User-runnable resume syntax.** Whenever this reference tells the skill to print or copy a resume invocation, default to `/ce-babysit-pr <url>` and, when the run posture is not `target`, append the same `posture:stack-ready` or `posture:stack-land` token so checkpoint / durable / session re-entry keeps stack scope. Use `$ce-babysit-pr <url> [posture:…]` only when the active host is Codex or explicitly documents dollar-prefixed skill invocation. Render only the invocation as inline code and output one form only.
 
 **Checkpoint:** Use checkpoint mode only when the user requests it or nothing can wake this agent. Run one tick, persist state, report, and print the exact host-rendered resume invocation. Say monitoring is paused. Never fake a loop with a foreground `sleep` or an unmanaged detached process.
 
-**Durability:** the in-session watch dies with the session. Re-invoking the skill resumes from disk, because `/tmp` persists across ticks. For an unattended multi-day watch, escalate to a durable scheduler: Grok's `scheduler_create --durable`, or cron running `<cli> exec '<host-rendered resume invocation>'`. A fresh headless run has no memory of this conversation, so persist consequential decisions to disk.
+**Durability:** the in-session watch dies with the session. Re-invoking in the same JJ workspace resumes from its ignored `.tmp/rocketclaw/` state. For an authorized unattended multi-day watch, use a supported durable scheduler, or cron with the documented native headless CLI (`opencode run` in OpenCode) for the exact workspace and `/ce-babysit-pr` command. A fresh headless run has no memory of this conversation, so persist consequential decisions to disk. Other hosts' mappings above are compatibility notes, not alternate dispatch paths from OpenCode.
 
 ## Choosing the wake source
 
@@ -53,7 +58,7 @@ One wake source brings this agent back for each tick. Choose it once, before the
 | Nothing, or it only offers an optional PR-watch tool | The detector, which sees more states than a host's event feed. Do not add the host's tool. |
 | Its instructions or tools leave this run no way to be woken, such as a delegated run that must not wait | Checkpoint, or in `mode:pipeline` one tick and return. |
 
-Host instructions outrank this skill's default here. Never run both sources to satisfy both rules: that breaks the one-watcher boundary and produces duplicate wakes. Ending the turn is correct when an armed wake source will bring this agent back, and wrong when nothing will.
+Host instructions outrank this skill's default here. Honor standing opt-outs and the selected watch mode. Once the workspace and exact head pass the alignment gate, start/re-arm authorized monitoring without asking; do not bypass a denial or an unsafe head state. Never run both sources: that breaks the one-watcher boundary and produces duplicate wakes. Ending the turn is correct when an armed wake source will bring this agent back, and wrong when nothing will.
 
 The wake source decides only how control returns. Every tick still starts from a fresh snapshot and still runs `ce-resolve-pr-feedback` and `ce-debug` as usual. Marks, posture, and true stops do not change. The report adds only which PR activity may go unnoticed.
 
@@ -79,7 +84,7 @@ When the host's mechanism is the wake source:
 
 ## Pipeline mode bound (`mode:pipeline`)
 
-An orchestrator (`lfg`) drives ticks in-line and needs the loop to terminate. Run ticks back-to-back until one of the stops below. **To wait for CI to progress between ticks, use the harness's native non-blocking wait — never a bare foreground `sleep`** (blocked on Claude Code, discouraged elsewhere). Examples: Claude Code's `Monitor` until-loop; Grok's `get_command_or_subagent_output(timeout_ms=…)` or a `monitor`; Cursor's `Await` on a backgrounded `gh pr checks --watch`. When the host's instructions dictate PR waits and its wake returns to this session, arm that wake and end the turn; the wake resumes these ticks. If nothing can wake the run, do one tick and return control to the orchestrator rather than busy-spinning. Loop until:
+An orchestrator (`lfg`) drives ticks in-line and needs the loop to terminate. Run ticks back-to-back until one of the stops below. **To wait for CI to progress between ticks, use the host's native non-blocking wait — never a bare foreground `sleep`.** In OpenCode use the permitted native shell's completion notification as above, or a designated host wake that returns to this session, while respecting the pipeline bound. If nothing can wake the run, do one tick and return control to the orchestrator rather than busy-spinning. Loop until:
 
 - the pipeline stop in `references/pipeline.md` returns success or `needs-human`; it owns both gates. Anything short of them keeps ticking until it clears or the time budget expires; or
 - a **budget** is hit. The default is **3 CI fix rounds** per head-lineage and an overall time cap of about 30-45 minutes. When the budget runs out, the still-red checks and any `needs-human` items become residuals.
@@ -108,7 +113,7 @@ A loop can churn without finishing. Three shapes: CI **ping-pong** (fix A surfac
 
 ## On-disk state contract
 
-State lives at `<scratch-root>/ce-babysit-pr/<host>-<owner>-<repo>-<pr>/state.json`. That path is stable and reusable across invocations, so any later tick (scheduled or hand-run) finds it. The `<host>` segment (from the PR URL; `github.com` on the public host) is required for GitHub Enterprise: without it, two PRs sharing `owner/repo#N` on different hosts would reuse one `state.json` and cross-contaminate dispositions. The `pr-snapshot` script performs all reads and writes under a file lock. Shape:
+State lives at `<workspace-root>/.tmp/rocketclaw/ce-babysit-pr/<host>-<owner>-<repo>-<pr>/state.json`. That path is stable across invocations in the same workspace, so later ticks (scheduled or hand-run) find it. The `<host>` segment (from the PR URL; `github.com` on the public host) is required for GitHub Enterprise: without it, two PRs sharing `owner/repo#N` on different hosts would reuse one `state.json` and cross-contaminate dispositions. The `pr-snapshot` script performs all reads and writes under a file lock. Shape:
 
 ```json
 {

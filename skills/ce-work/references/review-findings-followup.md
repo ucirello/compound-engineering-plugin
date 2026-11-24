@@ -1,6 +1,6 @@
 # Apply Code Review Findings (after `ce-code-review`)
 
-Load this reference when `ce-code-review` has finished and **ce-work** (or another caller) should apply fixes before the Residual Work Gate.
+Load this reference when `ce-code-review` has finished and **ce-work** (or another caller) should apply fixes before the Residual Work Gate. Resolve the sibling references below from the loaded `ce-work` skill, even when a different skill owns the tail.
 
 `ce-code-review` is invoked here with `mode:agent`, so it is **review-only** in this context — it reports findings and writes artifacts and does not mutate the checkout, commit, push, or file tickets. **The caller decides which fixes to apply and how.** Standalone review is also report-only unless local apply was explicitly authorized.
 
@@ -46,7 +46,7 @@ Apply justified fixes within the agreed scope when they can be reversed. Use pro
 
 Defer a fix when essential evidence is unavailable, the user must choose a product preference, the work would expand the agreed scope, or the calling agent lacks permission. Passing tests do not prove an unverified safety property or authorize changing an agreed requirement. At the Residual Work Gate, explain what decision is needed and what depends on it.
 
-Read the relevant source or assign a subagent to investigate a specific question. Use `ce-pov` only when an important, specific choice needs an independent assessment beyond ordinary inspection. Reviewer disagreement alone is not enough. Give it the subject, known constraints, and locations of supporting evidence. Use its answer or explanation of missing context to inform your decision. Neither gives permission to edit or automatically start a panel of models.
+Read the relevant source or assign a permitted OpenCode subagent to investigate a specific question under the permission/model/depth rules in `references/execution-strategy.md`. Use `ce-pov` only when an important, specific choice needs an independent assessment beyond ordinary inspection. Reviewer disagreement alone is not enough. Give it the subject, known constraints, and locations of supporting evidence. Use its answer or explanation of missing context to inform your decision; report missing required independence as incomplete. Neither gives permission to edit or automatically start a panel of models.
 
 ## Execution — orchestrator reviews and groups findings, then applies or delegates
 
@@ -61,7 +61,7 @@ Dispatch file-grouped subagent batches when fixes need code you have not read, o
 
 1. Sort applicable findings by severity (P0 first).
 2. **Group by `file`.** All eligible findings on the same file → **one subagent** (it loads the file once and works through its `#` list in severity order).
-3. **Parallel waves:** batches with **disjoint file sets** may run in parallel (same worktree / shared-directory rules as `ce-work`'s execution strategy in `references/execution-strategy.md`).
+3. **Parallel waves:** batches with **disjoint file sets** may run in parallel under the native permission/model/depth and isolated JJ/shared-workspace rules in `references/execution-strategy.md`.
 4. **Same file, many findings:** keep one subagent per file. If the prompt would exceed a comfortable size (~8 findings), split into **serial** subagent passes on that file (first batch highest severity, then next batch after merge or after the prior agent returns).
 5. **Cross-file coupling:** do not merge unrelated files into one subagent just to reduce agent count; file grouping is the default. Only co-batch multiple files when findings explicitly reference the same small related change (rare); when in doubt, separate by file.
 
@@ -71,7 +71,7 @@ Dispatch file-grouped subagent batches when fixes need code you have not read, o
 - Do not re-run `ce-code-review`
 - Shared-directory fallback: do not stage or commit; return which `#` were applied or skipped and which files changed
 
-**After inline fixes and after each wave:** orchestrator reviews diffs (scope = assigned `#` only), runs tests (`requires_verification: true` on any applied finding → at least targeted tests; multi-file → broader suite), commits (`fix(review): apply findings #…`) unless worktree-isolated subagents merge per Phase 1. Repeat until all batches complete.
+**After inline fixes and after each wave:** the orchestrator inspects and integrates actual JJ deltas (scope = assigned `#` only), runs tests (`requires_verification: true` on any applied finding → at least targeted tests; multi-file → broader suite), then uses the sole composition and path-limited commit procedure in `references/implementation-loop.md#change-description-standards`, with the applied findings as semantic input. For isolated work, follow the normal integration and authorized retirement rules in `references/execution-strategy.md`. Repeat until all batches complete.
 
 ### Summary (required)
 

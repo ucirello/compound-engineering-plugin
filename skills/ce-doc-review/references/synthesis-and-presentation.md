@@ -69,7 +69,7 @@ When findings merge:
 
 Agreement can strengthen the evidence but does not make an issue important. Raise confidence by at most **one anchor step** only when the combined evidence meets the next level's definition. Several reviewers noticing a nit does not make it worth fixing. A significant defect needs no second vote to be retained.
 
-For local personas, independence requires separate dispatched contexts; an inline fallback cannot trigger anchor promotion. Cross-model corroboration requires `independence_verified: true`, at least one in-process contributor, and an independence-verified peer. A missing or false flag cannot trigger anchor promotion. Cursor default/Auto is not verified independence unless the run recorded which model actually answered. Peer-only agreement never promotes, and additional peers never stack the promotion.
+For local personas, independence requires separate dispatched contexts; an inline fallback cannot trigger anchor promotion. Cross-model corroboration requires `independence_verified: true`, at least one in-process contributor, and a native receipt verifying a different serving model and family on the required route. A same-model context or missing or false flag cannot trigger cross-model promotion. Peer-only agreement never promotes, and additional peers never stack the promotion.
 
 Record any justified promotion with the finding, naming the cross-model reviewer and its verified model or route. It is internal evidence and is not rendered. Keep the stored reviewer identities. Findings dropped at anchors 0/25 do not return through agreement. Corroboration never grants permission to apply fixes: the limits on peer-only findings in 3.6 (Resolve Who Can Choose the Fix) and 3.7 (Route by Autofix Class) still apply.
 
@@ -281,16 +281,20 @@ Review complete
 
 Omit any section with zero items; Coverage follows the same condition as the interactive Coverage line in `references/review-output-template.md`. The bucket names are the user-facing vocabulary for the routes 3.7 assigned. "Applied N fixes" reports what already changed. The obligations block and "Proposed fixes" together render the grouped confirmation: obligations first, then the rest of the batch, each shaped by the floor's "Presenting a batch" rule. The caller re-narrates this result to a reader who has seen none of it, so a flat list here becomes a flat list there. "Decisions" carries the decisions the user must still make, and "FYI observations" carries anchor `50`. End with "Review complete" as the final line so callers can detect completion.
 
-**Deliver the result through a file.** Write the block, exactly as specified, to `result.md` in a private run directory, then print only the three lines below as your final output. Create the directory with this block (`<run-id>` is the current date and time plus a short random suffix, e.g. `20261030-0114-a3f9c1`):
+**Deliver the result through a file.** Write the block, exactly as specified, to `result.md` in a private run directory, then print only the three lines below as your final output. Use this same directory for saved review state, peer receipts and slices; create it before dispatch when needed. `<run-id>` is the current date and time plus a short random suffix (e.g. `20261030-0114-a3f9c1`); on resume, reuse the known directory only after verifying its path and ownership. Outside JJ, use the standalone directory's local `.tmp/`. Never fall back outside the workspace when its scratch path is unsafe or unwritable.
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
-if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
-(umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
-if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
-chmod 700 "$SCRATCH_ROOT" || exit 1;
-RUN_DIR="$SCRATCH_ROOT/ce-doc-review/<run-id>"; (umask 077; mkdir -p "$RUN_DIR") || exit 1; chmod 700 "$RUN_DIR" || exit 1; echo "$RUN_DIR"
+BASE="<absolute root from jj workspace root, or physical cwd only when standalone>"
+RUN_DIR="$BASE/.tmp/rocketclaw/ce-doc-review/<run-id>"
+for DIR in "$BASE/.tmp" "$BASE/.tmp/rocketclaw" "$BASE/.tmp/rocketclaw/ce-doc-review"; do
+  if [ ! -e "$DIR" ] && [ ! -L "$DIR" ]; then (umask 077; mkdir -- "$DIR") || exit 1; fi
+  if [ -L "$DIR" ] || [ ! -d "$DIR" ] || [ ! -O "$DIR" ] || [ ! -w "$DIR" ]; then
+    echo "unsafe or unwritable scratch directory: $DIR" >&2
+    exit 1
+  fi
+done
+(umask 077; mkdir -- "$RUN_DIR") || exit 1
+printf '%s\n' "$RUN_DIR"
 ```
 
 ```
@@ -301,7 +305,7 @@ Review complete
 
 Name only the counts that are non-zero, and say "no open items" when nothing remains. If the file cannot be written, print the whole block in the chat instead; a caller must always receive the result one way or the other.
 
-When a trio lens was activated, keep `peer.outcome` even though empty sections are omitted; omit it and its lens lines when none was. The owed lenses are each activated trio lens plus the whole-doc sweep. Write `peer.outcome: folded` only when every owed lens folded a different-provider peer artifact. Any other result, including a peer that started and then failed or timed out, is `peer.outcome: in-process-fallback`. Under it, give each owed lens that did not fold exactly one line, chosen by whether there is positive evidence that its peer did not run: it never started, the script skipped it, or the worker reported the transport unavailable before egress. With that evidence, use the not-run line with the observed reason: `<lens>: in-process fallback (cross-model peer not run: <reason>)` for a trio lens, and `whole-doc: not run (cross-model peer not run: <reason>)` for the whole-doc sweep, which has no in-process reviewer. Without it, the peer ran or may have run, so use `cross-model <lens> peer: <what happened to the peer's result>`: the job's terminal state (`failed`, `timeout`, `died-without-result`), or what kept a finished result from folding, such as no usable output or a read the runner could not verify.
+When a trio lens was activated, keep `peer.outcome` even though empty sections are omitted; omit it and its lens lines when none was. The owed lenses are each activated trio lens plus the whole-doc sweep. Write `peer.outcome: folded` only when every owed lens folded a peer artifact with verified different-provider independence on the required route. Any other result is `peer.outcome: in-process-fallback`, even if unverified findings were retained as attributed evidence. Give each unfulfilled leg exactly one line. With positive evidence that its peer did not start, use `<lens>: in-process fallback (cross-model peer not run: <observed reason>)` for a trio lens, and `whole-doc: not run (cross-model peer not run: <observed reason>)` for the sweep, which has no in-process reviewer. Otherwise use `cross-model <lens> peer: <what happened to the peer's result>`: the observed terminal state (`failed`, `timeout`, `died-without-result`), malformed output, unverified collection, unmet fixed route/model/effort, or unverified independence. Name whole-doc coverage loss after shared infrastructure failure. The ordinary review can complete without this additive pass, but never describe cross-model coverage as complete on fallback.
 
 **Count findings by their final route.** Obligations still awaiting grouped confirmation count as proposed fixes; grouping changes presentation, not the count. Obligations already applied count only as applied fixes. Do not export a separate obligation count: the caller uses the proposed-fixes count to detect pending approval, so it must include every pending edit and exclude edits that already landed.
 
@@ -313,7 +317,7 @@ Present findings using the review output template (read `references/review-outpu
 
 ### Protected Artifacts
 
-During synthesis, discard any finding that recommends deleting or removing a CE pipeline artifact: any file **under** a `plans/`, `solutions/`, `ideation/`, `explainers/`, `pulse-reports/`, `dogfood-reports/`, `feedback-sweep/`, or `personas/` directory (or the legacy `brainstorms/` one) **whose immediate parent is the artifact root**. The artifact root is a directory named `docs` — the default, and where unmigrated legacy artifacts stay even after a project sets `docs_root` — or the configured `docs_root` when this run resolved it. Matching by that parent covers nested category files (`solutions/<category>/foo.md`) while leaving a same-named directory elsewhere — a skill's own `references/personas/` prompt assets, whose parent is `references` — as ordinary code whose deletion finding stands. A review that never resolved a configured root still protects the `docs`-parented tree (default and legacy). An artifact under a configured root seen by such a run is the one case this rule does not cover.
+During synthesis, discard any finding that recommends deleting or removing a workflow artifact: any file **under** a `plans/`, `solutions/`, `ideation/`, `explainers/`, `pulse-reports/`, `dogfood-reports/`, `feedback-sweep/`, or `personas/` directory (or the legacy `brainstorms/` one) **whose immediate parent is the artifact root**. The artifact root is a directory named `docs` — the default, and where unmigrated legacy artifacts stay even after a project sets `docs_root` — or the configured `docs_root` when this run resolved it. Matching by that parent covers nested category files (`solutions/<category>/foo.md`) while leaving a same-named directory elsewhere — a skill's own `references/personas/` prompt assets, whose parent is `references` — as ordinary code whose deletion finding stands. A review that never resolved a configured root still protects the `docs`-parented tree (default and legacy). An artifact under a configured root seen by such a run is the one case this rule does not cover.
 
 ## Phase 5: Return to the Caller
 

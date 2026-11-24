@@ -13,6 +13,8 @@ Riffrec is a browser-based capture tool that records the screen, microphone audi
    - Confirm a sample session ends with a downloadable `riffrec-*.zip`.
 3. Once a zip exists, the user runs this skill again with the zip path. The skill will pick the **quick bug report** or **extensive analysis** path automatically based on length and content.
 
+Riffrec capture does not require OpenCode. To use RocketClaw's deep delegation in OpenCode V2 for downstream analysis, merge `"experimental": { "subagent_depth": 3 }` into `~/.config/opencode/opencode.json`. Use `opencode debug paths` or `opencode debug paths config` to locate the actual user config and edit its existing `opencode.json` or `opencode.jsonc` rather than creating a competing file. Preserve unrelated settings, other `experimental` fields, and any existing integer depth above `3`. Do not let a higher-precedence config lower it below `3`. Installing the plugin or relying on its package-local config alone does not enable deep delegation in consuming projects.
+
 ## Recommended capture habits
 
 Surface these to the user during setup so the recordings they share later are easy to analyze:

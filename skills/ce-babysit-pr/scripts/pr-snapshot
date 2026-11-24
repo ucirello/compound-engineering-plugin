@@ -47,6 +47,7 @@ import time
 import uuid
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
+from functools import lru_cache
 from urllib.parse import quote, urlsplit
 
 IS_WINDOWS = sys.platform == "win32"
@@ -289,24 +290,33 @@ def _iso(dt):
     return dt.isoformat()
 
 
-def _run(cmd):
+@lru_cache(maxsize=1)
+def _jj_context():
+    workspace = subprocess.run(
+        ["jj", "--ignore-working-copy", "workspace", "root"], cwd=os.getcwd(),
+        capture_output=True, check=True, text=True,
+    ).stdout.strip()
+    git_dir = subprocess.run(
+        ["jj", "--ignore-working-copy", "git", "root"], cwd=workspace,
+        capture_output=True, check=True, text=True,
+    ).stdout.strip()
+    return workspace, git_dir
+
+
+def _run(cmd, *, timeout=None):
     # gh honors CLICOLOR_FORCE / GH_FORCE_TTY even for --json output, and a host that exports them
     # (observed under orca) makes every JSON read unparsable. Pin plain output regardless of caller env.
     env = os.environ.copy()
     env["NO_COLOR"] = "1"
     env.pop("CLICOLOR_FORCE", None)
     env.pop("GH_FORCE_TTY", None)
-    return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", env=env)
-
-
-def _run_git(cmd):
-    env = os.environ.copy()
-    env["GIT_TERMINAL_PROMPT"] = "0"
-    env["GCM_INTERACTIVE"] = "never"
-    env["GIT_ASKPASS"] = ""
-    env["SSH_ASKPASS"] = ""
+    env["GH_PROMPT_DISABLED"] = "1"
+    cwd = None
+    if cmd[:1] == ["gh"] and cmd[1:2] != ["api"]:
+        cwd, env["GIT_DIR"] = _jj_context()
     return subprocess.run(
-        cmd, capture_output=True, text=True, encoding="utf-8", env=env, timeout=30,
+        cmd, cwd=cwd, capture_output=True, text=True, encoding="utf-8", env=env,
+        timeout=timeout,
     )
 
 
@@ -473,14 +483,41 @@ query($owner:String!,$repo:String!,$pr:Int!){
     return value if isinstance(value, dict) else None
 
 
+def _graphql_exact_ref(owner, name, ref, host):
+    """A separate repository ref query, not the PR mergeability result."""
+    query = """query($owner: String!, $repo: String!, $qualified: String!) {
+      repository(owner: $owner, name: $repo) {
+        ref(qualifiedName: $qualified) { name prefix target { oid } }
+      }
+    }"""
+    try:
+        result = _run([
+            "gh", "api", "graphql", *_host_args(host), "-f", f"owner={owner}",
+            "-f", f"repo={name}", "-f", f"qualified=refs/heads/{ref}", "-f",
+            f"query={query}",
+        ], timeout=30)
+        if result.returncode != 0:
+            return None
+        response = json.loads(result.stdout)
+        if response.get("errors"):
+            return None
+        found = response["data"]["repository"]["ref"]
+        oid = found["target"]["oid"]
+        if found["prefix"] == "refs/heads/" and found["name"] == ref and _valid_oid(oid):
+            return oid
+    except (subprocess.TimeoutExpired, OSError, KeyError, TypeError, ValueError, AttributeError):
+        pass
+    return None
+
+
 def fetch_base_ref(owner, name, ref, merge_identity, host=None):
     """Bind GitHub's mergeability observation to an independently probed current base ref.
 
     `baseRefOid` is retained only as historical PR metadata. Current identity comes from both the
     PR's `baseRef.target.oid` and an exact Git-ref read; a usable generated test merge must then
     name that base and the observed PR head as its two parents. Some valid private-repository OAuth
-    sessions return 404 from the REST Git-ref endpoint, so that response falls back to the Git
-    transport while preserving exact-ref matching and non-interactive failure behavior.
+    sessions return 404 from the REST Git-ref endpoint, so that response falls back to a
+    separate exact repository-ref GraphQL query, never to the PR response itself.
     """
     historical_oid = (merge_identity or {}).get("baseRefOid")
     head_oid = (merge_identity or {}).get("headRefOid")
@@ -516,32 +553,11 @@ def fetch_base_ref(owner, name, ref, merge_identity, host=None):
         "--jq", ".object.sha",
     ])
     current_oid = (r.stdout or "").strip()
-    if r.returncode != 0 and re.search(r"\bHTTP\s+404\b", r.stderr or "", re.IGNORECASE):
-        exact_ref = f"refs/heads/{ref}"
-        remote_url = (f"https://{host or 'github.com'}/"
-                      f"{quote(owner, safe='')}/{quote(name, safe='')}.git")
-        try:
-            # Reuse the gh session (GH_TOKEN or keyring) as git's credential source so a
-            # headless host with no configured Git credential helper is not anonymous here.
-            git_result = _run_git([
-                "git", "-c", "core.askPass=",
-                "-c", "credential.helper=",
-                "-c", "credential.helper=!gh auth git-credential",
-                "ls-remote", "--exit-code", "--refs",
-                remote_url, exact_ref,
-            ])
-        except (subprocess.TimeoutExpired, OSError):
-            git_result = None
-        if git_result is not None and git_result.returncode == 0:
-            matches = []
-            for line in (git_result.stdout or "").splitlines():
-                fields = line.split()
-                if len(fields) == 2 and fields[1] == exact_ref and _valid_oid(fields[0]):
-                    matches.append(fields[0])
-            if len(matches) == 1:
-                current_oid = matches[0]
-                r = git_result
-    if r.returncode != 0 or not _valid_oid(current_oid):
+    if r.returncode != 0:
+        current_oid = (_graphql_exact_ref(owner, name, ref, host)
+                       if re.search(r"\bHTTP\s+404\b", r.stderr or "", re.IGNORECASE)
+                       else None)
+    if not _valid_oid(current_oid):
         return base
     base["oid"] = current_oid
     if not (_valid_oid(graphql_oid) and _valid_oid(head_oid)):
@@ -1394,7 +1410,7 @@ def _empty_trajectory():
 
 def _load_trajectory(state):
     """Load the trajectory, tolerating a partial or non-dict value from an older on-disk
-    state.json (persisted in /tmp across script versions) — backfill missing keys so a new
+    state.json (persisted in the workspace-local state directory) — backfill missing keys so a new
     field never KeyErrors an old state, and a null/garbage value never crashes."""
     tj = state.get("trajectory")
     if not isinstance(tj, dict):

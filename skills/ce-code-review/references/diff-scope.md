@@ -4,13 +4,11 @@ These rules apply to every reviewer. They define what is "your code to review" v
 
 ## Scope Discovery
 
-Determine the diff to review using this priority order:
-
-1. **User-specified scope.** If the caller passed `BASE:`, `FILES:`, or `DIFF:` markers, use that scope exactly.
-2. **Working copy changes.** If there are unstaged or staged changes (`git diff HEAD` is non-empty), review those.
-3. **Unpushed commits vs base branch.** If the working copy is clean, review `git diff $(git merge-base HEAD <base>)..HEAD` where `<base>` is the default branch (main or master).
-
-The scope step in the SKILL.md handles discovery and passes you the resolved diff. You do not need to run git commands yourself unless PR scope mode requires it (below).
+Use only the supplied `BASE:`, `FILES:`, `DIFF:`, and captured endpoint IDs.
+Stage 1 resolved the range; a reviewer never recomputes it from a moving
+bookmark or working copy. Run JJ inspection from the supplied absolute
+workspace root with `--ignore-working-copy`. Use `GIT_DIR=$(jj git root)`
+from the same root for repository-scoped `gh` calls.
 
 ## Remote scope (`pr-remote` and `branch-remote`)
 
@@ -18,13 +16,13 @@ When the review context includes `<pr-scope-mode>pr-remote</pr-scope-mode>` or `
 
 Instead:
 
-- Prefer `git show <remote-head-ref>:<path>` when `<pr-head-ref>` or `<branch-head-ref>` is provided in context.
+- Prefer `jj --ignore-working-copy file show -r "$REVIEW_HEAD" -- "$PATH_IN_REPO"` when `<pr-head-ref>` or `<branch-head-ref>` is available. For unusual names, pass a literal `file:` fileset with the path properly quoted.
 - Otherwise rely on diff hunks in the provided `<diff>` only.
 - Do not treat local workspace contents as evidence for findings on changed files.
 
 ## Whole-file deletions
 
-A file the change deletes appears in the diff as a header only: `deleted file mode` and its path. Its old body is left out. The `<deleted-files>` block in your review context lists each one with what it exported and whether it ran anything at import time. Read a body only when a finding needs it, with `git show <base>:<path>` against the base that block names.
+A file the change deletes appears in the diff as a header only: `deleted file mode` and its path. Its old body is left out. The `<deleted-files>` block lists its known exports and import-time effects. Read a body only when a finding needs it, using `jj --ignore-working-copy file show -r "$REVIEW_BASE" -- "$PATH_IN_REPO"` against the base the block names.
 
 Whether the surviving tree still uses a deleted file is the correctness and adversarial reviewers' question; their personas say what to check. That check needs the reviewed tree, and a body needs the base the block names. When you cannot read one of them (for example, remote scope with no head ref, or a block with no base), record in `residual_risks` which deleted files went unchecked and why; never report their liveness as checked. Every other reviewer reviews the files that survive, including what the deletion left behind there: imports, props, styles, flags, and assets that no longer have a reader. The body of a deleted file is not code to review.
 
@@ -38,7 +36,12 @@ Recall depends on how you find related code. A diff-local read plus a text `grep
 
 No tool is complete: dynamic dispatch, reflection, dependency injection, string-keyed routes/config, generated code, and external consumers hide usages from all of them. This only bites a claim that rests on *exhaustive* coverage — "this symbol is unused," "nothing else calls this," "safe to change." For such a claim, when coverage is text-search-only or a hiding construct could apply, record the unresolved boundary in `residual_risks` (e.g. `callsite completeness: grep-only`) or step the finding down, rather than asserting absence or safety. A finding that does not turn on exhaustive coverage needs no such note.
 
-In `pr-remote` / `branch-remote` scope these tiers inspect the working tree, which is not the reviewed head — apply the Remote scope rules above (`git show` / `git grep <remote-head-ref>`) instead of local search.
+In `pr-remote` / `branch-remote` scope these tiers inspect the wrong tree
+unless explicitly bound to the captured head. Use
+`jj --ignore-working-copy file search -r "$REVIEW_HEAD" --pattern "$PATTERN"`
+for text search and `jj --ignore-working-copy file annotate -r "$REVIEW_HEAD" -- "$PATH_IN_REPO"`
+for provenance. Use the same pinned reads in local scope if workspace files
+no longer match the captured tree.
 
 ## Finding Classification Tiers
 

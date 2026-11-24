@@ -117,7 +117,14 @@ CENSOR_STATUS_FILE=""
 if [[ -n "$CENSOR_AFTER" ]] && awk -v a="$CENSOR_AFTER" -v t="$TIMEOUT" 'BEGIN { exit !(a ~ /^[0-9]+(\.[0-9]+)?$/ && t+0 == t && a+0 > 0 && a+0 < t+0) }'; then
   TIMEOUT="$CENSOR_AFTER"
   CENSORING=1
-  CENSOR_STATUS_FILE=$(mktemp "${TMPDIR:-/tmp}/ce-optimize-censor-XXXXXX")
+  if TEMP_ROOT=$(jj workspace root 2>/dev/null); then
+    TEMP_ROOT="$TEMP_ROOT/.tmp"
+  else
+    TEMP_ROOT="$(pwd -P)/.tmp"
+  fi
+  mkdir -p -- "$TEMP_ROOT"
+  CENSOR_STATUS_FILE=$(mktemp "$TEMP_ROOT/ce-optimize-censor-XXXXXX")
+  trap 'rm -f -- "$CENSOR_STATUS_FILE"' EXIT
 fi
 
 # Run the measurement command with timeout
@@ -132,9 +139,7 @@ if [[ $CENSORING -eq 1 ]]; then
     status=$(cat "$CENSOR_STATUS_FILE")
   elif [[ $status -eq 124 ]]; then
     echo "Error: measurement censored after ${CENSOR_AFTER}s (noncompetitive bound)" >&2
-    rm -f "$CENSOR_STATUS_FILE"
     exit 125
   fi
-  rm -f "$CENSOR_STATUS_FILE"
 fi
 exit "$status"

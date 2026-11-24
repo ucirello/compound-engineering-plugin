@@ -22,7 +22,7 @@ Lite is one independent reviewer, not a smaller version of the team. Dispatch a 
 
 Lite never runs the cross-model pass.
 
-If the host cannot dispatch a subagent, run the lite review inline. The author of the plan is then reviewing its own work, so Coverage must say the lite review was not independent.
+If the native subagent cannot start, classify the actual reason in `references/dispatch.md`. The lite contract permits finishing inline after the allowed dispatch options are exhausted, when the underlying review is still permitted. Say in Coverage why the reviewer could not start and that the inline review was not independent. If it escalates to full, the full team's incomplete-stop and fallback rules apply.
 
 ## Escalation
 
@@ -32,7 +32,7 @@ When the lite result carries an `ESCALATE:` entry, or synthesis finds such a con
 
 Record the depth that ran in the result's Coverage, in both modes. Lite always produces a Coverage line, even when everything else ran as planned. Write it as a sentence that does not begin with the word "depth", for example `Coverage: lite review (one combined coherence, feasibility, and scope reviewer).` After an escalation, say the review started lite and escalated to full, and name the consequence that caused it. Full needs no Coverage mention unless something else limited it.
 
-Save the depth with the saved review state in the run directory (`$SCRATCH_ROOT/ce-doc-review/<run-id>`), together with the lite reviewer's raw return, so a resume or later round can read both.
+Save the depth with the saved review state in the private run directory (`<workspace-root>/.tmp/rocketclaw/ce-doc-review/<run-id>`, or local `.tmp/` outside JJ; see `references/synthesis-and-presentation.md`), together with the lite reviewer's raw return, so a resume or later round can read both.
 
 ## Later rounds and resume
 

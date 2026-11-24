@@ -14,7 +14,7 @@ Report first, and leave every file unchanged, unless the request tells you to ma
 
 ## The report
 
-- Open with one line: what scope was covered, which reviewers ran, and the totals per group.
+- Open with one line: what scope was covered, which reviewers ran (including inline substitutions or incomplete passes), and the totals per group.
 - Number findings continuously across three groups: **Delete**, **Refactor**, and **Encode as a test**. Each finding names its location, what is wrong, and the evidence the reviewer returned. A test deletion carries what failure the test could catch, which remaining test covers that (or that the test asserts nothing that could fail), any production seam the deletion unlocks, and how that was checked.
 - When several comments share one cause in the code, report one refactor finding for the cause, not one finding per comment.
 - List tests that fail before any change separately, as possible defects, never as deletions.

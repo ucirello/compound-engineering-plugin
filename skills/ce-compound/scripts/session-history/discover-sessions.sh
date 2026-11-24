@@ -149,7 +149,7 @@ discover_pi() {
 # with physical paths so symlinked cwds resolve to the same bucket, mirroring
 # omp's resolveEquivalentPath. Prints nothing when the cwd cannot be resolved.
 encode_omp_raw_cwd() {
-    local cwd canon_home canon_tmp rel
+    local cwd canon_home rel suffix
     cwd="$(cd "$1" 2>/dev/null && pwd -P)" || return 0
     canon_home="$(cd "$HOME" 2>/dev/null && pwd -P)" || canon_home="$HOME"
     case "$cwd" in
@@ -161,20 +161,17 @@ encode_omp_raw_cwd() {
             printf -- '-%s' "$rel"
             ;;
         *)
-            canon_tmp="$(cd "${TMPDIR:-/tmp}" 2>/dev/null && pwd -P)" || canon_tmp=""
-            case "$cwd" in
-                "$canon_tmp")
-                    printf -- '-tmp'
-                    ;;
-                "$canon_tmp"/*)
-                    rel="$(printf '%s' "${cwd#"$canon_tmp"/}" | sed 's/[/\\:]/-/g')"
-                    printf -- '-tmp-%s' "$rel"
-                    ;;
-                *)
-                    rel="$(printf '%s' "${cwd#/}" | sed 's/[/\\:]/-/g')"
-                    printf -- '--%s--' "$rel"
-                    ;;
-            esac
+            rel="$(printf '%s' "${cwd#/}" | sed 's/[/\\:]/-/g')"
+            printf -- '--%s--\n' "$rel"
+            # Legacy temp-relative bucket names do not encode the old temp
+            # root. Probe the possible suffixes; metadata confirms exact cwd.
+            suffix="${cwd#/}"
+            while [[ "$suffix" == */* ]]; do
+                suffix="${suffix#*/}"
+                rel="$(printf '%s' "$suffix" | sed 's/[/\\:]/-/g')"
+                printf -- '-tmp-%s\n' "$rel"
+            done
+            printf -- '-tmp\n'
             ;;
     esac
 }
@@ -234,15 +231,16 @@ discover_omp() {
     {
         local root dir encoded repo_root
         for repo_root in ${REPO_CWD:+"$REPO_CWD"} ${EXTRA_CWDS[@]+"${EXTRA_CWDS[@]}"}; do
-            encoded="$(encode_omp_raw_cwd "$repo_root")"
-            [ -n "$encoded" ] || continue
-            for root in "$agent_dir/sessions" \
-                        "$HOME/$config_dir"/profiles/*/agent/sessions \
-                        ${xdg_omp:+"$xdg_omp/sessions"} \
-                        ${xdg_omp:+"$xdg_omp"/profiles/*/sessions}; do
-                [ -d "$root/$encoded" ] || continue
-                find "$root/$encoded" -maxdepth 1 -name "*.jsonl" -mtime "-${DAYS}" 2>/dev/null
-            done
+            while IFS= read -r encoded; do
+                [ -n "$encoded" ] || continue
+                for root in "$agent_dir/sessions" \
+                            "$HOME/$config_dir"/profiles/*/agent/sessions \
+                            ${xdg_omp:+"$xdg_omp/sessions"} \
+                            ${xdg_omp:+"$xdg_omp"/profiles/*/sessions}; do
+                    [ -d "$root/$encoded" ] || continue
+                    find "$root/$encoded" -maxdepth 1 -name "*.jsonl" -mtime "-${DAYS}" 2>/dev/null
+                done
+            done < <(encode_omp_raw_cwd "$repo_root")
         done
         # Each extra root (a linked worktree) can have a basename unlike the repo's.
         local name sanitized extra

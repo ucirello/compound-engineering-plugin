@@ -11,9 +11,42 @@ Being invoked by an orchestrator is **not** itself authorization. You mutate und
 - **Phase 0 (triage):** If an issue fetch fails, do not ask the user to paste content. Proceed with the input you have and note the gap in the return. Do not ask "what have you tried"; infer prior attempts from the input.
 - **Phase 1 (reproduce):** When reproduction cannot run in this environment (a CI- or production-only failure), do not ask for access, artifacts, or a go-ahead. Continue on the best evidence already in reach: the failing job's logs, captured artifacts, the seeded log tails. If a gap-free root cause is still established, the ordinary statuses apply. If not, return `needs-human` with a `decision_context` naming what reproduction requires and what was tried.
 - **Phase 2 (root cause + fix gate):** There is no "Fix it now / Diagnosis only" question. The caller invoked this skill to fix, so **fix by default, but only convergent fixes** (see the boundary below). A divergent fix is deferred, not applied. When Phase 1's tracker and PR-history search finds an open PR or other fix in flight for this same bug, on a branch other than the one you are fixing, apply nothing and return `diagnosed-no-fix` with its link in `summary`; a second fix would only duplicate it.
-- **Phase 3 (workspace/branch):** Operate on the current branch. The orchestrator decides branch context, so never prompt to create a branch and never prompt about uncommitted work. Commit the fix using the project's commit message conventions already in context; otherwise follow the recent log pattern, then use conventional commits (`fix(ci): <summary>` for a CI failure, `fix: <summary>` otherwise). User override wins. Read the branch's PR state immediately before pushing. If the branch has a PR and it is merged or closed, do not push and return `fixed-not-pushed` with that reason; otherwise push the fix. Never weaken, skip, or mock a failing assertion to make it pass. Repair the real issue or defer.
+- **Phase 3 (workspace/branch):** Operate on the orchestrator's verified current JJ bookmark, not a guessed branch. An empty `@` above the verified head is normal. Never prompt to create a branch or about uncommitted work; defer with `needs-human` if the workspace is wrong, conflicted or the fix overlaps user edits. Verify the fix and commit only fix-owned files per **Describe and publish the fix** below. Never weaken, skip, or mock a failing assertion to make it pass. Repair the real issue or defer.
 - **Phase 4 (handoff):** No prompt. Emit the structured return below as the last thing this skill writes, then skip the compound offer. The return ends this skill, not the turn. The caller runs in this same session, and its next step follows the return.
 - **Post-fix simplify and review steps:** Skip them in pipeline to bound cost and nesting depth; the orchestrator scopes review at its own level. Keep the Phase 3 tests.
+
+### Describe and publish the fix
+
+**Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards.**
+
+Before composing, read the full Go guide and examine several full subjects **and bodies** from the verified pre-fix line tip in the target workspace: `(cd "$workspace_root" && jj log --no-graph -r "::$history_head" -n 10 -T 'description ++ "\n"')`. Compare prefixes/package names, casing, verb tense, subject/body separation, wrapping, and issue-reference placement. Explicit user and project instructions and repository-local syntax win; apply only compatible Go guidance for clarity and structure. With no history use explicit instructions and compatible Go guidance without inventing precedent.
+
+Go Wiki source guidance, not a required repository template:
+
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+
+```text
+net/http: handle foo when bar
+
+[longer description here in the body]
+
+Fixes #12345
+```
+
+> Notably, for the subject (the first line of description):
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+
+> For the body (the rest of the description):
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
+
+Describe the actual defect or CI failure and what corrects it; carry any existing issue reference per repository and tracker requirements. In the target root, use `jj commit -m "<message composed from the standards above>" -- <exact-fix-owned-filesets>` and verify that the resulting `@-` diff contains only the tested fix. Record its full commit ID as `head_sha`. If the authorized local bookmark still targets the verified pre-fix head, move only that bookmark forward to this exact fix commit; if it already targets the fix, leave it. Do not rebase or force anything. Verify the remote, remote bookmark, and expected remote head; an ambiguous, stale, or unauthorized target is `fixed-not-pushed`, not permission to guess. Read the bookmark's PR state immediately before pushing, applying SKILL.md's `GIT_DIR` rule. If the PR is merged or closed, or its state cannot be safely established, do not push and return `fixed-not-pushed` with the reason. Otherwise push only the verified bookmark with `jj git push --remote <verified-remote> --bookmark <verified-bookmark>` if authorized and verify the remote head equals `head_sha`.
 
 ## The fix-authority boundary: convergent vs divergent
 

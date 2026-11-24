@@ -9,7 +9,7 @@ argument-hint: "[feature, focus area, or constraint] [output:md]"
 
 `ce-ideate` runs before `ce-brainstorm`. This skill answers "which ideas are worth exploring?" `ce-brainstorm` then answers what one chosen idea should mean. `ce-plan` answers how it gets built.
 
-**Done:** a ranked ideation artifact is written to `<root>/ideation/` when that root is present, else to a CE temp path. Every idea generated has been critiqued, and the survivors are explained. The user is left holding the next-steps menu. No requirements, plans, or code.
+**Done:** a ranked ideation artifact is written to `<root>/ideation/` when that root is present, else to a run-local scratch path. Every idea generated has been critiqued, and the survivors are explained. The user is left holding the next-steps menu. No requirements, plans, or code.
 
 ## Boundaries
 
@@ -26,13 +26,13 @@ The **focus hint** is any optional context this run was invoked with, from the u
 
 ## Artifact Root
 
-Artifacts go under `<root>/ideation/`, and learnings are read from `<root>/solutions/`. Resolve `<root>` only when you are about to compose one of those paths, and never before the mode is classified — an elsewhere or no-repo run writes to a temp directory and never needs it. Pass a subagent the resolved path, not the config.
+Artifacts go under `<root>/ideation/`, and learnings are read from `<root>/solutions/`. Resolve `<root>` only when checking one of those paths for the recent-work scan, learnings, or delivery; a run outside a JJ workspace never needs it. Do not create an artifact tree for an elsewhere topic. Pass a subagent the resolved path, not the config.
 
 <!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only. Discover `<repo-root>` with `jj workspace root` from the working directory, then run repository operations from that absolute workspace root. Do not read `docs_root` from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor within `.jj/` or `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
 
@@ -45,9 +45,9 @@ Both reads this phase names are required, even when the subject, mode, and forma
 Read `references/output-mode.md` whenever a format is resolved. The read is required. It defines each step of the decision, and the 30-day recent-work check that decides whether this run updates an existing doc instead of writing a new one.
 
 <!-- ce-config-layers:start -->
-**Resolve ordinary CE yaml keys from the two repo files.**
+**Resolve ordinary YAML keys from the two repository files.**
 
-- **Read** `<repo-root>/.compound-engineering/config.local.yaml`, then `config.yaml` (`<repo-root>` = `git rev-parse --show-toplevel`). Missing files are skipped. Gitignore does not change resolution.
+- **Read** `<repo-root>/.rocketclaw/config.local.yaml`, then `<repo-root>/.rocketclaw/config.yaml`, using the absolute root from `jj workspace root`. Missing files are skipped. Ignore rules do not change resolution.
 - **Win** with the first active (non-commented) value. For scalars, empty is unset; an invalid value continues to the next layer, then the skill default. For lists and maps, a present key — including an empty list or map — replaces the whole key.
 - **Do not** use this rule for `docs_root` — that key is `config.yaml` only.
 <!-- ce-config-layers:end -->
@@ -60,9 +60,9 @@ Read `references/output-mode.md` whenever a format is resolved. The read is requ
 
 Read `references/grounding.md` before dispatching any grounding agent. The read is required. That reference defines every dispatch in this phase, including the routing test that runs *before* either dispatch block. Grounding runs in parallel, in the **foreground**.
 
-A generic subagent is one whose whole brief is the prompt you send it. When the host's subagent tool makes you name an agent, use only a name you have seen the host list, and list its agents before the first dispatch if you have not. Pick the plain one that adds no role of its own, which still counts as a generic subagent. Never pick a specialist, such as a reviewer or worker agent, whose own role prompt, output format, or tool limits would replace or narrow your prompt.
+A generic subagent is one whose whole brief is the prompt you send it. Use OpenCode's native subagent tool; if it requires a named agent, select a listed general-purpose agent whose role, output format, and tool limits do not replace or narrow the brief. Follow the permission, depth, and model rules in `references/grounding.md` for every dispatch.
 
-Scratch lives beneath the effective user's private CE root: `/tmp/compound-engineering-<uid>` when that is usable, else the validated `$TMPDIR` fallback, and never `.context/`. Generate one 8-hex `<run-id>` and reuse it for the cache and for every checkpoint.
+Scratch lives under the workspace's ignored `.tmp/rocketclaw/`, or the working directory's local `.tmp/rocketclaw/` outside a JJ workspace, never `.context/`. Resolve and validate it once per run as specified in `references/grounding.md`.
 
 ## Phase 1.5: Topic-Surface Decomposition
 

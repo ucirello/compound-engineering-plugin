@@ -6,11 +6,10 @@ belong to the repository, where the shared store lives, and what earlier runs
 decided. Every subcommand prints one JSON object to stdout.
 
 Store location:
-  <main checkout>/.context/compound-engineering/ce-retro/
-    The main checkout is the first entry of `git worktree list`, so every
-    linked worktree resolves the same store.
-  <git common dir>/compound-engineering/ce-retro/
-    Used whenever the common repository is bare, even with worktrees attached.
+  <main checkout>/.context/ce-retro/
+    The main checkout is the registered workspace that owns the JJ repo.
+  <shared JJ repo dir>/rocketclaw/ce-retro/
+    Used when there is no registered workspace at the shared repo directory.
 
 Store files:
   decisions.jsonl          one decision record per line, append-only
@@ -25,7 +24,7 @@ under it are restricted to the owner.
 Exit statuses:
   0  success
   2  command-line misuse
-  3  not inside a git repository (error "not-a-git-repo")
+  3  not inside a JJ workspace or unable to resolve it (error "not-a-jj-workspace")
   4  the store cannot be written (error "store-unwritable")
   5  the store path is unsafe: a symlink or not owned by you (error "store-unsafe")
   6  invalid input: a record outside the schema, a bad run name, or a
@@ -42,13 +41,14 @@ import sys
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
+from fnmatch import fnmatchcase
 
 try:
     import fcntl
 except ImportError:
     fcntl = None
 
-EXIT_NOT_GIT = 3
+EXIT_NOT_JJ = 3
 EXIT_UNWRITABLE = 4
 EXIT_UNSAFE = 5
 EXIT_INVALID = 6
@@ -71,37 +71,56 @@ def emit(obj):
     sys.stdout.write(json.dumps(obj, indent=2, sort_keys=True) + "\n")
 
 
-def git(cwd, *args):
+def workspace_failure(reason):
+    return Failure(EXIT_NOT_JJ, "not-a-jj-workspace", reason)
+
+
+def jj(root, *args):
     try:
-        r = subprocess.run(["git", "-C", cwd, *args], capture_output=True, text=True)
+        r = subprocess.run(
+            ["jj", "--ignore-working-copy", "--color=never", "--no-pager", *args],
+            cwd=root, capture_output=True, text=True,
+        )
     except OSError as e:
-        raise Failure(EXIT_NOT_GIT, "not-a-git-repo", f"git could not run: {e}")
-    return r
+        raise workspace_failure(f"jj could not run: {e}")
+    if r.returncode != 0:
+        raise workspace_failure(r.stderr.strip() or f"jj {' '.join(args)} failed in {root}")
+    return r.stdout
 
 
 def roots(cwd):
-    r = git(cwd, "rev-parse", "--path-format=absolute", "--git-common-dir")
-    if r.returncode != 0:
-        raise Failure(EXIT_NOT_GIT, "not-a-git-repo", r.stderr.strip() or f"{cwd} is not in a git repository")
-    common = os.path.realpath(r.stdout.strip())
-
-    listing = git(cwd, "worktree", "list", "--porcelain")
-    if listing.returncode != 0:
-        raise Failure(EXIT_NOT_GIT, "not-a-git-repo", listing.stderr.strip())
-    entries = []
-    for block in listing.stdout.strip().split("\n\n"):
-        lines = block.splitlines()
-        if not lines or not lines[0].startswith("worktree "):
-            continue
-        entries.append({"path": os.path.realpath(lines[0][len("worktree "):]), "bare": "bare" in lines})
-
-    bare = bool(entries) and entries[0]["bare"]
-    worktrees = [e["path"] for e in entries if not e["bare"]]
+    current = os.path.realpath(cwd)
+    while not os.path.isdir(os.path.join(current, ".jj")):
+        parent = os.path.dirname(current)
+        if parent == current:
+            raise workspace_failure(f"{cwd} is not in a JJ workspace")
+        current = parent
+    current = os.path.realpath(jj(current, "workspace", "root").rstrip("\r\n"))
+    # A linked workspace's .jj/repo is a relative or absolute pointer, not
+    # another repository. Use it to find the owning checkout even after rename.
+    repo = os.path.join(current, ".jj", "repo")
+    try:
+        if os.path.isfile(repo):
+            with open(repo, encoding="utf-8") as f:
+                repo = os.path.join(os.path.dirname(repo), f.read().rstrip("\r\n"))
+        common = os.path.realpath(repo)
+        if not os.path.isdir(common):
+            raise OSError(f"shared repo directory is missing: {common}")
+        listing = jj(current, "workspace", "list", "-T", r'json(if(root, root.absolute(), "")) ++ "\n"')
+        locations = [json.loads(line) for line in listing.splitlines()]
+    except (ValueError, OSError) as e:
+        raise workspace_failure(f"could not resolve JJ workspace roots: {e}")
+    workspaces = list(dict.fromkeys([current, *(os.path.realpath(p) for p in locations if p)]))
+    main = next((p for p in workspaces if os.path.realpath(os.path.join(p, ".jj", "repo")) == common), None)
+    if main:
+        workspaces = [main, *(p for p in workspaces if p != main)]
     return {
         "common_dir": common,
-        "bare": bare,
-        "main_checkout": None if bare or not worktrees else worktrees[0],
-        "worktrees": worktrees,
+        "current_workspace": current,
+        "main_checkout": main,
+        "workspaces": workspaces,
+        "warnings": ["some registered JJ workspaces have no recorded root; their sessions may be missing"]
+        if "" in locations else [],
     }
 
 
@@ -143,27 +162,52 @@ def guard_chain(base, parts, create, restrict_from=0):
     return os.path.join(base, *parts)
 
 
+def root_ignored(root, name):
+    # Check the root's own policy, not a personal/global exclude. This only
+    # matches the root directory itself, not an arbitrary descendant path.
+    ignore_file = os.path.join(root, ".gitignore")
+    if os.path.islink(ignore_file):
+        return False
+    ignored = False
+    try:
+        with open(ignore_file, encoding="utf-8", errors="surrogateescape") as f:
+            for line in f:
+                rule = line.rstrip()
+                if not rule or rule.startswith("#"):
+                    continue
+                negate = rule.startswith("!")
+                if negate:
+                    rule = rule[1:]
+                rule = rule.removeprefix("/").removesuffix("/")
+                if "/" in rule:
+                    continue
+                if "\\" in rule or "[" in rule:
+                    # Don't certify an exclusion with syntax we don't interpret.
+                    if negate:
+                        ignored = False
+                elif fnmatchcase(name, rule):
+                    ignored = not negate
+    except OSError:
+        return False
+    return ignored and not jj(root, "file", "list", "--", name).strip()
+
+
 def resolve_store(cwd, create=True):
     info = roots(cwd)
     if info["main_checkout"] is None:
         base = info["common_dir"]
-        chain = ["compound-engineering", "ce-retro"]
-        gitignored = None
+        chain = ["rocketclaw", "ce-retro"]
+        ignored = None
     else:
         base = info["main_checkout"]
-        chain = [".context", "compound-engineering", "ce-retro"]
-        gitignored = git(base, "check-ignore", "-q", ".context/compound-engineering/").returncode == 0
+        chain = [".context", "ce-retro"]
+        ignored = root_ignored(base, ".context")
 
-    store = guard_chain(base, chain, create, restrict_from=len(chain) - 1)
+    store = guard_chain(base, chain, create, restrict_from=len(chain) - int(create))
 
-    if create:
-        try:
-            fd, probe = tempfile.mkstemp(prefix=".probe-", dir=store)
-            os.close(fd)
-            os.unlink(probe)
-        except OSError as e:
-            raise Failure(EXIT_UNWRITABLE, "store-unwritable", f"cannot write to {store}: {e}")
-    return {"store": store, "gitignored": gitignored, "roots": info}
+    if create and not os.access(store, os.W_OK | os.X_OK):
+        raise Failure(EXIT_UNWRITABLE, "store-unwritable", f"cannot write to {store}")
+    return {"store": store, "ignored": ignored, "roots": info}
 
 
 def read_stdin_object(allowed):
@@ -266,8 +310,23 @@ def cmd_roots(args):
 
 
 def cmd_store(args):
-    s = resolve_store(os.getcwd())
-    emit({"store": s["store"], "gitignored": s["gitignored"], "bare": s["roots"]["bare"]})
+    s = resolve_store(os.getcwd(), create=not args.inspect)
+    emit({"store": s["store"], "ignored": s["ignored"]})
+
+
+def scratch_parent(root):
+    if not root_ignored(root, ".tmp"):
+        raise Failure(EXIT_UNSAFE, "store-unsafe", f"verify that {root}/.tmp/ is ignored and untracked")
+    return guard_chain(root, (".tmp", "rocketclaw", "ce-retro"), True, restrict_from=1)
+
+
+def cmd_scratch(args):
+    root = roots(os.getcwd())["current_workspace"]
+    try:
+        path = tempfile.mkdtemp(prefix=datetime.now().strftime("%Y%m%d-"), dir=scratch_parent(root))
+    except OSError as e:
+        raise Failure(EXIT_UNWRITABLE, "store-unwritable", f"could not create local scratch: {e}")
+    emit({"scratch": path})
 
 
 def cmd_record(args):
@@ -372,12 +431,10 @@ def cmd_backup(args):
     source = os.path.realpath(args.file)
     if not os.path.isfile(source):
         raise Failure(EXIT_INVALID, "invalid-input", f"not a file: {args.file}")
-    if args.dest_root:
-        root = os.path.abspath(args.dest_root)
-        if not guard_dir(root, False, False):
-            raise Failure(EXIT_INVALID, "invalid-input", f"--dest-root does not exist: {args.dest_root}")
-    else:
-        root = resolve_store(os.getcwd())["store"]
+    location = resolve_store(os.getcwd()) if not args.dest_root else None
+    info = location["roots"] if location else roots(os.getcwd())
+    scratch_root = (info["main_checkout"] or info["current_workspace"]) if location else info["current_workspace"]
+    root = location["store"] if location else run_dir(args.dest_root, info["current_workspace"])
 
     path = guard_chain(root, ("backups", run), True)
     dest = backup_dest(path, source)
@@ -389,7 +446,7 @@ def cmd_backup(args):
             return
         # Copy to a private temp file and publish it with a hard link, which fails if dest
         # exists: an interrupted copy must never be accepted later as a finished backup.
-        fd, tmp = tempfile.mkstemp(dir=os.path.dirname(dest), prefix=".partial-")
+        fd, tmp = tempfile.mkstemp(dir=scratch_parent(scratch_root), prefix=".partial-")
         try:
             with os.fdopen(fd, "wb") as out, open(source, "rb") as src:
                 shutil.copyfileobj(src, out)
@@ -415,10 +472,18 @@ SESSIONS_FILE = "sessions.jsonl"
 METADATA_CHUNK = 400
 
 
-def run_dir(path):
-    out = os.path.realpath(path)
-    if not os.path.isdir(out):
-        raise Failure(EXIT_INVALID, "invalid-input", f"--out is not a directory: {path}")
+def run_dir(path, root):
+    out = os.path.abspath(path)
+    local = os.path.join(root, ".tmp")
+    resolved = os.path.realpath(out)
+    try:
+        inside = os.path.commonpath([local, resolved]) == local and resolved != local
+    except ValueError:
+        inside = False  # different drives
+    if out != resolved or not inside:
+        raise Failure(EXIT_INVALID, "invalid-input", f"run directory must be below the workspace's .tmp/: {path}")
+    if not root_ignored(root, ".tmp") or not guard_dir(out, False, False):
+        raise Failure(EXIT_INVALID, "invalid-input", f"run directory must exist under ignored .tmp/: {path}")
     return out
 
 
@@ -440,17 +505,17 @@ def session_roots(rows):
 def cmd_sessions(args):
     if args.days < 1:
         raise Failure(EXIT_INVALID, "invalid-input", "--days must be at least 1")
-    out = run_dir(args.out)
     r = roots(os.getcwd())
-    paths = r["worktrees"] or [os.path.dirname(r["common_dir"])]
-    name = os.path.basename(r["main_checkout"] or r["common_dir"]).removesuffix(".git")
+    out = run_dir(args.out, r["current_workspace"])
+    paths = r["workspaces"]
+    name = os.path.basename(paths[0]).removesuffix(".git")
     cwd_args = [a for p in paths for a in ("--cwd", p)]
     found = subprocess.run(
         ["bash", os.path.join(HISTORY, "discover-sessions.sh"), name, str(args.days), "--include-subagents", *cwd_args],
         capture_output=True, text=True,
     )
     files = [f for f in found.stdout.splitlines() if f]
-    warnings = []
+    warnings = list(r["warnings"])
     if found.returncode != 0:
         if not files:
             raise Failure(EXIT_INVALID, "invalid-input", f"session discovery failed: {found.stderr.strip()}")
@@ -507,7 +572,7 @@ def extract_one(job):
 
 
 def cmd_extract(args):
-    out = run_dir(args.out)
+    out = run_dir(args.out, roots(os.getcwd())["current_workspace"])
     rows, _ = read_lines(os.path.join(out, SESSIONS_FILE))
     if not rows:
         raise Failure(EXIT_INVALID, "invalid-input", f"no {SESSIONS_FILE} in {out}; run sessions first")
@@ -558,8 +623,10 @@ def main():
         ),
     )
     sub = p.add_subparsers(dest="command", required=True)
-    sub.add_parser("roots", help="common dir, main checkout, and every worktree")
-    sub.add_parser("store", help="resolve and create the store; report whether it is gitignored")
+    sub.add_parser("roots", help="shared repo dir, main checkout, and registered JJ workspace roots")
+    st = sub.add_parser("store", help="resolve and create the store; report whether .context/ is ignored")
+    st.add_argument("--inspect", action="store_true", help="resolve the store without creating it")
+    sub.add_parser("scratch", help="make a private run directory under the workspace's ignored .tmp/")
     sub.add_parser("record", help="append one decision record read from stdin")
     sub.add_parser("record-run", help="append one run record of per-harness cutoffs read from stdin")
     rd = sub.add_parser("read", help="latest decision per key, per-harness cutoffs, optional history")
@@ -569,7 +636,7 @@ def main():
     bk.add_argument("--run", required=True, help="run name, one path component")
     bk.add_argument("--file", required=True)
     bk.add_argument("--dest-root", help="put backups/<run>/ under this existing directory instead of the store")
-    ss = sub.add_parser("sessions", help=f"find this repo's sessions and subagents from every worktree; write <out>/{SESSIONS_FILE}")
+    ss = sub.add_parser("sessions", help=f"find this repo's sessions and subagents from every workspace; write <out>/{SESSIONS_FILE}")
     ss.add_argument("--days", type=int, required=True)
     ss.add_argument("--out", required=True, help="this run's scratch directory")
     ex = sub.add_parser("extract", help="extract skeletons and errors for sessions and their subagents into <out>/extracts/<session>/")
@@ -580,6 +647,7 @@ def main():
     handlers = {
         "roots": cmd_roots,
         "store": cmd_store,
+        "scratch": cmd_scratch,
         "record": cmd_record,
         "record-run": cmd_record_run,
         "read": cmd_read,

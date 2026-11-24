@@ -182,11 +182,42 @@ def prepared_content(record: dict) -> dict:
     }
 
 
+def scratch_root() -> Path:
+    """Keep default handoffs and temporary staging files local to the project."""
+    root = Path.cwd()
+    try:
+        result = subprocess.run(
+            ["jj", "workspace", "root"], cwd=root,
+            capture_output=True, text=True, check=False,
+        )
+    except FileNotFoundError:
+        pass
+    else:
+        if result.returncode == 0:
+            root = Path(result.stdout.rstrip("\n"))
+    directory = root / ".tmp"
+    directory.mkdir(mode=0o700, exist_ok=True)
+    require(not directory.is_symlink(), "local .tmp/ must not be a symlink")
+    return directory
+
+
+def staging_directory(path: Path) -> Path:
+    scratch = scratch_root()
+    parent = path.parent.resolve()
+    require(parent.is_dir(), "handoff parent directory does not exist")
+    require(os.access(parent, os.W_OK | os.X_OK), "handoff parent directory is not writable")
+    require(parent.stat().st_dev == scratch.stat().st_dev,
+            "handoff destination must share a filesystem with local .tmp/ for atomic checkpoints")
+    # Use the destination directory itself when it is already under local .tmp/.
+    resolved_scratch = scratch.resolve()
+    return parent if parent == resolved_scratch or resolved_scratch in parent.parents else scratch
+
+
 def write_record(path: Path, raw: bytes, *, checkpoint: bool) -> None:
     if checkpoint:
         temporary = None
         try:
-            with tempfile.NamedTemporaryFile(dir=path.parent, prefix=".pending-feedback-", delete=False) as temp:
+            with tempfile.NamedTemporaryFile(dir=staging_directory(path), prefix=".pending-feedback-", delete=False) as temp:
                 temporary = Path(temp.name)
                 temp.write(raw)
                 temp.flush()
@@ -205,6 +236,8 @@ def write_record(path: Path, raw: bytes, *, checkpoint: bool) -> None:
 
 
 def github_json(host: str, endpoint: str) -> dict:
+    # Explicit hostname and repository in the endpoint: this read never
+    # infers a repository from the active workspace.
     result = subprocess.run(
         ["gh", "api", "--hostname", host, "--method", "GET", endpoint],
         capture_output=True, text=True, check=False,
@@ -257,10 +290,10 @@ def main() -> None:
             command_parser.add_argument("--input", required=True)
     args = parser.parse_args()
     if args.command == "preflight":
-        path = Path(args.path).absolute() if args.path else Path(tempfile.mkdtemp(prefix="ce-pending-feedback-")) / "pending.json"
+        path = (Path(args.path).absolute() if args.path else
+                Path(tempfile.mkdtemp(dir=scratch_root(), prefix="pending-feedback-")) / "pending.json")
         require(not os.path.lexists(path), "handoff destination already exists")
-        require(path.parent.is_dir(), "handoff parent directory does not exist")
-        with tempfile.TemporaryFile(dir=path.parent):
+        with tempfile.TemporaryFile(dir=staging_directory(path)):
             pass
         print(json.dumps({"handoff": str(path)}))
         return

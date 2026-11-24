@@ -27,17 +27,46 @@ For each approved item `ce-retro` owns:
 
 1. Make the edit.
 2. Verify it with the check that proved the candidate: the path now resolves, the command now runs, the instruction is gone, the new check fails on the old shape and passes on the current tree.
-3. Commit it alone, staging and committing only that item's files, with a message that says what friction it removes. Do not push.
+3. Commit it alone with JJ, selecting only that item's exact file paths (old and new paths for a rename). Capture the starting change and paths before editing; do not replace a pre-existing description or commit a path with mixed ownership or unresolved changes. Check scope before and after `jj commit -m "<message composed from the standards below>" -- <approved exact filesets>` in the absolute workspace root. If a separate change cannot be made while preserving existing work, leave the edit uncommitted and report why. Do not push.
+
+   Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards.
+
+   Before composing, read the full Go guide and compare several full subjects and bodies from the actual task's verified history head. For example, from the target workspace's absolute root, use `jj --ignore-working-copy log --no-graph -r '::<verified-history-head>' -n 10 -T 'description ++ "\n"'`. Check prefixes, casing, verb tense, subject/body separation, wrapping, and issue references. Repository-local instructions and observed syntax always win. Apply compatible Go guidance for clarity and structure, and say what friction this item removes. When there is no history, use the project's explicit instructions and Go guidance without inventing a precedent.
+
+   **Go source guidance, not a required repository template:**
+
+   > Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+
+   ```text
+   net/http: handle foo when bar
+
+   [longer description here in the body]
+
+   Fixes #12345
+   ```
+
+   > Notably, for the subject (the first line of description):
+   > - the name of the package affected by the change goes before the colon
+   > - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+   > - the verb after the colon is lowercase
+   > - there is no trailing period
+   > - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+
+   > For the body (the rest of the description):
+   > - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+   > - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+   > - there is no Markdown in the commit message.
+   > - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
 
 When verification fails, undo that item's edit, and report it as approved but not applied with the reason. When a project or user rule refuses the edit, stop that item and report it as refused. Do not make the change another way.
 
 When an approved file already had uncommitted changes before this run, do not commit it. Leave the edit in place and say so in the report.
 
-**Files outside the repo.** Before editing one, run the helper's `backup --run <this run's name> --file <path>` and keep the printed path. When `store` reported that `.context/compound-engineering/` is not gitignored at the main checkout, add `--dest-root <this run's scratch directory>` so the copy stays out of the repo. Show that item's diff and get its own approval, even when the batch was approved. Do not commit it. The report names the backup path.
+**Files outside the repo.** Before editing one, run the helper's `backup --run <this run's name> --file <path>` and keep the printed path. When `store` reports `ignored: false`, add `--dest-root <this run's scratch directory>` so the copy stays out of tracked paths. If the store cannot publish a backup atomically, use the same private scratch destination only if permitted, or stop the item before editing and report why. Show that item's diff and get its own approval, even when the batch was approved. Do not commit it. The report names the backup path.
 
 ## Route the rest
 
-Invoke each owner through the host's skill mechanism, one item per invocation, passing the item's paraphrased evidence, the proof, and the target. Wait for each to finish before the next, and record its result.
+Load and run each owner through OpenCode's native skill mechanism, one item per invocation, passing the item's paraphrased evidence, the proof, and the target. Wait for each to finish before the next, and record its result.
 
 - **`ce-compound`:** invoke it interactively, since this run is attended whenever it routes, and pass the lesson as its context. Its terminal line decides the ledger state: `Documentation complete` means accepted, and `Documentation skipped` means it declined: record routed-skipped with its reason.
 - **`ce-setup` with `standards`:** record the item as routed, with what it wrote or why it stopped.

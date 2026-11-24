@@ -10,6 +10,8 @@ This phase is interactive-only: a non-interactive caller has no human-in-the-loo
 
 Based on problem type, optionally dispatch generic subagents seeded with local prompt assets from `references/agents/` to review the documentation. Do not dispatch standalone agents by type/name.
 
+Use native OpenCode subagents. This skill explicitly requests such delegation where the host permits a user-or-skill exception. Inherit the model unless an override is permitted and needed; resolve authorized overrides with `opencode.models`. Distinguish actual permission, depth, model, and missing-tool failures. Do not retry denied calls or circumvent depth; omit and report unavailable optional reviews, or use only the inline check explicitly allowed below without claiming an independent pass.
+
 - **performance_issue** → `references/agents/performance-oracle.md`
 - **security_issue** → `references/agents/security-sentinel.md`
 - **database_issue** → `references/agents/data-integrity-guardian.md`

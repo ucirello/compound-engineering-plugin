@@ -1,47 +1,9 @@
-# Branch creation from default branch
+# Feature bookmark from the default branch
 
-Local `<base>` may have stale commits (another session/worktree advanced it) or commits the user authored intending to branch from later. Local git can't distinguish these — ask when unpushed commits are present.
+Resolve the base remote, head remote and authoritative default name per `references/context.md`. From the verified absolute JJ workspace root, fetch the exact default branch with `jj git fetch --remote "<base-remote>" --branch "exact:<base>"`. Consider `jj --config git.abandon-unreachable-commits=false git fetch …` when fetching with unpublished work to preserve. Check the fetched `<base>@<base-remote>` with `jj log`, record its exact commit ID, and compare the local default bookmark with it (`jj log -r '<fetched-base-id>..<local-default-id>'`). Do not include the working-copy draft in that history comparison.
 
-## Decision flow
+- If the local default has unpublished commits, show them and ask whether to carry them into the feature or leave them on the local default. Carry only the confirmed range; otherwise leave those commits and the default bookmark intact. In pipeline mode report the decision as a residual, not a guess.
+- If only working-copy edits need carrying to the fetched base, record their exact change and diff. When that draft has one parent and is owned by this run, `jj rebase -r "<draft-change>" -d "<verified-base-id>"` can replay its patch; verify the resulting diff, no conflicts or unwanted ancestry, and that no other change/bookmark was moved. Never rebase the default bookmark or a shared/published change. If the user chose to carry an unpublished default series and it lacks the fetched base, plan an owned copy of the confirmed series (`jj duplicate` with a verified destination) rather than rewriting the source; check ancestry and content before proceeding.
+- When the fetch is unavailable, you can name the feature locally from the already verified local ancestor without modifying the default. Report base freshness as unverified and defer publication until the intended base, head and remote can be verified. Never treat stale tracking data as a successful fetch or guess about local-only commits.
 
-### 1. Fetch fresh remote base
-
-```bash
-git fetch --no-tags origin <base>
-```
-
-If fetch fails (network, auth, no remote), use the fallback at the bottom.
-
-### 2. Check for unpushed local commits on `<base>`
-
-```bash
-git log origin/<base>..HEAD --oneline
-```
-
-- **Empty output:** set `BASE_REF=origin/<base>` and proceed to step 3.
-- **Non-empty output:** show the commit list and ask (per the "Asking the user" convention in `SKILL.md`):
-
-  > "Local `<base>` has N unpushed commits not on `origin/<base>`. Carry them onto the new feature branch, or leave them on local `<base>`?"
-
-  - **Carry forward** → `BASE_REF=HEAD`. The new branch starts from local HEAD, preserving the commits.
-  - **Leave on `<base>`** → `BASE_REF=origin/<base>`. The new branch starts clean; commits remain on local `<base>`.
-
-  Never default silently — carrying foreign commits into a PR is worse than asking again.
-
-### 3. Create the feature branch
-
-```bash
-git checkout --no-overwrite-ignore -b <branch-name> "$BASE_REF"
-```
-
-If checkout fails because uncommitted or ignored files would be overwritten, stop and ask the user to handle the colliding paths. In `mode:pipeline`, report the blocker without asking. Do not stash or remove the colliding paths.
-
-## Fetch failure fallback
-
-If `git fetch` fails, branch from current local HEAD:
-
-```bash
-git checkout -b <branch-name>
-```
-
-Note in the user-facing summary that base freshness was not verified. Skip the unpushed-commits check — without a fresh `origin/<base>`, the answer is unreliable.
+Before a tree-changing operation, inspect tracked, conflicted, ignored and untracked paths and verify the proposed tree cannot overwrite any unrelated content. A collision or uncertainty is a safe stop (report in pipeline mode, ask for a real decision interactively). Do not stash, discard, or reset. Choose a non-colliding feature name; place the feature bookmark only at the intended committed tip as in `references/commit-and-push.md`.

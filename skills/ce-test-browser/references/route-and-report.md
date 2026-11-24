@@ -1,6 +1,37 @@
 # Routes, server, and reporting
 
-Read this before mapping changed files to routes (workflow step 3). It carries the route-mapping starting points, the port and server commands, what to check on each page, the two human-facing prompts, and the summary format.
+Read this before determining test scope (workflow step 2). It carries the scope commands, route-mapping starting points, port and server commands, what to check on each page, human-facing prompts, and summary format.
+
+## Determine the changed files
+
+Set `workspace_root` to the absolute root reported by `jj workspace root` in the target workspace. Run the following scope commands from that root so file paths are workspace-relative. See the [JJ command table](https://docs.jj-vcs.dev/latest/git-command-table/) and [revset reference](https://docs.jj-vcs.dev/latest/revsets/).
+
+- **PR number:** use the PR's own changed-file list. Set `pr_number` to the requested number.
+
+  ```bash
+  (
+    cd "$workspace_root" || exit 1
+    GIT_DIR=$(jj git root) || exit 1
+    export GIT_DIR
+    gh pr view "$pr_number" --json files -q '.files[].path'
+  )
+  ```
+
+- **`current`, no argument, or a named branch:** use `@` for the current change, or resolve the exact named JJ bookmark for a named branch (qualify the remote if needed). An empty `@` can still sit above changes to test. Use the project's intended base bookmark, or the repository's verified `trunk()` if no base is specified. Resolve the base and head to single full commit IDs (`base` and `head`) using `jj log --no-graph -r '<revset>' -T 'commit_id ++ "\n"'`; do not substitute another ref if either fails to resolve. Find the common ancestor and compare its tree to the head:
+
+  ```bash
+  (cd "$workspace_root" && jj log --no-graph -r "heads(::$base & ::$head)" -T 'commit_id ++ "\n"')
+  ```
+
+  Verify that this returned exactly one real merge-base commit and set `merge_base` to its full ID.
+
+  ```bash
+  (cd "$workspace_root" && jj diff --from "$merge_base" --to "$head" --summary)
+  ```
+
+  Use the file paths from the summary for route mapping. Account for deleted files and both paths of renames rather than treating a compact rename display as one path.
+
+Report an unresolved scope (including a missing or ambiguous base/head or a failed PR lookup) as a preflight blocker with what would clear it. Don't treat lookup failures as an empty changed-file list or change the workspace/bookmarks to make the lookup succeed.
 
 ## Map changed files to routes
 
@@ -50,7 +81,7 @@ For each affected route, use the selected driver to navigate and capture fresh r
 
 **Test critical interactions:** derive locators or element references from the selected driver's latest inspected state, perform the click/fill/press action, then inspect the resulting state. Do not guess selectors or reuse stale references.
 
-**Take screenshots:** capture viewport and full-page evidence when the selected driver supports it. Materialize screenshots as local artifacts when a later workflow or report needs file paths; otherwise in-app evidence is sufficient.
+**Take screenshots:** capture viewport and full-page evidence when the selected driver supports it. Materialize screenshots under the target workspace's ignored `.tmp/rocketclaw/ce-test-browser/` when a later workflow or report needs file paths; otherwise in-app evidence is sufficient.
 
 ## Human verification (when required)
 
@@ -62,7 +93,7 @@ For each affected route, use the selected driver to navigate and capture fresh r
 | SMS | "Verify you received the SMS code" |
 | External APIs | "Confirm the [service] integration is working" |
 
-Ask the user with the platform's question tool (the list is in SKILL.md step 6), or present numbered options and wait:
+In manual mode, ask with the OpenCode question capability following SKILL.md step 6, or present numbered options and wait when that fallback applies:
 
 ```
 Human Verification Needed
@@ -103,7 +134,7 @@ Did it work correctly?
 ```markdown
 ## Browser Test Results
 
-**Test Scope:** PR #[number] / [branch name]
+**Test Scope:** PR #[number] / [bookmark name] / [current change]
 **Server:** http://localhost:<port>
 
 ### Pages Tested: [count]

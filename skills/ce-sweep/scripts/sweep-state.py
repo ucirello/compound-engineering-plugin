@@ -13,8 +13,8 @@ Design rules (shared with the repo's other state helpers):
   - Every OPERATIONAL failure path prints a parseable STATUS WORD on line 1 and
     exits 0 — it never raises a traceback to the caller. Only genuine CLI
     misuse (bad/missing subcommand args) exits non-zero via argparse.
-  - Writes are atomic: a temp file in the state dir + os.replace (atomic on
-    POSIX), so a concurrent reader never sees a torn file.
+  - Writes are atomic: a file staged under local .tmp/ + os.replace (atomic
+    on POSIX), so a concurrent reader never sees a torn file.
   - The script never calls the wall clock for the values it stores EXCEPT the
     lease timestamp (staleness needs "now"). Tests pin it with --now / stamp
     values with --timestamp so behavior is reproducible.
@@ -43,6 +43,7 @@ import os
 import sys
 import tempfile
 from datetime import datetime, timezone
+from pathlib import Path
 
 try:
     import fcntl  # POSIX advisory locks (macOS, Linux — this repo's Unix targets)
@@ -255,8 +256,7 @@ def load_state(path):
     ('ok', dict). A file that parses but lacks schema_version is corrupt."""
     try:
         with open(path, encoding="utf-8") as f:
-            # A machine-local state file can live under world-shared /tmp, and
-            # it is a correctness dependency (lease, cursors, closed status) as
+            # State is a correctness dependency (lease, cursors, closed status) as
             # well as an injection sink (item bodies re-read into agent
             # context). Reject a file not owned by us so a co-tenant cannot
             # plant a forged lease/cursor or attacker-authored item text. Skip
@@ -287,13 +287,28 @@ def new_state():
     return {"schema_version": SCHEMA_VERSION, "sources": {}, "items": {}}
 
 
+def state_staging_root():
+    """Caller runs in the workspace root, or a standalone local directory."""
+    directory = Path.cwd()
+    uid = getattr(os, "geteuid", lambda: None)()
+    for part in (".tmp", "rocketclaw", "ce-sweep", "state-staging"):
+        directory /= part
+        directory.mkdir(mode=0o700, exist_ok=True)
+        info = directory.lstat()
+        if directory.is_symlink() or not directory.is_dir() or (
+            uid is not None and (info.st_uid != uid or info.st_mode & 0o022)
+        ):
+            raise OSError(f"Unsafe local sweep scratch directory: {directory}")
+    return directory
+
+
 def write_state(path, state):
     """Atomic write of the state file. Returns True on success."""
     state["schema_version"] = SCHEMA_VERSION
     text = emit_document(state)
     d = os.path.dirname(os.path.abspath(path))
     os.makedirs(d, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=d, prefix=".tmp-sweep-", suffix=".yml")
+    fd, tmp = tempfile.mkstemp(dir=state_staging_root(), prefix="state-", suffix=".yml")
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
             f.write(text)

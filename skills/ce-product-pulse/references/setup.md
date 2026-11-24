@@ -2,6 +2,8 @@
 
 Required read on a first run or a `setup`/`reconfigure`/`edit config` run. Key definitions and defaults are in `references/config.md`.
 
+**OpenCode V2 installation prerequisite.** For RocketClaw workflows that use deep delegation, merge `"experimental": { "subagent_depth": 3 }` into the user-level `~/.config/opencode/opencode.json`. Use `opencode debug paths` or `opencode debug paths config` to locate the actual global configuration directory and edit its existing `opencode.json` or `opencode.jsonc`. Preserve unrelated settings, other `experimental` keys, and any integer depth above 3; do not create a competing config file. The bundled package config alone does not enable deep delegation in consuming projects, and higher-precedence config must not lower the effective depth below 3. This interview does not change OpenCode settings.
+
 ## Seed from strategy (if available)
 
 Before asking any questions, read the strategy doc with the native file-read tool - `STRATEGY.md`, or when it is absent the first of `VISION.md`, `PRODUCT.md` (in that order) that exists; readers accept the legacy names while other tools converge on `STRATEGY.md`. Every setup and every report resolves the doc this way from current files, so the source never depends on a prior run. If a doc exists, extract:
@@ -34,10 +36,10 @@ If the user offers read-write database access, refuse and offer the alternatives
 
 ## Writing the config
 
-Write the captured config to `<repo-root>/.compound-engineering/config.local.yaml` as flat `pulse_*` keys, using the schema in `references/interview.md` under "Config file shape". Resolve the repo root with `git rev-parse --show-toplevel`. To write: (1) if the file or directory does not exist, create `.compound-engineering/` and write the YAML file; (2) if the file exists, merge new keys into the existing YAML, preserving any non-pulse keys (e.g., `plan_*`) untouched. If `.compound-engineering/config.local.yaml` is not already covered by the repo's `.gitignore`, offer to add the entry before writing. Show the resulting pulse block to the user in chat and offer one round of edits.
+Write the captured config to `<repo-root>/.rocketclaw/config.local.yaml` as flat `pulse_*` keys, using the schema in `references/interview.md` under "Config file shape". Use the absolute workspace root verified with `jj workspace root` in Phase 0. If root discovery failed, complete the interview but ask for the intended JJ workspace before saving settings or a report; do not guess a destination. Before writing, inspect the workspace's applicable `.gitignore` rules for `.rocketclaw/config.local.yaml` without launching Git. If the file is not already covered, offer to add `/.rocketclaw/config.local.yaml` to the root `.gitignore`. If the file or directory does not exist, create `.rocketclaw/` and write the YAML file; otherwise merge new keys into the existing YAML, preserving any non-pulse keys (e.g., `plan_*`) untouched. Show the resulting pulse block to the user in chat and offer one round of edits.
 
 ## Scheduling
 
-After the config is written, run the **scheduling recommendation** from `references/interview.md` section 9: offer to set up a recurring run so the user gets the pulse on a cadence instead of having to remember to run it. Accept yes/no/later. If yes, hand off to whichever scheduling primitive the current harness exposes — the in-plugin `schedule` skill if it is installed, otherwise note that scheduling is platform-specific (cron, GitHub Actions, the host's own automation) and emit a brief hint covering what would need to run. Do not schedule inline.
+After the config is written, run the **scheduling recommendation** from `references/interview.md` section 9: offer to set up a recurring run so the user gets the pulse on a cadence instead of having to remember to run it. Accept yes/no/later. Use the OpenCode automation handoff described there; do not schedule inline.
 
 The later-runs re-surface rule lives in `SKILL.md` Phase 3; do not repeat it here.

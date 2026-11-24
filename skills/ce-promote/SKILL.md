@@ -17,10 +17,12 @@ It works **with or without Spiral**: with nothing installed it drafts directly f
 
 A free-form description in the arguments is the source of truth. Otherwise derive it from context, using what is available and never waiting on any single source:
 
-- **Merged/active PR** — `gh pr view --json title,body,url` (the title and body usually state the user-facing value)
-- **The diff** — `git diff main...HEAD --stat`, skimming notable changes so the claim is grounded in what actually changed
+Resolve `workspace_root` to the absolute path reported by `jj workspace root` from the target checkout. Run repository commands from that root; if it cannot be resolved, rely on other available evidence. See the [JJ CLI reference](https://docs.jj-vcs.dev/latest/cli-reference/).
+
+- **Merged/active PR** — identify the PR by its verified number, URL, or bookmark (inspect `@-` if `@` is an empty change above the shipped head). Use `(cd "$workspace_root" && GIT_DIR="$(jj git root)" && export GIT_DIR && gh pr view "$pr" --json title,body,url)`; the title and body usually state the user-facing value.
+- **The diff** — resolve the shipped head and its comparison base. For a branch comparison, use the verified target branch and the shipped head's merge base with it (`heads(::<target> & ::<head>)`); don't guess if the range is ambiguous. Run `(cd "$workspace_root" && jj diff --from "$base" --to "$head" --stat)` and skim notable changes so the claim is grounded in what actually changed.
 - **Changelog** — the top or `[Unreleased]` entry in `docs/changelog.md`, `CHANGELOG.md`, or similar
-- **Recent commits** — `git log --oneline -15` for the arc of the change
+- **Recent commits** — `(cd "$workspace_root" && jj log --no-graph -r "::$head" -n 15 -T 'commit_id.short() ++ " " ++ description.first_line() ++ "\n"')` for the arc of the change, using a verified history head.
 
 Then write a 1-3 sentence summary of the **user-facing value**: what a user can now do that they couldn't before, and why they'd care. Outcome, not implementation — "You can now export any report to CSV in one click", not "Added a CsvSerializer and an export endpoint." If you can't confidently tell what shipped, ask one short question rather than guessing.
 

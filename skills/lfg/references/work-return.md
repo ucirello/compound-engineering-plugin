@@ -18,7 +18,7 @@ Also require the fields that record which route actually ran: `implementation_en
 
 ## The work must be committed
 
-`ce-code-review` leaves out untracked files, so files this run added go unreviewed until they are committed. Before step 3, confirm the return's `changed_files` are committed. If any are not, commit those files and continue. Do not stop for this.
+Files left untracked or ignored can escape review. Before step 3, confirm the return's `changed_files` are in the committed review scope. If any owned changes are not committed, invoke `ce-commit` with only those changes and continue; preserve unrelated work. Do not stop merely because an owned change still needs committing.
 
 ## Verification evidence
 

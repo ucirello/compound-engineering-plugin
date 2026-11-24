@@ -49,7 +49,7 @@ Outside protected subjects, keep the ordinary conservative evidence bar: after i
 Classify the claim itself, not its title. Never raise severity or confidence to preserve it. Do not invent findings or propose that uncertainty is a confirmed defect.
 </protected-subject-policy>
 
-For local-aligned scope, inspect the cited files, callers, guards, project contracts, and targeted history with read-only tools. For pr-remote or branch-remote scope, use the provided diff and reviewed head ref, never the unrelated workspace copy.
+The caller supplies the absolute `workspace_root` and captured endpoints with the scope. Inspect files, callers, guards, project contracts and targeted history in that exact tree with read-only tools per `references/diff-scope.md`. Remote scope uses the pinned head or the provided hunks, never the unrelated workspace tree.
 
 Budget: the batch has 15 minutes of wall clock and about five tool calls per finding. Inspect findings in the order given. When the budget runs out, stop inspecting and give every remaining finding `"status": "unresolved"` with the reason `budget exhausted, uninspected`; never guess a verdict you did not inspect.
 

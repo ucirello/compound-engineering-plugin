@@ -10,7 +10,7 @@ allowed-tools:
 
 # Proof - Collaborative Markdown Editor
 
-Proof is a collaborative document editor for humans and agents. It is reached through the hosted web API at `https://www.proofeditor.ai`, over HTTP from `Bash`.
+Proof is a collaborative document editor for humans and agents. It is reached through the hosted web API at `https://www.proofeditor.ai`, over HTTP from OpenCode's shell tool.
 
 **Outcome:** the user holds a working tokenized Proof link, or the doc carries the read, comment, suggestion, or edit they asked for.
 
@@ -26,7 +26,7 @@ Delete authority is unchanged in MCP mode. An unclaimed doc still needs its `own
 
 ## Identity
 
-Every write is attributed with both fields, and they do not vary. The machine ID is `ai:compound-engineering`, sent as `by` on every op and as the `X-Agent-Id` header. The display name is `Compound Engineering`, sent as `name` on `POST /presence`, set once per doc session so Proof binds it to that agent ID. A caller may pass a different `identity` pair when a distinct sub-agent should own the doc. Never improvise a variant such as `ai:compound`.
+Proof requires a stable protocol identity. The default machine ID is `ai:assistant`, sent as `by` in edit requests and as the `X-Agent-Id` header. The default display name is `AI Assistant`, sent as `name` on `POST /presence`, set once per doc session so Proof binds it to that ID. A caller may pass a different neutral `identity` pair when a distinct subagent should own the doc; keep the pair consistent for that session. If an MCP tool would inject a branded identity for a write or presence update and cannot use a neutral one, use the HTTP recipe subject to the shell's permissions.
 
 ## Credentials and boundaries
 

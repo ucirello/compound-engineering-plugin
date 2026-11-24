@@ -23,8 +23,10 @@ Map each changed file to the route(s) that render it, then build the list of URL
 `scripts/resolve-port.sh` resolves the port and prints it alone on stdout, so the shell call that needs it captures the value instead of a later step re-typing a printed number. Append the explicit port as an argument when you have one.
 
 ```bash
-SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
-PORT=$(bash "$SKILL_DIR/scripts/resolve-port.sh");
+workspace_root="<verified absolute workspace root>"
+SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>"
+cd "$workspace_root" || exit 1
+PORT=$(bash "$SKILL_DIR/scripts/resolve-port.sh") || exit 1
 if lsof -i ":${PORT}" -sTCP:LISTEN -t >/dev/null 2>&1; then
   echo "Server running on port ${PORT}";
 else
@@ -50,7 +52,9 @@ For each affected route, use the selected driver to navigate and capture fresh r
 
 **Test critical interactions:** derive locators or element references from the selected driver's latest inspected state, perform the click/fill/press action, then inspect the resulting state. Do not guess selectors or reuse stale references.
 
-**Take screenshots:** capture viewport and full-page evidence when the selected driver supports it. Materialize screenshots as local artifacts when a later workflow or report needs file paths; otherwise in-app evidence is sufficient.
+**Take screenshots:** capture viewport and full-page evidence when the selected driver supports it. Materialize screenshots as local artifacts in a run-owned directory under the workspace's ignored `.tmp/` when a later workflow or report needs file paths; otherwise in-app evidence is sufficient. Use the same local storage for failure evidence and do not fall back to OS-global temporary paths.
+
+In pipeline mode reuse the evidence directory printed by the startup block. In manual mode, when materializing the first artifact, create the run directory with `mkdir -p "$workspace_root/.tmp" && mktemp -d "$workspace_root/.tmp/browser-test.XXXXXXXX"` using the verified absolute root. Record the absolute result and reuse it in subsequent tool calls.
 
 ## Human verification (when required)
 
@@ -103,7 +107,7 @@ Did it work correctly?
 ```markdown
 ## Browser Test Results
 
-**Test Scope:** PR #[number] / [branch name]
+**Test Scope:** PR #[number] / [bookmark name] / current change
 **Server:** http://localhost:<port>
 
 ### Pages Tested: [count]

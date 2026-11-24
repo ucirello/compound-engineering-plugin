@@ -1,29 +1,29 @@
-# Compound Engineering -- repo config
-# ce-config-template-version: 3
-# Copy to .compound-engineering/config.yaml in your project root (team defaults).
-# Optional override: .compound-engineering/config.local.yaml, same keys.
+# RocketClaw -- repo config
+# ce-config-template-version: 4
+# Copy to .rocketclaw/config.yaml in your project root (team defaults).
+# Optional override: .rocketclaw/config.local.yaml, same keys.
 # Ordinary keys: local wins when set, then this file, then the skill default.
 # docs_root is repo layout -- set it only here; local docs_root is ignored.
 # All settings are optional. Invalid ordinary values continue to the next layer.
 # docs_root fails closed on an unusable value.
 
 # --- Artifact root ---
-# Relocate every CE-written artifact folder (solutions, plans, ideation,
+# Relocate every generated artifact folder (solutions, plans, ideation,
 # explainers, pulse-reports, dogfood-reports,
 # feedback-sweep, personas) under one repo-relative root. Unset -> `docs`,
-# byte-identical to today. A configured root becomes the sole location CE reads
-# and writes; CE never falls back to reading `docs/`.
+# byte-identical to today. A configured root becomes the sole location the skills
+# read and write; they never fall back to reading `docs/`.
 #
-# Set this only in this tracked file so every clone and worktree share one
+# Set this only in this tracked file so every clone and workspace share one
 # artifact tree. A docs_root in config.local.yaml is ignored.
 #
 # The value must be a repo-relative directory whose real (symlink-resolved) path
-# stays inside the repo, is not the repo root itself, and is not under `.git/`.
+# stays inside the repo, is not the repo root itself, and is not under `.jj/` or `.git/`.
 # Unlike every other setting here, an unusable value does NOT fall through to the
-# default -- CE stops with an error so a typo can't silently write artifacts into
+# default -- the skill stops with an error so a typo can't silently write artifacts into
 # the location you configured away from. `/ce-setup` reports the resolved root.
 
-# docs_root: .compound-engineering/artifacts   # repo-relative dir (default: docs)
+# docs_root: .rocketclaw/artifacts   # repo-relative dir (default: docs)
 
 # --- Product pulse ---
 # Settings written by /ce-product-pulse first-run interview. Re-run the skill with
@@ -66,24 +66,22 @@
 # model. The value is a model alias (e.g. `fable`, `opus`). You can also name a
 # model in a prompt for a one-off, which overrides these keys.
 #
-# Cross-harness: setting a key means every harness you run these skills in will
-# attempt that model. The host serves it natively where it can; otherwise the
-# Claude CLI is invoked when installed and authenticated; otherwise the step runs
-# on your session model and the run says so. Invalid/commented/missing -> no
-# elevation.
+# Resolve the requested model with `opencode.models` and run it in a native
+# OpenCode subagent when permissions and depth permit. No other harness is
+# launched. If the route is unavailable, use the skill's disclosed session-model
+# fallback. Invalid/commented/missing -> no elevation.
 #
 # `plan_effort` and `brainstorm_effort` separately set the reasoning effort the
 # elevated step runs at (one of low, medium, high, xhigh, max). Unset keeps the
-# existing defaults: high on the Claude CLI route, the harness default on native
-# dispatch. An unrecognized value is invalid -- it is rejected and the run skips
-# elevation rather than silently using a different effort than configured. If
-# the host's native subagent tool takes no effort setting, the step still runs
-# there and the run says the configured effort was not applied.
+# OpenCode's native model default. An unrecognized value skips elevation rather
+# than silently using a different effort. If native dispatch accepts the model
+# but cannot set a valid configured effort, report that the effort was not
+# applied, following the skill's policy.
 
 # plan_model: fable              # model alias for plan authoring; candidate preference when a Bake-off runs (no default)
 # brainstorm_model: fable        # model alias for approach generation; candidate preference when a Bake-off runs (no default)
-# plan_effort: high              # low | medium | high | xhigh | max (default: high)
-# brainstorm_effort: high        # low | medium | high | xhigh | max (default: high)
+# plan_effort: high              # low | medium | high | xhigh | max (native model default when unset)
+# brainstorm_effort: high        # low | medium | high | xhigh | max (native model default when unset)
 
 # --- PR concept teaching (ce-commit-push-pr) ---
 # When a PR introduces a concept new to the codebase, the generated PR
@@ -127,20 +125,19 @@
 #
 # `cross_model_peer` is the preferred peer, consulted only when the mode is
 # `auto`. Conversation instructions still win, and the skills skip routes that
-# cannot establish the required host/peer distinction.
+# cannot establish the required model independence.
 # `cross_model_model` and `cross_model_effort` pin the model and reasoning
 # effort of whichever peer target runs; unset keeps the skills' editorial
-# mapping. The model must belong to that target's family (an alias such as
-# `fable` or a full id such as `claude-opus-5-5` for claude; `gpt-*` for codex,
-# optionally namespace-qualified such as `openai.gpt-6.1-sol` when the codex CLI
-# routes through a non-default `model_provider`; a `gemini-*` id such as
-# `gemini-3.8-flash` for antigravity; a `provider/model` id for opencode and
-# pi).
+# mapping. Peer labels name model families or routes, not executable harnesses.
+# Resolve a matching OpenCode `provider/model` with `opencode.models`, such as
+# the Fable alias for claude, a `gpt-*` model for codex, or a `gemini-*` model
+# for antigravity. The `opencode` label accepts a native provider/model route.
 # Effort levels: claude low|medium|high|xhigh|max, codex low|medium|high|
 # xhigh plus max and ultra on the models that list them, grok low|medium|high|
 # xhigh, antigravity low|medium|high, OpenCode 2.x none|low|medium|high|xhigh|
-# max as each model lists them; cursor/composer and pi routes take none. A value the peer
-# cannot honor skips the pass with a stated reason -- never substituted.
+# max as each model lists them; cursor/composer and pi labels take none. These
+# are accepted intent values, not guarantees of native support. A value the
+# selected model or dispatch cannot honor skips the pass with a stated reason.
 
 # cross_model_review_mode: off   # auto | off (default: auto)
 # cross_model_peer: codex          # codex | claude | grok | antigravity | cursor | composer | opencode | pi
@@ -149,32 +146,30 @@
 
 # --- Review subagent model ---
 # `review_subagents` sets the model and reasoning effort for every subagent
-# ce-code-review and ce-doc-review spawn on the same host (reviewers, checks,
-# validators), per harness. Only the current harness's entry applies; a field
-# left out keeps the skill default. Defaults: in Codex, gpt-6.1-terra at high
-# for every subagent; elsewhere, each reviewer's own tier. A model named in
-# conversation or in the project's instructions wins. A model the host refuses
-# falls back once to the session model, and the review says so.
+# ce-code-review and ce-doc-review spawn natively (reviewers, checks, validators).
+# Only the `opencode` entry applies in OpenCode. A field left out keeps the
+# reviewer's own tier. A model named in conversation or the project's
+# instructions wins, subject to actual model-selection permission. Where review
+# permits fallback, use a suitable session-model reviewer and report any unmet
+# coverage; this does not satisfy a required independent-model pass.
 
 # review_subagents:
-#   codex:
-#     model: "gpt-6.1-terra"
+#   opencode:
+#     model: "openai/gpt-6.1-terra"
 #     effort: high
-#   claude:
-#     model: sonnet
 
 # --- ce-work implementation engine ---
 # Standing preferences for who authors implementation units. Live
 # task/session/project instructions and LFG's provenance-bearing binding may
 # override or narrow these defaults. `off` disables only this standing preference.
-# `prefer` tries candidates in order, then falls back natively with disclosure.
-# `require` keeps the requested external identity fixed while viable, then also
-# falls back natively with disclosure if the route is unavailable. Harnesses:
-# codex | claude | grok | antigravity | cursor | opencode | pi. Omit model to use that harness's configured
-# default. Composer is a model
-# family through Cursor: { harness: cursor, model: composer }. Do not put CLI flags
-# or commands here. A candidate equivalent to the current host/default is skipped;
-# a different explicit model in the same harness remains eligible.
+# `prefer` tries candidates in order, then falls back to the skill default with
+# disclosure. `require` keeps the requested model identity fixed while viable;
+# follow `ce-work`'s disclosed fallback when it cannot be used. The existing
+# `harness` field accepts codex | claude | grok | antigravity | cursor | opencode
+# | pi as route labels. Omit model to request that label's default preference.
+# Composer uses { harness: cursor, model: composer }. These are model choices,
+# not CLI dispatchers. Resolve through `opencode.models`; run native subagents.
+# Skip a candidate equivalent to the session default, not a distinct model.
 
 # work_engine_mode: prefer        # off | prefer | require (default: off)
 # work_engine_preferences:
@@ -182,14 +177,14 @@
 #     model: composer
 #   - harness: codex
 #     model: "gpt-6.1-sol"
-#   - harness: claude             # configured default model
+#   - harness: claude             # model-family default preference
 
-# Reasoning effort for the external worker, per harness. Each value is one of
-# that harness's own effort levels. An unset harness keeps its own default:
-# Codex and Claude at high, native Grok at xhigh, Antigravity at high (it takes
-# low|medium|high). OpenCode (2.x) keeps its own per-model default and takes
-# none|low|medium|high|xhigh|max as each model lists them. Cursor routes take no
-# effort. A map in config.local.yaml replaces this one.
+# Worker reasoning effort by route label. Existing intent defaults are Codex
+# and Claude at high, Grok at xhigh, Antigravity at high (low|medium|high).
+# The opencode label uses each resolved model's default unless set to an
+# honored variant (none|low|medium|high|xhigh|max). Cursor and Pi accept no effort
+# setting. Verify the resolved native model can honor the requested value; do
+# not silently substitute. A map in config.local.yaml replaces this one.
 
 # work_engine_effort:
 #   codex: xhigh
@@ -212,7 +207,7 @@
 #   - { type: github-issues, id: gh-issues, target: owner/repo, ack_action: "feedback:ack", closeout_action: "feedback:resolved", sensitive: false, approved: true }
 
 # Sweep-owned settings.
-# sweep_state_path: docs/feedback-sweep/state.yml   # committed (multi-agent) or /tmp path (solo)
+# sweep_state_path: docs/feedback-sweep/state.yml   # committed (multi-agent) or workspace-local .tmp/ path (solo)
 # sweep_ack_cap: 25                                 # max acks per source per run before the circuit breaker
 # sweep_lease_ttl_minutes: 60                       # single-writer lease staleness threshold
 # sweep_shared_branch: false                        # true: push-gated lease for shared-docs-branch topology

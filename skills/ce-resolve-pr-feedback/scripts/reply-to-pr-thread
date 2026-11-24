@@ -13,6 +13,11 @@ if [ $# -lt 2 ]; then
     exit 1
 fi
 
+workspace_root=$(jj workspace root)
+cd "$workspace_root"
+GIT_DIR=$(jj git root)
+export GIT_DIR
+
 PR_NUMBER=$1
 ROOT_COMMENT_ID=$2
 IFS= read -r -d '' BODY || true

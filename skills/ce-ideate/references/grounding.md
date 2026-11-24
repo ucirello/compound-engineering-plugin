@@ -8,18 +8,23 @@ Before generating ideas, gather grounding. The dispatch set depends on the mode 
 
 **Surprise-me grounding depth.** In surprise-me mode, grounding goes deeper than specified mode — apply the 0.2 table's `1 grounding` row, and pass issue themes as first-class input rather than a footnote when issue intelligence runs. Specified mode keeps the shallower scan: the user's named subject anchors what is relevant.
 
-**Pre-resolve the scratch directory.** Generate a `<run-id>` once (8 hex chars) and reuse it for the web-research cache and the Phase 2/4 checkpoints so they share one per-run directory. Scratch lives beneath the effective user's private CE root — `/tmp/compound-engineering-<uid>` when it is usable, else the validated `$TMPDIR` fallback the block below selects — never `.context/`. Run this to validate the owner-private root, create the run directory, and capture its absolute path:
+**Pre-resolve the scratch directory.** Generate a `run_id` once (8 hex chars) and reuse it for the web-research cache and Phase 2/4 checkpoints. Use `.tmp/rocketclaw/` under the absolute JJ workspace root, or under the absolute current directory if outside JJ. In a workspace, ensure `/.tmp/` is in its root `.gitignore` before writing scratch. Run this in the intended workspace or non-repo directory. If root discovery fails for a reason other than being outside JJ, report the blocker rather than falling back. If local scratch is unsafe or unwritable, report the blocker; never fall back to global storage.
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
-if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
-(umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
-if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
-chmod 700 "$SCRATCH_ROOT" || exit 1;
-SCRATCH_DIR="$SCRATCH_ROOT/ce-ideate/<run-id>";
-(umask 077; mkdir -p "$SCRATCH_DIR") || exit 1; chmod 700 "$SCRATCH_DIR" || exit 1;
-echo "$SCRATCH_DIR";
+# Set base to the absolute result of `jj workspace root`, or `pwd -P`
+# only after confirming this is outside JJ. Set run_id to the chosen 8 hex chars.
+[[ "$base" = /* && "$run_id" =~ ^[0-9a-f]{8}$ ]] || exit 1
+umask 077
+SCRATCH_ROOT="$base/.tmp/rocketclaw"
+SCRATCH_DIR="$SCRATCH_ROOT/ce-ideate/$run_id"
+for dir in "$base/.tmp" "$SCRATCH_ROOT" "$SCRATCH_ROOT/ce-ideate" "$SCRATCH_DIR"; do
+  if [ -L "$dir" ] || ! mkdir -p -- "$dir" || [ -L "$dir" ] || [ ! -O "$dir" ] || [ ! -w "$dir" ]; then
+    printf 'Unsafe or unwritable scratch directory: %s\n' "$dir" >&2
+    exit 1
+  fi
+  if [ "$dir" != "$base/.tmp" ]; then chmod 700 -- "$dir" || exit 1; fi
+done
+printf '%s\n' "$SCRATCH_DIR"
 ```
 
 Use the echoed absolute path as `<scratch-dir>` for every checkpoint write and cache read in this run. It is **not** deleted on completion — the web-research cache is reused across run-ids in a session, and in the no-repo case the deliverable itself is written here.
@@ -32,7 +37,7 @@ Run grounding agents in parallel in the **foreground** (do not background — re
 
 **Repo mode dispatch:**
 
-1. **Quick context scan** — dispatch a general-purpose subagent using the platform's cheapest capable model when the harness exposes a known override; otherwise inherit. Per the routing test above, any named file already classified as evidence goes on the prompt's research-artifacts line rather than into `User-named references`. Dispatch with this prompt:
+1. **Quick context scan** — dispatch a general-purpose subagent using the extraction tier below. Per the routing test above, any named file already classified as evidence goes on the prompt's research-artifacts line rather than into `User-named references`. Dispatch with this prompt:
 
    > **Grounding scope:** use the supplied project context and go directly to current patterns bearing on the focus, pain points, leverage points, applicable workflow constraints, and in surprise-me mode representative files plus recent activity. If the focus cannot be scoped, use one targeted root or workspace probe.
    >
@@ -86,7 +91,7 @@ Always-on for both modes. Skip when the user said "no external research", "skip 
 
 Reuse prior web research within a session via a sidecar cache — see `references/web-research-cache.md` for the cache file shape, reuse check, append behavior, and platform-degradation rules. Read it the first time the `web-researcher` local prompt would be dispatched in this run (and on every subsequent dispatch where the cache might apply).
 
-When dispatching web research, read `references/agents/web-researcher.md` and seed a generic subagent with that prompt. Pass the focus hint, a brief planning context summary (one or two sentences), and the mode. Do not pass codebase content — the prompt operates externally. Use the platform's mid-tier model when a known override exists; otherwise omit the override and inherit.
+When dispatching web research, read `references/agents/web-researcher.md` and seed a generic subagent with that prompt. Pass the focus hint, a brief planning context summary (one or two sentences), and the mode. Do not pass codebase content — the prompt operates externally. Use the generation tier below.
 
 #### User-Supplied Research Artifacts
 
@@ -117,19 +122,19 @@ Consolidate all dispatched results into a short grounding summary using these se
 
 ## Model tiers (applies to every dispatch in this skill)
 
-Sub-agent dispatch is tiered by task shape, never hardcoded to a model name:
+Use native OpenCode subagents for all dispatches. This skill explicitly requests the reviewers and other subagents named by the workflow; under a user-or-skill delegation rule this suffices without another approval. Respect any higher-priority prohibition or actual tool denial; shell is for local commands, not for invoking another dispatcher. Subagent dispatch is tiered by task shape, never hardcoded to a model name:
 
-- **Extraction tier** — retrieval and quoting work, such as the quick context scan and research distillers. Use the platform's cheapest capable model when the harness exposes a known override; escalate to the generation tier when the repo is large or the stack obscure.
-- **Generation tier** — evidence-driven ideation frames and basis verification. Use the platform's mid-tier model when the harness exposes a known override.
+- **Extraction tier** — retrieval and quoting work, such as the quick context scan and research distillers. Target the cheapest capable model; escalate to the generation tier when the repo is large or the stack obscure.
+- **Generation tier** — evidence-driven ideation frames and basis verification. Target a mid-tier model.
 - **Ceiling tier** — ceiling ideation frames, cross-cutting synthesis, and final arbitration. Inherit the orchestrator's model by omitting the model parameter.
 
-If model names are unknown, omit the override and inherit rather than guessing.
+When model selection is allowed, resolve the intended model with `opencode.models`; use its exact listed model reference. If a model cannot be resolved, do not guess.
 
-If the user's or project's active instructions or the live prompt name a model for this subagent, use that model instead of the default tier above. They can name it by the subagent's tier, by its prompt-asset name, or for the subagents being dispatched. Without such an instruction, a model configured for this subagent's role takes precedence over the default tier.
+The user's or project's active instructions or the live prompt can name a model by tier, prompt-asset name, or for the subagents being dispatched; that choice takes precedence over a configured role model, which in turn takes precedence over the default tier. This determines routing intent, not permission to override. If the host requires an explicit user model request for an override and none exists, omit the native `model` argument even when the skill or configuration names a model.
 
-**Degradation rule.** When the platform's subagent primitive does not support per-agent model selection, dispatch everything on the inherited model and keep the read budgets and dossier caps — cost control then comes from structure, not tiering.
+**Degradation rule.** When selection is unsupported, unauthorized, or unresolved, use the inherited model where suitable and keep the read budgets and dossier caps — cost control then comes from structure, not tiering. Disclose any unmet route or tier; do not substitute a weaker model for required ceiling reasoning and call it complete. Same-model fresh-context reviewers are separate reviewers, not cross-model coverage. Report any required fixed or different-model pass that could not run as incomplete.
 
-For every native dispatch in this skill, classify rejection by whether an agent launched: correct a pre-launch argument rejection once, leave capacity-limited work queued, and send any other failure to that phase's stated degraded path.
+Check delegation depth separately from permission and model selection. Use OpenCode's `opencode api get '/api/config?location%5Bdirectory%5D=<URL-encoded-absolute-project-root>'` to inspect config source entries and verify `experimental.subagent_depth` by precedence (see the installation prerequisite in `ce-setup`). This is source discovery, not a runtime capacity readback. Classify failures from the actual error: correct a pre-launch argument rejection once when allowed, leave transient capacity-limited work queued, and treat exhausted nesting depth, missing tools, permission denial, and launched-agent failures through the phase's stated degraded path. Do not retry a denied operation or evade a depth limit. If no degraded path is defined, report the blocked work and missing coverage rather than implying it ran.
 
 Two overrides raise the whole ideation fleet to the ceiling tier: surprise-me mode and the `go deep` depth override (Phase 0.5).
 

@@ -43,6 +43,8 @@ Enter non-interactive mode when **either** holds: the arguments you were invoked
 
 `references/modes.md` decides depth, including what a `depth:` token does, as in `mode:non-interactive depth:lightweight` or `mode:non-interactive depth:full`. **Read it before step 1.**
 
+**Resolve depth and evidence before Preconditions.** Under interactive context pressure delegate Full per `references/modes.md`; use Lightweight only if delegation is unavailable. The delegated Full orchestrator must recover the source via `references/session-history.md` before judging eligibility.
+
 **Non-interactive mode asks nothing.** It asks no blocking question of any kind, in any phase, because a caller reaching this path has no human to answer one. Every non-interactive exit, including one taken before any phase runs, ends on a terminal signal a caller parses: `Documentation complete`, or `Documentation skipped` with the reason when the run wrote nothing. Interactive mode asks only where a step's own reference says to.
 
 ## Artifact Root
@@ -50,18 +52,18 @@ Enter non-interactive mode when **either** holds: the arguments you were invoked
 Resolve `<root>` when you first compose a `<root>/solutions/` path, and pass a subagent the resolved path rather than the config.
 
 <!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only (`<workspace-root>` = absolute `jj workspace root`, or local working directory outside JJ). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither its root nor under `.jj/` or `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
 
 ## Write boundary
 
-**Only the orchestrator writes product files.** Phase 1 subagents write to per-run scratch only, and never touch `<root>/`, project instruction files, or any other tracked path.
+**Only the capture orchestrator writes durable forms.** In delegated Full the child is that orchestrator; the parent owns only the consent-gated follow-ups in `references/report.md`. Phase 1 research subagents write to per-run scratch only, never to `<root>/`, instruction files, or other tracked paths.
 
-The orchestrator writes what `references/form.md` chooses, in every mode and without asking: at most one added test, added or tightened lint rule with any baseline entries it needs, or condition in an existing `CODING_STANDARDS.md`, and at most one learning under `<root>/solutions/`. It never changes product code. It also writes two maintenance side effects that their own step describes: `CONCEPTS.md` during vocabulary capture, and — **only in interactive Full mode after consent** — a small discoverability line in a project instruction file. Two further writes exist **only in interactive Full mode when the user selects them at the assembly destination step**: a rule file inside a writable declared Compound Pack, and the `packs:` entry appended to `.compound-engineering/config.yaml`. An instruction file is only ever edited, never created. Nothing else in the tree is written. Edits to *other* docs belong to a refresh, which a capture recommends or runs with a narrow scope.
+Capture writes only what `references/form.md` chooses, without asking: at most one test, lint rule (with needed baseline entries), or condition in an existing `CODING_STANDARDS.md`, plus at most one learning. Never edit product code. Vocabulary capture may write `CONCEPTS.md`. Only interactive Full with consent may add a discoverability line to an existing instruction file, write a rule to a writable pack, or append `packs:` config on scaffolding. Other learning edits require a narrow refresh.
 
 ## Full Mode
 

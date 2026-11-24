@@ -10,20 +10,20 @@ Think in terms of the deploy window: old code on new schema, new code on old dat
 
 ## Step 0: Schema drift (when a schema dump is in the diff)
 
-Run this **first** when `db/schema.rb` or `db/structure.sql` appears in the diff. Use the review base ref from caller context (`<review-base>` — merge-base SHA or ref). **Never assume `main`.**
+Run this **first** when `db/schema.rb` or `db/structure.sql` appears in the diff. Use the captured `$review_base` and `$review_head` from caller context. If either is missing, use the staged hunks and report what they cannot verify. **Never assume `main` or `@`.**
 
 ```bash
-git diff <review-base> --name-only -- db/migrate/
+(cd "$workspace_root" && jj --ignore-working-copy diff --from "$review_base" --to "$review_head" --name-only -- db/migrate/)
 ```
 
 Then diff each dump file that is actually in the PR diff (one or both may apply):
 
 ```bash
 # When db/schema.rb is in the diff:
-git diff <review-base> -- db/schema.rb
+(cd "$workspace_root" && jj --ignore-working-copy diff --from "$review_base" --to "$review_head" -- db/schema.rb)
 
 # When db/structure.sql is in the diff:
-git diff <review-base> -- db/structure.sql
+(cd "$workspace_root" && jj --ignore-working-copy diff --from "$review_base" --to "$review_head" -- db/structure.sql)
 ```
 
 Cross-reference every change in each in-scope dump against migrations **in this PR's diff**:
@@ -32,16 +32,10 @@ Cross-reference every change in each in-scope dump against migrations **in this 
 - Every new column/table/index in the dump must come from a PR migration
 - **Drift:** columns, tables, indexes, or version bumps not explained by PR migrations
 
-When drift is present, emit a **P1** finding on the affected dump path (`db/schema.rb` or `db/structure.sql`) with `autofix_class: manual`, concrete unrelated objects listed, and `suggested_fix`:
+When drift is present, emit a **P1** finding on the affected dump path (`db/schema.rb` or `db/structure.sql`) with `autofix_class: manual`, concrete unrelated objects listed, and `suggested_fix`: have the authorized fixer restore only the affected dump from the verified base in a suitable workspace, preserving unrelated work, and regenerate it from the PR's migrations. Do not run the fix during review. Example for the authorized fixer:
 
 ```bash
-# schema.rb:
-git checkout <review-base> -- db/schema.rb
-bin/rails db:migrate
-
-# structure.sql (regenerate after restoring and migrating):
-git checkout <review-base> -- db/structure.sql
-bin/rails db:migrate
+(cd "$workspace_root" && jj restore --from "$review_base" -- "$affected_dump" && bin/rails db:migrate)
 ```
 
 If neither dump file is in the diff, skip this step.

@@ -10,15 +10,15 @@ The person running setup usually cannot judge what an upstream template change m
 
 ## The script
 
-`scripts/config-refresh.py` does every step that has one right answer: classifying settings, drafting the rebuilt file, ranking typo candidates, and checking the result against the original on disk. Run each command as its own shell call:
+`scripts/config-refresh.py` classifies settings, drafts the rebuilt file, ranks typo candidates, and checks the result against the original on disk. This changes RocketClaw repo settings, not the separate user-level OpenCode prerequisite in `references/opencode-setup.md`. Run each command from the absolute workspace root as its own shell call:
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the ce-setup SKILL.md>";
 PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c '' >/dev/null 2>&1 && { echo "$c"; break; }; done)"; [ -n "$PY" ] || { echo "no working Python 3 interpreter on PATH" >&2; exit 1; };
-"$PY" "$SKILL_DIR/scripts/config-refresh.py" draft --layer tracked
+(cd "$workspace_root" && "$PY" "$SKILL_DIR/scripts/config-refresh.py" draft --layer tracked)
 ```
 
-- `draft --layer tracked|local [--changes FILE]` writes a rebuilt copy to a temp directory and prints JSON. The JSON includes the draft and changes paths, the changes it recorded, each retired and unrecognized setting, the team comments it could not tie to a setting, the verification result, and a diff. `action: none` means the file is already current.
+- `draft --layer tracked|local [--changes FILE]` writes the rebuilt copy under workspace-local `.tmp/` and prints JSON with the draft and changes paths, recorded changes, retired and unrecognized settings, unplaced team comments, verification, and a diff. Keep any manually prepared changes file under the same `.tmp/`. `action: none` means the file is already current.
 - `verify --layer L --draft D --changes C` re-reads both files and names the first difference the changes do not explain.
 - `apply --layer L --draft D --changes C` verifies again, then replaces the file.
 

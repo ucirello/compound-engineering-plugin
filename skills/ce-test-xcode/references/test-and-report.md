@@ -4,10 +4,10 @@ This reference owns evidence collection after the app launches.
 
 ## Exercise the requested surfaces
 
-Derive the key screens and flows from the user's request and the changed iOS surface. For each one:
+Derive the key screens and flows from the user's request and the changed iOS surface. If inspecting changes in JJ, run `jj diff` from the absolute target workspace root; for a review against a specific baseline, use `(cd "$workspace_root" && jj diff --from "$verified_base" --to "$verified_head")` after verifying both revisions. For each surface:
 
 - Navigate through the running app and record what was exercised.
-- Capture a descriptively named screenshot of the resulting state.
+- Capture a descriptively named screenshot of the resulting state in the run's local `.tmp/` evidence directory.
 - Check that expected content and controls render without visible error or broken layout.
 - Read the captured simulator logs for crashes, exceptions, error-level messages, and failed network requests attributable to the flow.
 
@@ -33,7 +33,7 @@ State the exact action and expected observation, then ask whether it worked. Sta
 
 For a failed screen or flow, preserve its screenshot, relevant logs, and reproduction steps. Ask whether to investigate now or continue testing the remaining scope without investigation. That routing choice does not change the observed `FAIL`.
 
-- **Investigate now:** invoke `ce-debug` with the failure evidence and simulator reproduction context. Narrow its inherited authority to diagnosis and any fix the user approves at `ce-debug`'s informed fix gate, with no commit, push, or PR authority. Let it complete its owned quality and summary work, then return here. Only an applied fix triggers rebuild and retest. Derive any replacement status from the completed retest evidence; until that evidence exists, retain `FAIL` and continue the remaining scoped checks.
+- **Investigate now:** load `ce-debug` through OpenCode's native skill mechanism with the absolute tested workspace root, failure evidence, and simulator reproduction context. Narrow its inherited authority to diagnosis and any fix the user approves at `ce-debug`'s informed fix gate, with no commit, push, or PR authority. Follow `ce-debug`'s own detect-isolation-first and workspace ownership rules; do not bypass those rules to retest. Let it complete its owned quality and summary work, then return here. Only an applied fix triggers rebuild and retest. Verify which workspace contains the fix before rebuilding; if it cannot be retested safely, report the blocker without moving or removing workspaces. Derive any replacement status from the completed retest evidence; until that evidence exists, retain `FAIL` and continue the remaining scoped checks.
 - **Continue without investigation:** retain `FAIL`, preserve the observed failure evidence in its notes, and proceed with the rest of the scoped checks.
 
 ## Cleanup and summary

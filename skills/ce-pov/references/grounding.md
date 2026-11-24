@@ -6,33 +6,31 @@ Read this before dispatching scouts. It defines how the Ground step (SKILL.md Ph
 
 Dispatch is tiered by task shape, never hardcoded to a model name:
 
-- **Extraction tier** — the project-grounding scout and the precedent-&-activity scout: search-and-quote work. Use the platform's cheapest capable model when the harness exposes a known override; otherwise inherit.
-- **Generation tier** — the external-evidence researcher: web/docs retrieval and entailment checking. Use the platform's mid-tier model when a known override exists; otherwise inherit.
+- **Extraction tier** — the project-grounding scout and the precedent-&-activity scout: search-and-quote work. Prefer the cheapest capable model when a model override is permitted.
+- **Generation tier** — the external-evidence researcher: web/docs retrieval and entailment checking. Prefer a capable mid-tier model when a model override is permitted.
 - **Ceiling tier** — the final assessment stays with the agent running `ce-pov`, even when another agent delegated the task to it. That agent checks whether the evidence is sufficient, weighs skeptical findings, and produces the required result. Research subagents gather evidence; they do not make this final assessment.
 
-If the user's or project's active instructions or the live prompt name a model for this subagent, use that model instead of the default tier above. They can name it by the subagent's tier, by its prompt-asset name, or for the subagents being dispatched. Without such an instruction, a model configured for this subagent's role takes precedence over the default tier.
+The user's explicit model request, active project instructions, and a model configured for the role determine model intent before the defaults above. When selection is authorized, resolve an exact `provider/model` and available tier with `opencode.models`; use native OpenCode subagents. Neither a catalog entry nor configured intent grants permission to pass `model`. If the host requires an explicit user model request and none exists, omit `model`. Inherit when that model can do the bounded evidence work; retain the read budgets and tier-sensitive scout count, and disclose any unmet fixed model or tier requirement.
 
-**When per-agent models cannot be chosen.** If the platform's subagent mechanism cannot select a model per agent, dispatch every scout on the inherited model and keep their read budgets. Cost control then comes from the read budgets and the tier-sensitive scout count, not from tiering.
+## Dispatch gates
 
-When a scout dispatch is rejected, first check whether an agent launched. If the rejection was a bad argument before launch, correct it once. If the platform is out of capacity, leave the work queued. If a launch still fails after the correction, gather that scout's bounded evidence inline and lower the verdict's stated confidence.
+This skill explicitly requests the scout and panel dispatches it describes. That satisfies a host rule allowing delegation at the user's **or** an applicable loaded skill's request, without another approval. It does not override a higher-priority prohibition, absent tool, or actual denial.
 
-Create the scratch dir once, and reuse the echoed path for every scout this run:
+Check remaining runtime depth separately from delegation and model permissions. Use the active OpenCode runtime's configuration discovery for the actual workspace, e.g. authenticated `opencode api get '/api/config?location%5Bdirectory%5D=<URL-encoded absolute workspace root>'`. Inspect the discovered documents and precedence for `experimental.subagent_depth`; the response lists sources, not a merged value. A plugin's bundled setting does not establish the consuming session's depth, and a configured depth of at least 3 does not establish how much is left for this session. Use known nesting and actual tool diagnostics; don't invent a depth error when no tool or config evidence is available. The same gates apply to the panel.
+
+On failure, distinguish a missing tool, permission denial, depth limit, transient capacity, and model or other argument rejection from the actual error. Check whether a scout started before retrying a correctable pre-launch argument once; for an optional rejected model override, omit it only if inheritance still meets the scout's requirements. Leave transiently queued work to the native queue; don't duplicate it. On an unavailable or blocked dispatch, gather the bounded evidence inline or return the gap to the parent coordinator. Do not retry a denied operation or work around permissions or depth with shell or another harness. Report missing scout coverage; count inline evidence only if it satisfies the same grounding requirements, and lower confidence as appropriate or apply the evidence floors.
+
+Create one private scratch directory under the absolute JJ workspace root's `.tmp/rocketclaw/ce-pov/`; outside JJ, use the active local project's absolute `.tmp/rocketclaw/ce-pov/`. Confirm the resolved parent stays inside the intended project and is owned by the current user (reject symlinked or unsafe paths). From that verified absolute root, create a fresh mode-700 run directory, and pass its absolute path to every scout and the panel:
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
-if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
-(umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
-if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
-chmod 700 "$SCRATCH_ROOT" || exit 1;
-SCRATCH_DIR="$SCRATCH_ROOT/ce-pov/$(openssl rand -hex 4)";
-(umask 077; mkdir -p "$SCRATCH_DIR") || exit 1; chmod 700 "$SCRATCH_DIR" || exit 1;
-echo "$SCRATCH_DIR";
+(umask 077 && mktemp -d "$verified_scratch_parent/run-XXXXXXXX")
 ```
+
+If the local path cannot be created safely, report the failure; do not use global temporary storage.
 
 **Scoping applies on both paths.** Use the project's active instructions already in context. If the candidate cannot be scoped from the frame and existing context, allow one targeted root or workspace probe. This holds whether this phase dispatches scouts or resolves the facts with bounded inline reads.
 
-**Every scout prompt carries the same context.** A fresh subagent does not inherit this conversation, so fill the persona files' `{subject}` / `{scratch-dir}` placeholders at dispatch. Pass each scout the framed question (subject + intent), the named incumbent and the reversibility tier, and the resolved `<scratch-dir>` path, plus any user-supplied links for the external researcher. A scout seeded with only its generic persona grounds "some external thing" and can produce an empty or unfocused dossier.
+**Every scout prompt carries the same context.** A fresh subagent does not inherit this conversation, so fill the persona files' `{subject}` / `{scratch-dir}` placeholders at dispatch. Pass each scout the framed question (subject + intent), the named incumbent and the reversibility tier, the absolute workspace root (or local project directory outside JJ), the resolved artifact root when applicable, and the resolved `<scratch-dir>` path, plus any user-supplied links for the external researcher. Pass relevant active instructions and limit writes to its assigned scratch dossier. A scout seeded with only its generic persona grounds "some external thing" and can produce an empty or unfocused dossier.
 
 A generic subagent is one whose whole brief is the prompt you send it. When the host's subagent tool makes you name an agent, use only a name you have seen the host list, and list its agents before the first dispatch if you have not. Pick the plain one that adds no role of its own, which still counts as a generic subagent. Never pick a specialist, such as a reviewer or worker agent, whose own role prompt, output format, or tool limits would replace or narrow your prompt.
 

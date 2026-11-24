@@ -1,32 +1,30 @@
 # Phase 0.3-1.7: prior learnings, identity, and measurement scaffolding
 
-Read this after the spec is saved and follow it through the approval gate. A gate is a check that stops the run until its condition holds. The SKILL.md body states the two gates in here that stop the run (the clean-tree gate and the user approval gate). This file carries the procedure around them: prior-learnings search, run identity and resume detection, the branch and scratch space, the measurement harness, the baseline, the parallelism probe, and the worktree budget.
+Read this after the spec is saved and follow it through the approval gate. A gate is a check that stops the run until its condition holds. The SKILL.md body states the two gates in here that stop the run (the clean-tree gate and the user approval gate). This file carries the procedure around them: prior-learnings search, run identity and resume detection, the bookmark and state root, the measurement harness, the baseline, the parallelism probe, and the workspace budget.
 
 ### 0.3 Search Prior Learnings
 
-Resolve `<root>` first (the body's Artifact Root rule); pass its resolved path to the researcher. When `<root>/solutions/` holds at least one markdown file, read `references/agents/learnings-researcher.md` and dispatch a generic subagent seeded with that local prompt to search for prior optimization work on similar topics. An empty or missing store has nothing to search, so skip this step. Do not dispatch a standalone agent by type/name. If relevant learnings exist, incorporate them into the approach.
+Resolve `<root>` first (the body's Artifact Root rule); pass its resolved path to the researcher. When `<root>/solutions/` holds at least one markdown file, read `references/agents/learnings-researcher.md` and dispatch a generic OpenCode subagent seeded with that local prompt to search for prior optimization work on similar topics. An empty or missing store has nothing to search, so skip this step. Do not dispatch a standalone agent by type/name. If relevant learnings exist, incorporate them into the approach.
 
 A generic subagent is one whose whole brief is the prompt you send it. When the host's subagent tool makes you name an agent, use only a name you have seen the host list, and list its agents before the first dispatch if you have not. Pick the plain one that adds no role of its own, which still counts as a generic subagent. Never pick a specialist, such as a reviewer or worker agent, whose own role prompt, output format, or tool limits would replace or narrow your prompt.
 
 ### 0.4 Run Identity Detection
 
-Check if `optimize/<spec-name>` branch already exists:
+Check whether the exact local `optimize/<spec-name>` JJ bookmark already exists. Require one verified commit ID before using it:
 
 ```bash
-git rev-parse --verify "optimize/<spec-name>" 2>/dev/null
+(cd "$workspace_root" && jj bookmark list "exact:$optimization_bookmark")
 ```
 
-Resolve `<state-root>` by the rule in `references/persistence.md` (The State Root), then check for an existing experiment log at `<state-root>/experiment-log.yaml`. A log found under `.context/compound-engineering/ce-optimize/<spec-name>/` when a durable root is now available is still this run's root; do not move it. A run whose ledger still exists is an existing run even when the branch does not exist in this checkout, so check the log independently of the branch.
+Resolve `<state-root>` by the rule in `references/persistence.md` (The State Root), then check for an existing experiment log at `<state-root>/experiment-log.yaml`. A log found under `.context/ce-optimize/<spec-name>/` when a durable root is now available is still this run's root; do not move it. A run whose ledger still exists is an existing run even when the bookmark is missing, so check the log independently.
 
 When an existing run's `run_state.status` is `waiting` and this entry is a wake, a scheduler fire, or a resume invocation of that same run, it is a resume: do not ask. Otherwise present the user with a choice via the platform question tool:
-- **Resume**: read ALL state from the experiment log on disk (do not rely on any in-memory context from a prior session). Recover any measured-but-unlogged experiments by scanning worktree directories for `result.yaml` markers. Then apply the SKILL.md body's resume rule to decide what is skipped and which approval checks run again.
-- **Fresh start**: archive the old branch to `optimize-archive/<spec-name>/archived-<timestamp>`, clear the experiment log, start from scratch
+- **Resume**: read ALL state from the experiment log on disk (do not rely on any in-memory context from a prior session). Recover any measured-but-unlogged experiments from verified owned workspace markers. If the bookmark is missing, recover only the exact verified revision named by the ledger and its recovery references. Stop on ambiguous or missing recovery evidence. Then apply the SKILL.md body's resume rule to decide what is skipped and which approval checks run again.
+- **Fresh start**: preserve the old verified tip under an unused `optimize-archive/<spec-name>/archived-<timestamp>` bookmark and confirm it before repointing the optimization bookmark or clearing the experiment log. Start from the newly verified base.
 
-### 0.5 Create Optimization Branch and State Root
+### 0.5 Create Optimization Bookmark and State Root
 
-```bash
-git checkout -b "optimize/<spec-name>"  # or switch to existing if resuming
-```
+Create the fresh bookmark at the verified clean base with `jj bookmark create "$optimization_bookmark" -r "$verified_base"` from the source workspace's absolute root. For a resume, work from the verified bookmarked tip without moving the bookmark. Measure the exact base/tip in a clean working copy (an empty `@` directly atop it is aligned). Use `jj new "$verified_target"` only when switching an appropriate clean working copy, never to hide or move unrelated changes; use safe isolation or report the blocker otherwise. Record the exact original baseline commit for final confirmation. Verify workers can reproduce the baseline, including any new immutable harness or copied inputs, without folding them into a candidate or silently changing the baseline.
 
 Create `<state-root>` if it does not exist:
 ```bash
@@ -39,7 +37,7 @@ mkdir -p "<state-root>"
 
 **This phase stops the run until the user approves the baseline and parallel readiness. Phase 2 does not start before that.**
 
-**Bundled scripts.** Phases 1 and 3 call helper scripts that ship in this skill's `scripts/` directory (`measure.sh`, `decide.mjs`, `parallel-probe.sh`, `experiment-worktree.sh`). The Bash tool's working directory is the user's project, not the skill directory, so a bare `scripts/<name>` path will not resolve. Invoke each by the skill's own absolute path. Every runnable block below already sets `SKILL_DIR` inline (shell state does not persist between Bash tool calls, so each block must carry it). Replace the `<absolute path …>` placeholder with the directory you loaded this `ce-optimize` SKILL.md from before running. The shape:
+**Bundled scripts.** Phases 1 and 3 call `measure.sh`, `decide.mjs`, and `parallel-probe.sh`. The Bash tool's working directory is the user's project, not the skill directory, so a bare `scripts/<name>` path will not resolve. Invoke each by the skill's own absolute path. Replace the `<absolute path …>` placeholder with the directory you loaded this `ce-optimize` SKILL.md from. The shape:
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing this SKILL.md>";
@@ -48,7 +46,7 @@ bash "$SKILL_DIR/scripts/<name>"
 
 ### 1.1 Clean-Tree Gate
 
-The SKILL.md body states this gate. Run `git status --porcelain`, filter the output against `scope.mutable` and `scope.immutable`, and apply the body's rule to the result. Name the dirty in-scope files, ask the user to commit or stash them, and do not continue until they are clean.
+The SKILL.md body states this gate. Run `jj status` and `jj diff --summary` from the absolute workspace root, filter changed and conflicted paths against `scope.mutable` and `scope.immutable`, and check for in-scope ignored or untracked files that represent outstanding user changes or make the declared baseline unreproducible. Name dirty in-scope files and ask the user to preserve that work as a separate change or otherwise supply a clean base. Do not discard it or proceed while the gate fails.
 
 ### 1.2 Build or Validate Measurement Harness
 
@@ -95,6 +93,7 @@ The Phase 1 baseline total is the number later comparisons score against. It is 
 Record the baseline in the experiment log. Persist every required hard objective under `metrics` (or `judge` when the primary is a judge score) so `decide.mjs` can load the same snapshot shape later experiments use. Gates and diagnostics stay in their own containers.
 ```yaml
 baseline:
+  revision: "<verified full JJ commit ID of the baseline>"
   timestamp: "<current ISO 8601 timestamp>"
   gates:
     <gate_name>: <value>
@@ -133,10 +132,9 @@ Read the JSON output. Present any blockers to the user with suggested mitigation
 
 ### 1.5 Worktree Budget Check
 
-Count existing worktrees:
+Count registered experiment workspaces beneath the verified experiment allocation parent (`references/workspaces.md`), including workspaces from other runs that still occupy this machine's budget:
 ```bash
-SKILL_DIR="<absolute path of the directory containing this SKILL.md>";
-bash "$SKILL_DIR/scripts/experiment-worktree.sh" count
+(cd "$workspace_root" && jj workspace list -T 'name ++ "\t" ++ root ++ "\n"')
 ```
 
 If count + `execution.max_concurrent` would exceed 12:

@@ -1,49 +1,35 @@
-# Managed-stack CLI recipes
+# Managed stack transaction recipes
 
-Load this file when the active run uses a confirmed managed stack (`manager_status == "confirmed"`) and needs `gh stack` command recipes. Soft-depend on the CLI: if `gh stack` is missing or exits unavailable (e.g. code 9), surface a clear residual — do not invent managed membership from topology.
+Use only after `references/stack.md` authorizes the operation. Run JJ from the verified absolute workspace root, and scope every `gh` call with `GIT_DIR="$(jj git root)"` there (`references/setup.md`). Use the exact GitHub host and base repository; never discover a push remote by matching a branch name alone.
 
-Always non-interactive. Prefer JSON/view probes and explicit branch names; never rely on interactive prompts. Substitute `<tracking-remote>` with the stack branches' actual tracking remote (often `origin`, but may be `upstream` or a fork remote) — never hard-code `origin` when SKILL.md already resolved a different tracking remote.
+## Read and record the exact stack
 
-## After an owned push on the active layer (dependents exist)
+Use the [Stacks REST contract](https://raw.githubusercontent.com/github/gh-stack/v0.1.0/docs/src/content/docs/reference/rest-api.md): read `repos/$owner/$repo/pulls/$pr` and `repos/$owner/$repo/stacks/$stack_number` on `$host`. The former identifies membership and position; the latter supplies the bottom-to-top order. Check host/repository, stack ID **and** number, ordered PR numbers, open/draft/merged state, and exact head refs/OIDs. For every affected open layer, read its full PR record and verify its base and head repository, ref and OID separately: the stack list's head name is not a push address. Verify the actual remote by fetch **and** push identity. Fetch exact branches via `jj git fetch --remote "exact:$remote" --branch "exact:$branch"` and match exact API OIDs. Do not retarget unknown or divergent local bookmarks to manufacture a match.
 
-```bash
-gh stack rebase "<first-open-dependent-branch>" --upstack --no-trunk --remote <tracking-remote>
-gh stack push --remote <tracking-remote>
-```
+Before a delegate or write, preserve a recovery receipt under the bootstrap's absolute private `STATE_DIR` outside any disposable workspace. Bind it to invocation ID, host/repo, stack ID/number, target PR, verified order and old OIDs; for each write record its exact authorized target, expected old OID, intended new OID (or merge options), outcome, and any UUID. Record candidate and recovery references before pushes and update the receipt atomically as evidence arrives. Verify the run still owns the invocation before writing. On resume look up that exact receipt first. A timeout, interruption, stale receipt, or incomplete remote probe is not proof that nothing happened and does not authorize another write.
 
-Starting at the first dependent excludes the active target from the cascading rebase. Quote the branch name — git branch names may contain shell metacharacters. On conflict: `gh stack rebase --abort`, then surface a needs-human / stack-sync residual.
+## Rebase and push only the proven dependent layers
 
-## Check out a layer on a fresh checkout
+1. Starting immediately above the target, prove each owned, linear child series from the saved old parent and child OIDs. Recheck exact REST membership/order, direct parent edges, head identities, and authorization. If ancestry, change ownership, push authority, or local-work safety is uncertain, park. Do not widen the range to include a parent or an unrelated commit.
+2. Prepare the complete candidate chain before any dependent push. Use verified run-owned, colocated isolation and the dated workspace/recovery/cleanup rules in `references/intake.md` if a workspace is needed. For each layer run `jj duplicate --onto "$new_parent_oid" "$verified_child_series"` with an exact revset of the proven child commits only; the new parent is the verified pushed target for the first layer, then the validated candidate for its immediate parent. Preserve original descriptions and authors, compare corresponding patches with `jj interdiff`, verify the exact new parent and net layer diff, and run focused checks. Any conflict or unintended change stops the cascade before pushing; preserve recovery evidence without rewriting or abandoning somebody else's work. Do not rebase the active target, restack trunk, or rewrite a sibling/manual dependency.
+3. Push bottom-to-top, one explicitly named bookmark to one verified remote at a time. Re-read exact REST state and the independent remote ref before each push, requiring unchanged order/edges, the recorded child OID still at its remote, and its immediate parent already at the verified new OID. Use JJ's lease, pinned to a verified operation whose remote-tracking bookmark still equals the recorded old OID and whose local bookmark names the candidate: `jj --at-operation "$verified_push_op" --no-integrate-operation git push --remote "exact:$remote" --bookmark "exact:$branch"`. A separate bookmark-setting operation with `--no-integrate-operation` can prepare this view without retargeting an unowned bookmark in the active view; verify both views before and after, or stop if isolation is unproven. Use `--ignore-working-copy --config=git.abandon-unreachable-commits=false` for exact fetches used only as evidence, and stop on unrelated divergence rather than reconciling somebody else's work. Never push the full stack with a wildcard or refresh the lease to accept an unexpected head.
+4. Re-fetch only exact refs and re-read the stack after each attempt, including a failure. The expected candidate on the exact remote is observed progress; the old OID alone is not enough to retry an ambiguous write. Stop at the first rejection, conflict, unexpected OID, changed topology, or unproven result. Report each confirmed dependent, first unresolved layer, and recovery receipt; retain the rest. Resume from that layer only after proving the saved order/edges and pushed predecessors and reconciling the attempt. Do not roll back already-updated layers or declare stack-wide readiness from a target-only result.
 
-```bash
-gh stack checkout <PR_NUMBER>
-```
+## Land the settled bottom-most layer
 
-Use the PR number, which pulls the stack from GitHub. A branch name only resolves stacks already known locally, and `gh pr checkout` leaves the manager unaware of the branch.
+Follow the [async merge contract](https://raw.githubusercontent.com/github/gh-stack/v0.1.0/docs/src/content/docs/reference/merge-api.md). Refresh the exact stack, target PR, and readiness evidence immediately before submission. The target must be the bottom-most open non-draft layer, with no unresolved/unmerged prerequisite, and the same head OID for which the existing settle/pipeline gates passed. The API can merge all lower PRs through the named endpoint; never submit to an upper layer to bypass a lower one.
 
-## Discover order / next open layer
+Use this exact request only for authorized `stack-land`. Under `target`/`stack-ready`, show the user the fully bound request as a manual option (with its exact host, repository, PR, and SHA); do not execute it.
 
 ```bash
-gh stack view --json
+(cd "$workspace_root" && GIT_DIR="$(jj git root)" && export GIT_DIR &&
+  gh api --hostname "$host" --include --method PUT "repos/$owner/$repo/pulls/$pr/merge-async" \
+    -f "sha=$verified_head_oid" -f merge_action=default -f merge_method=squash)
 ```
 
-## Land one prefix (only under `posture:stack-land`)
+Use the default action so GitHub enforces branch rules and any required queue. When the branch is verified to require its merge queue, omit `merge_method` (queue policy controls it); don't force direct merge, supply custom commit text, enable auto-merge, or bypass rules with admin options. Retain the response status and JSON in the receipt; a nonzero CLI exit can still carry a structured response.
 
-Merge the **bottom-most open settled** PR — `gh stack merge <PR>` merges the full stack prefix through that PR atomically. Never merge an upstack active PR while downstack PRs remain open when single-prefix landing is intended.
-
-```bash
-gh stack merge <BOTTOM_MOST_OPEN_SETTLED_PR> --yes --squash
-gh stack sync --remote <tracking-remote>
-```
-
-Run the sync only after the merge succeeded. A sync after a failed merge rebases and pushes every layer, which restarts their CI and review. If the merge says another process is editing the stack, retry it shortly: that lock is temporary, and all worktrees of one clone share it.
-
-Re-probe the landed PR before advancing: on merge-queue bases the CLI may succeed after enqueue while the PR stays OPEN — keep watching or return a queued residual until `pr_state` is `MERGED`. Only then treat the just-merged PR as a **layer transition** (stop watcher, re-probe, continue next open non-draft needing work with posture restated) — not a run-level Terminal stop for this babysit invocation.
-
-## Forbidden on managed stack members
-
-```bash
-gh pr merge …
-```
-
-Use `gh stack merge` only. Under `posture:target` and `posture:stack-ready`, print the exact merge command when reporting ready-as-next; do not execute it.
+- **`pending`:** validate the UUID and bind it to the exact PR, expected SHA and requested options before recording it. Poll `GET repos/$owner/$repo/pulls/$pr/merge-async/$uuid` on that host only, using a native non-blocking wait (e.g. 2-second cadence up to 2 minutes, never past the remaining invocation budget). Record the deadline; re-entry keeps the same UUID and bound, never resubmits. HTTP 409 may identify an existing request with different options: compare its expected SHA/action and method if requested. Record matching requests as observed, not automatically ours; conflicting or insufficient evidence is a residual, not permission to overwrite. Expired UUID, timeout without a UUID, invalid response, or uncertain outcome requires remote reconciliation, never a blind resubmit.
+- **`enqueued`:** the async request is done, but landing is not. Keep the queued PR active with read-only remote state/queue monitoring under the same budget and one wake source; don't re-arm the ordinary already-settled trigger to repeatedly re-enter landing. Don't push a new head, resubmit, or advance. In a bounded pipeline report the queued residual if not yet merged.
+- **`merged`:** record the returned merge SHA when present, then verify the PR is actually `MERGED`. Re-read exact stack identity/order, settled prefix state, refreshed base/head refs and OIDs, and fetch the affected refs with JJ. Require a consistent remaining topology before aligning or transitioning to the next layer; no automatic rebasing or pushing as part of post-land reconciliation. A deleted branch is not proof of a merge. If the stack is exhausted, corroborate from the recorded PRs; unexplained disappearance or a race is a residual.
+- **`failed`:** retain the reason and inspect remote state before any further decision. Report the blocker and do not fall back to synchronous merge or silently switch merge methods. Pending at the poll bound and unverified post-land reconciliation likewise do not count as success.

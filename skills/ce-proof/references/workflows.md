@@ -7,20 +7,20 @@ Required read before running one of these end to end: reviewing a shared doc, cr
 When given a Proof URL like `https://www.proofeditor.ai/d/abc123?token=xxx`:
 
 1. Extract the slug and token
-2. Bind presence with the CE identity defaults
+2. Bind presence with the neutral identity defaults
 3. Read via `v3/document`
 4. Edit with `v3/edit` (narrow content ops; review ops for comments/suggestions)
 
 ```bash
 TOKEN="xxx"
 SLUG="abc123"
-AGENT="ai:compound-engineering"
+AGENT="ai:assistant"
 
 curl -sS -X POST "https://www.proofeditor.ai/api/agent/$SLUG/presence" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -H "X-Agent-Id: $AGENT" \
-  -d '{"name":"Compound Engineering","status":"reading","summary":"Reviewing doc"}'
+  -d '{"name":"AI Assistant","status":"reading","summary":"Reviewing doc"}'
 
 DOC=$(curl -sS "https://www.proofeditor.ai/api/agent/$SLUG/v3/document" \
   -H "Authorization: Bearer $TOKEN" \
@@ -34,7 +34,7 @@ curl -sS -X POST "https://www.proofeditor.ai/api/agent/$SLUG/v3/edit" \
   -H "X-Agent-Id: $AGENT" \
   -H "Idempotency-Key: $(uuidgen)" \
   -d "$(jq -n --argjson rev "${REVISION:-null}" '{
-    by:"ai:compound-engineering",
+    by:"ai:assistant",
     baseRevision: (if $rev == null then null else $rev end),
     operations:[{op:"comment",on:"text to comment on",body:"Your comment here"}]
   } | if .baseRevision == null then del(.baseRevision) else . end')"
@@ -45,7 +45,7 @@ curl -sS -X POST "https://www.proofeditor.ai/api/agent/$SLUG/v3/edit" \
   -H "Authorization: Bearer $TOKEN" \
   -H "X-Agent-Id: $AGENT" \
   -H "Idempotency-Key: $(uuidgen)" \
-  -d '{"by":"ai:compound-engineering","operations":[{"op":"replace","find":"old","with":"new"}]}'
+  -d '{"by":"ai:assistant","operations":[{"op":"replace","find":"old","with":"new"}]}'
 
 # Tracked suggestion
 curl -sS -X POST "https://www.proofeditor.ai/api/agent/$SLUG/v3/edit" \
@@ -53,7 +53,7 @@ curl -sS -X POST "https://www.proofeditor.ai/api/agent/$SLUG/v3/edit" \
   -H "Authorization: Bearer $TOKEN" \
   -H "X-Agent-Id: $AGENT" \
   -H "Idempotency-Key: $(uuidgen)" \
-  -d '{"by":"ai:compound-engineering","operations":[{"op":"suggest","kind":"replace","find":"old","with":"new"}]}'
+  -d '{"by":"ai:assistant","operations":[{"op":"suggest","kind":"replace","find":"old","with":"new"}]}'
 ```
 
 ## Workflow: Create and Share a New Document
@@ -78,8 +78,8 @@ OWNER_SECRET=$(echo "$RESPONSE" | jq -r '.ownerSecret')   # required for owner d
 curl -sS -X POST "https://www.proofeditor.ai/api/agent/$SLUG/presence" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
-  -H "X-Agent-Id: ai:compound-engineering" \
-  -d '{"name":"Compound Engineering","status":"reading","summary":"Uploaded doc"}'
+  -H "X-Agent-Id: ai:assistant" \
+  -d '{"name":"AI Assistant","status":"reading","summary":"Uploaded doc"}'
 
 echo "$URL"
 ```
@@ -103,22 +103,27 @@ Sync the current Proof doc state to a local markdown file. Used for:
 
 Canonical read for this workflow: `GET /api/agent/$SLUG/v3/document`.
 
+Use the target JJ workspace's absolute root as `workspace_root`; confirm it with `(cd "$workspace_root" && jj workspace root)`. Outside JJ, use the absolute local working directory as `workspace_root`. Keep both staging files under that root's `.tmp/`, including on failure.
+
 ```bash
-SLUG=<slug>
-TOKEN=<accessToken>
-LOCAL=<absolute-path>
+SLUG="<slug>"
+TOKEN="<accessToken>"
+LOCAL="<absolute-path>"
 
-STATE_TMP=$(mktemp "${TMPDIR:-/tmp}/ce-proof-state.XXXXXX")
-curl -sS "https://www.proofeditor.ai/api/agent/$SLUG/v3/document" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "X-Agent-Id: ai:compound-engineering" > "$STATE_TMP"
-REVISION=$(jq -r '.revision // empty' "$STATE_TMP")
+(
+  umask 077
+  mkdir -p "$workspace_root/.tmp" || exit 1
+  RUN_TMP=$(mktemp -d "$workspace_root/.tmp/ce-proof-pull.XXXXXX") || exit 1
+  trap 'rm -f -- "$RUN_TMP/state.json" "$RUN_TMP/document.md"; rmdir -- "$RUN_TMP"' EXIT
 
-TMP="${LOCAL}.proof-sync.$$"
-jq -jr '.markdown' "$STATE_TMP" > "$TMP" && mv "$TMP" "$LOCAL"
-rm "$STATE_TMP"
+  curl -fsS "https://www.proofeditor.ai/api/agent/$SLUG/v3/document" \
+    -H "Authorization: Bearer $TOKEN" \
+    -H "X-Agent-Id: ai:assistant" > "$RUN_TMP/state.json" || exit 1
+  jq -ejr '.markdown | strings' "$RUN_TMP/state.json" > "$RUN_TMP/document.md" || exit 1
+  mv -- "$RUN_TMP/document.md" "$LOCAL"
+)
 ```
 
-`jq -jr` streams markdown bytes without going through a shell variable, so trailing newlines survive. `mv` within the same filesystem is atomic.
+`jq -jr` streams markdown bytes without going through a shell variable, so trailing newlines survive. The destination is replaced only after a successful read and extraction. `mv` within the same filesystem is atomic; across filesystems it is not.
 
 **Confirm before writing when the pull isn't directly asked for.** If a workflow ends up pulling as a side-effect of a different action, surface the impending write with a short confirm like "Sync Proof doc to `<localPath>`?" A silent overwrite is surprising.

@@ -27,17 +27,17 @@ Wherever this skill asks the user something, use the host's blocking question to
 
 ## Secrets in evidence
 
-Debugging surfaces raw output constantly — command results, captured payloads, log excerpts — and the harness may render a command's output the moment it runs, so check secrets when you construct the command, not afterward. Keep credentials in env vars rather than on the command line; when a command's output may carry a secret (verbose HTTP traces, dumped headers, config or environment prints), capture it to a file and surface only sanitized excerpts, writing `<REDACTED>` in place of each secret. No secret (credential, token, auth header, connection string) appears in anything shown, written, or committed. If sanitizing removes what the diagnosis needs, say so and ask the user rather than un-redacting.
+Debugging surfaces raw output constantly — command results, captured payloads, log excerpts — so check for secrets before running a command. Keep credentials in env vars rather than on the command line. Redact sensitive output before writing any file or surfacing excerpts; use `<REDACTED>` and keep temporary captures, including fallbacks, under the workspace's `.tmp/` (local `.tmp/` outside JJ). Do not write raw secrets. If sanitizing removes what the diagnosis needs, say so and follow the mode's ask/defer rule rather than un-redacting.
 
 ## Artifact Root
 
 Resolve `<root>` only when you first compose a `<root>/` path — a run that composes none skips this entirely.
 
 <!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Read** `docs_root` from `$workspace_root/.rocketclaw/config.yaml` only, where `workspace_root` is the absolute JJ workspace root discovered with `jj workspace root`. Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither its root nor under `.jj/` or `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
 
@@ -47,7 +47,7 @@ Five phases in order: **0 Triage -> 1 Investigate -> 2 Root Cause -> 3 Fix -> 4 
 
 Give each file you read its own tool call, so its output comes back on its own, never several files in one command or one script. A read counts only when the whole file came back. Some hosts cut the middle out of a long tool output and leave a truncation marker in its place, so when a read comes back shortened, read the missing lines in smaller ranges before you act on that file.
 
-**Read `references/investigate.md` now and follow it for Phases 0-2** — issue fetching, reproduction, environment sanity and the dirty-tree stash experiment, backward tracing, the tracker/PR-history search, hypothesis grounding, and the escalation table. Only the gates below are stated here.
+**Read `references/investigate.md` now and follow it for Phases 0-2** — issue fetching, reproduction, environment sanity and the isolated clean comparison, backward tracing, the tracker/PR-history search, hypothesis grounding, and the escalation table. Run repository operations from the target workspace's verified absolute root. Only the gates below are stated here.
 
 **The issue of record.** If the user handed you a ticket or issue, that is where this bug already lives, whichever system it is in; a Sentry issue counts as much as a Linear ticket. Carry its identifier and URL through to Phase 4. State its title, as the record gives it, before Phase 1 starts; if the fetch could not get one, say that rather than composing a title. If the input is only a stack trace, test path, or description, this run has **no issue of record**. That is an ordinary state, not a gap to fill: ship the fix without one, never open a ticket to manufacture a record, and never ask the user whether to. Phase 1's tracker search reads prior work and **never establishes a new home for the bug**. An existing ticket for this bug is one to *link* in Phase 4, never one to create.
 
@@ -81,8 +81,8 @@ If the user chose "Diagnosis only," skip to Phase 4's summary. If they chose "Re
 
 **Read `references/fix.md` before editing any file** — the test-first sequence, the failed-fix rule, the check of other places the fix affects, and the post-mortem trigger. Two rules decide whether the fix may start at all, so they stay here:
 
-- **Branch.** Check `git status`; if the user has unstaged work in files that need modification, confirm before editing. If the current branch is the default branch, create a feature branch without asking — derive a name from the bug, `git checkout -b <name>`, and say which branch you moved to. Detect the default by comparing against `main`, `master`, or `git rev-parse --abbrev-ref origin/HEAD` **with its `origin/` prefix stripped** — the raw output is `origin/<name>`, so an unstripped comparison never matches.
-- **Record the pre-fix scope:** current `HEAD`, whether `git status --short` is clean, and any pre-existing changed files. Then keep a list of **fix-owned files** (the tests and implementation changed for this bug) as you work. Phase 4 answers both of its questions from this record and cannot reconstruct it afterwards.
+- **Branch.** From the absolute JJ workspace root, resolve the actual default bookmark from repository conventions and the verified remote's default. Inspect the current revision and its parents without snapshotting first: the workspace may sit on an empty `@` above the branch or PR head. If `@` itself is the existing branch/PR head, do not rewrite it. Start a separate working-copy change with `jj new "$verified_history_head"` only after proving the current working copy can be left without moving a source bookmark, losing edits, or capturing unrelated work; otherwise stop or defer. Run `jj status` once it is safe to snapshot. Confirm overlapping user edits interactively; in non-interactive modes follow the mode's own scope and stop rules. On the default bookmark, or with no safely identified feature bookmark, choose a collision-free feature name from the bug and create it before editing with `jj bookmark create --revision "$verified_history_head" -- "$feature_bookmark"`. Report its name. Do not anchor it to a change carrying user WIP. Advance only the authorized feature/PR bookmark to the resulting fix commit. Pipeline mode instead uses the caller's verified PR bookmark.
+- **Record the pre-fix scope:** save the exact pre-edit tree's commit ID and separately the verified branch/history head, default bookmark, relevant commit range, conflicts, and existing changed or untracked files. Use the tree ID for fix-only comparison, not a moving `@` or a guessed default. Keep a list of **fix-owned files** as you work. Phase 4 cannot reconstruct this record afterwards.
 
 ### Phase 4: Handoff
 
@@ -117,12 +117,12 @@ If the user chose "Diagnosis only," skip to Phase 4's summary. If they chose "Re
 
 **2. Who commits, and whether it ships.** Exactly one of these runs.
 
-- **Ships** when all three hold: the pre-fix tree was clean, nothing on the branch is work the user has not already offered, and `origin` is **PR-capable**: somewhere `gh` can actually open a PR. Establish those however fits the repo in front of you. Two facts make it less obvious than it looks.
+- **Ships** when all three hold: the pre-fix tree was clean, nothing on the branch is work the user has not already offered, and the verified remote is **PR-capable**: somewhere `gh` can actually open a PR. For repository-scoped `gh`, from the verified workspace root resolve `GIT_DIR="$(jj git root)"` successfully and export it in that same subshell before calling `gh`. Two facts make it less obvious than it looks.
   - `ce-commit-push-pr` pushes the **whole branch**, and its PR spans every commit on it, not just your fix. So the question is about the branch, not your diff. It also pushes *before* creating the PR, so a remote `gh` cannot open a PR against leaves the branch published with no PR.
   - Already pushed is not already **offered**. Commits in an open PR are under review, so they are offered, and this run updates that PR rather than opening a second one. Commits pushed for backup or to trigger CI are not offered, and a first PR would publish them. Compare against the remote rather than a local ref: a local branch, including the default branch Phase 3 may have branched off, can itself be ahead of what was pushed.
 
-  If you cannot establish all three, take the local route instead; that is the safe direction, and the preview is not a substitute for it. Otherwise preview what will be committed, on what branch, and whether a PR opens or updates, then **invoke the `ce-commit-push-pr` skill with `branding:on`.** It commits under question 1's scope, so do not commit first. The preview is a statement, not a question. Surface the resulting PR URL.
+  If you cannot establish all three, take the local route instead; that is the safe direction, and the preview is not a substitute for it. Otherwise preview what will be committed, on what bookmark, and whether a PR opens or updates, then **invoke `ce-commit-push-pr`** with the verified bookmark and question 1's file scope. Do not commit first. The preview is a statement, not a question. Surface the resulting PR URL.
 - **Stays local** when any of those three fails. Invoke the `ce-commit` skill under question 1's scope and push nothing. Say in one line what stayed local and why, and that you will push and open the PR on request. Do not ask first; a local commit is reversible.
-- **Not a git repo**: nothing commits. Stop after the summary and the quality block.
+- **Not in a JJ workspace**: nothing commits. Stop after the summary and the quality block.
 
 **Contextual override** ("don't open PRs from skills", "commit only", "stop after the fix") — follow what the user said, and **Stop here** without committing when that is what they asked for. When an override stops the handoff, say which instruction stopped it and that you will commit, push, or open the PR on request. A vague tonal cue is not an override.

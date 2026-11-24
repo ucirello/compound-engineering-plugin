@@ -8,6 +8,8 @@
 This mode skips parallel subagents entirely. The orchestrator performs all work in a single pass and chooses the form the same way, but omits cross-referencing, duplicate detection, session-history research, and semantic grounding validation.
 
 Non-interactive mode enters Lightweight only when explicitly invoked with `depth:lightweight`; otherwise it defaults to Full for backward compatibility.
+
+Interactive context pressure enters Lightweight only after Full delegation is unavailable as classified in `references/modes.md`. Carry the actual reason into the completion report.
 </critical_requirement>
 
 The orchestrator (main conversation) performs ALL of the following in one sequential pass:
@@ -50,9 +52,9 @@ a brief mention helps all agents discover these learnings.
 Tip: Your AGENTS.md/CLAUDE.md doesn't surface CONCEPTS.md —
 a one-line mention helps agents find the shared vocabulary.
 
-Note: This was created in lightweight mode. For richer documentation
-(cross-references, detailed prevention strategies, specialized reviews,
-semantic grounding validation), re-run <rendered invocation> in a fresh session.
+Delegated Full unavailable: <actual delegation blocker>.
+For cross-references and semantic grounding validation, re-run
+<rendered invocation> from this same session once delegation is available.
 ```
 
 **No subagents are launched. No parallel tasks. The chosen form, plus at most one learning, is the deliverable** (Phase 2.4's update-only vocabulary capture may also change an existing `CONCEPTS.md`).

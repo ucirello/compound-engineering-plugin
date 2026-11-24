@@ -2,6 +2,8 @@
 
 The ledger is how later runs grade what landed and avoid re-proposing what the user turned down. The bundled `scripts/retro-state.py` is its only writer. Run its subcommands with the same `SKILL_DIR` and interpreter lines `references/sessions-and-window.md` uses, and see `--help` for flags and input shape.
 
+If the user chooses to carry forward an earlier ledger, have them identify the previous private store and confirm the new destination returned by `store`. To recover into an empty new store, the user can copy the unchanged `decisions.jsonl` and `runs.jsonl` as private files while no retro is running; retain the original store and leave any older backups there. Re-run `read` to verify the expected decisions and cutoffs before proceeding. If the new ledger already has records, stop rather than overwrite or guess how to merge them.
+
 ## Decision records
 
 Record one decision per item with `record`, after its outcome is known. It reads one JSON object on stdin with `target`, `kind`, `state`, `session_ids`, `harness`, and either `signal` or `reason`:

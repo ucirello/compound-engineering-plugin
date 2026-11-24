@@ -9,7 +9,7 @@
 
 brainstorm_use_fable:
   kind: remove
-  reason: "No longer does anything and only ever applied on Claude Code; to send approach generation to another model, set brainstorm_model, which applies on every harness."
+  reason: "Formerly a Claude Code-only setting; use brainstorm_model to select an OpenCode model for approach generation."
 
 fable_nudge:
   kind: remove
@@ -17,15 +17,15 @@ fable_nudge:
 
 plan_use_fable:
   kind: remove
-  reason: "No longer does anything and only ever applied on Claude Code; to send plan authoring to another model, set plan_model, which applies on every harness."
+  reason: "Formerly a Claude Code-only setting; use plan_model to select an OpenCode model for plan authoring."
 
 pr_branding:
   kind: remove
-  reason: "No longer does anything; PR branding is off by default and is requested per run with the branding:on token."
+  reason: "No longer does anything; generated PRs do not add attribution badges."
 
 work_delegate:
   kind: remove
-  reason: "No longer does anything; the skill that read it was removed. To route implementation to another harness, set work_engine_mode and work_engine_preferences."
+  reason: "No longer does anything; use work_engine_mode and work_engine_preferences to select an OpenCode implementation model."
 
 work_delegate_consent:
   kind: remove

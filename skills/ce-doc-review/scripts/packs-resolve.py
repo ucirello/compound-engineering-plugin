@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Resolve the Compound Packs declared in this repo's CE config into pack roots.
+"""Resolve the Compound Packs declared in this workspace's RocketClaw config.
 
-Reads the `packs:` list from `<repo-root>/.compound-engineering/config.yaml`
+Reads the `packs:` list from `<repo-root>/.rocketclaw/config.yaml`
 and `config.local.yaml` (both layers concatenate; local adds, never replaces),
 validates each entry, resolves path and git sources, enumerates the packs each
 source publishes, applies selection, and prints one JSON object to stdout:
@@ -41,15 +41,13 @@ Entry shape (documented subset -- anything else under `packs:` is a loud error):
         id: rails-core                         # rename (single-pack entries)
       - source: https://github.com/o/r/tree/main/packs   # tree-URL sugar
 
-Git sources cache under `<scratch-root>/ce-packs/<sha256(url\\nref)>` with an
+Git sources cache under `.tmp/rocketclaw/ce-packs/<sha256(url\\nref)>` with an
 atomic temp-clone-then-rename, so a keyed path's existence proves a complete
-clone. All git subprocesses run non-interactively (GIT_TERMINAL_PROMPT=0, ssh
-BatchMode, bounded timeout): missing credentials degrade to a warning, never a
-hang. A missing `git` binary degrades git sources only (each warns and is
-skipped); path sources still resolve, with the repository located by walking up
-from the working directory to the nearest `.git` entry. Environment overrides:
-CE_PACKS_CACHE_ROOT (cache base for tests), CE_PACKS_GIT_TIMEOUT (seconds,
-default 60).
+checkout of the requested revision. JJ transport runs non-interactively
+(GIT_TERMINAL_PROMPT=0, SSH BatchMode, bounded timeout): missing credentials
+degrade to a warning, never a hang. The workspace is resolved by JJ.
+Environment overrides: CE_PACKS_CACHE_ROOT (cache base under workspace `.tmp/`),
+CE_PACKS_GIT_TIMEOUT (seconds, default 60).
 
 A published pack is a directory a consumer lists and reads itself, so nothing
 in it may link outside its source: a pack whose tree holds such a link is not
@@ -94,7 +92,7 @@ def _within(path: str, parent: str) -> bool:
     return path == parent or path.startswith(parent + os.sep)
 
 
-# --- scratch root (peer-job-runner shape: probe /tmp, fall back to TMPDIR) ---
+# --- workspace-local scratch ------------------------------------------------
 
 def _owned_dir(path: str) -> bool:
     """Directory, not a symlink, owned by the effective uid (POSIX)."""
@@ -109,19 +107,22 @@ def _owned_dir(path: str) -> bool:
     return True
 
 
-def _private_root_usable(path: str) -> bool:
-    """Create or repair `path` as a private (0700) root owned by this user."""
+def _private_root_usable(path: str, *, leaf: bool) -> bool:
+    """Create a local cache component, leaving existing shared ancestors alone."""
     try:
         os.mkdir(path, 0o700)
     except FileExistsError:
         pass
     except OSError:
         return False
+    if not _owned_dir(path):
+        return False
     if not IS_WINDOWS:
-        if not _owned_dir(path):
-            return False
         try:
-            os.chmod(path, 0o700)
+            if leaf:
+                os.chmod(path, 0o700)
+            elif os.lstat(path).st_mode & 0o022:
+                return False
         except OSError:
             return False
     return os.path.isdir(path) and os.access(path, os.W_OK)
@@ -135,25 +136,24 @@ def _trusted_checkout(path: str) -> bool:
 
 
 @functools.lru_cache(maxsize=None)
-def cache_base() -> str | None:
-    configured = os.environ.get("CE_PACKS_CACHE_ROOT")
-    if configured:
-        root = os.path.abspath(configured)
-        os.makedirs(root, exist_ok=True)
-        return root
-    if IS_WINDOWS:
-        base = os.environ.get("LOCALAPPDATA") or tempfile.gettempdir()
-        root = os.path.join(base, "compound-engineering-packs")
-        return root if _private_root_usable(root) else None
-    if _EFFECTIVE_UID is None:
+def cache_base(workspace_root: str) -> str | None:
+    local_tmp = os.path.join(workspace_root, ".tmp")
+    if not _owned_dir(workspace_root):
         return None
-    for base in ("/tmp", os.environ.get("TMPDIR") or "/tmp"):
-        root = os.path.join(base, f"compound-engineering-{_EFFECTIVE_UID}")
-        if _private_root_usable(root):
-            packs = os.path.join(root, "ce-packs")
-            if _private_root_usable(packs):
-                return packs
-    return None
+    configured = os.environ.get("CE_PACKS_CACHE_ROOT")
+    root = os.path.abspath(os.path.join(workspace_root, configured)) if configured else os.path.join(
+        local_tmp, "rocketclaw", "ce-packs"
+    )
+    if root == local_tmp or not _within(root, local_tmp):
+        return None
+    # Check each level before using it, including .tmp itself: neither the
+    # default cache nor an override may traverse a symlink out of the workspace.
+    current = workspace_root
+    for component in os.path.relpath(root, workspace_root).split(os.sep):
+        current = os.path.join(current, component)
+        if not _private_root_usable(current, leaf=current == root):
+            return None
+    return root
 
 
 # --- minimal YAML reader for the documented packs: subset --------------------
@@ -264,11 +264,20 @@ def _set_key(entry: dict, key: str, raw_val: str, loc: str, errors: list) -> Non
     entry[key] = _parse_value(raw_val)
 
 
-# --- git ---------------------------------------------------------------------
+# --- JJ-backed pack transport -----------------------------------------------
 
 @functools.lru_cache(maxsize=None)
-def _git_env() -> dict:
+def _jj_env() -> dict:
     env = dict(os.environ)
+    # Repository-scoped gh calls may export GIT_DIR in the caller. Neither
+    # discovery nor a pack clone may inherit that repository's Git state.
+    for key in (
+        "GIT_DIR", "GIT_COMMON_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE",
+        "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+        "GIT_NAMESPACE", "GIT_PREFIX", "GIT_SHALLOW_FILE", "GIT_QUARANTINE_PATH",
+        "GIT_CONFIG",
+    ):
+        env.pop(key, None)
     env["GIT_TERMINAL_PROMPT"] = "0"
     env["GIT_ASKPASS"] = env.get("GIT_ASKPASS") or "true"
     ssh = env.get("GIT_SSH_COMMAND") or "ssh"
@@ -277,19 +286,44 @@ def _git_env() -> dict:
     return env
 
 
-def _run_git(args: list, cwd: str | None = None):
+def _run_jj(args: list, cwd: str):
     return subprocess.run(
-        ["git", *args], cwd=cwd, env=_git_env(), timeout=GIT_TIMEOUT,
-        capture_output=True, text=True,
+        ["jj", "--no-pager", "--color=never", *args], cwd=cwd, env=_jj_env(),
+        timeout=GIT_TIMEOUT, capture_output=True, text=True, stdin=subprocess.DEVNULL,
     )
 
 
-def resolve_git_source(url: str, ref: str, warnings: list, label: str) -> str | None:
+def _pinned_commit(checkout: str, ref: str) -> str | None:
+    # Match names exactly, with the same branch-then-tag preference as clone.
+    # Commit IDs are resolved only against fetched history, not as revset
+    # expressions or change IDs. A tip imported to make an ancestor reachable
+    # is never itself the selected checkout unless it is the requested commit.
+    pattern = "exact:" + json.dumps(ref, ensure_ascii=False)
+    candidates = [
+        f'remote_bookmarks({pattern}, remote="origin")',
+        f'remote_tags({pattern}, remote="origin")',
+    ]
+    if re.fullmatch(r"[0-9a-fA-F]{4,64}", ref):
+        candidates.append(
+            f'commit_id("{ref.lower()}") & ::(remote_bookmarks(remote="origin")'
+            ' | remote_tags(remote="origin")) ~ root()'
+        )
+    for candidate in candidates:
+        proc = _run_jj(["--ignore-working-copy", "log", "--no-graph",
+                        "-r", candidate, "-T", 'commit_id ++ "\\n"'], cwd=checkout)
+        if proc.returncode != 0:
+            return None
+        commits = proc.stdout.splitlines()
+        if commits:
+            return commits[0] if len(commits) == 1 and re.fullmatch(
+                r"[0-9a-f]{40}|[0-9a-f]{64}", commits[0]
+            ) else None
+    return None
+
+
+def resolve_git_source(url: str, ref: str, workspace_root: str, warnings: list, label: str) -> str | None:
     """Return the cached checkout dir for url@ref, cloning on miss. None = warn+skip."""
-    if shutil.which("git") is None:
-        warnings.append(f"{label}: git binary not found; source skipped")
-        return None
-    base = cache_base()
+    base = cache_base(workspace_root)
     if base is None:
         warnings.append(f"{label}: no writable cache root for git sources; source skipped")
         return None
@@ -299,9 +333,8 @@ def resolve_git_source(url: str, ref: str, warnings: list, label: str) -> str | 
         if _trusted_checkout(dest):
             return dest
         warnings.append(f"{label}: cached checkout {dest} is a symlink or not owned by this user; refetching")
-        # rmtree refuses to follow a symlink (and ignores a plain file); unlink
-        # those explicitly so a planted link is removed, never its target.
-        shutil.rmtree(dest, ignore_errors=True)
+        # A planted link can be unlinked without reading its target. Never
+        # descend into an existing directory whose ownership was not verified.
         if os.path.islink(dest) or os.path.isfile(dest):
             try:
                 os.unlink(dest)
@@ -313,25 +346,21 @@ def resolve_git_source(url: str, ref: str, warnings: list, label: str) -> str | 
     tmp = tempfile.mkdtemp(prefix=f"{key}.part-", dir=base)
     try:
         try:
-            proc = _run_git(["clone", "--quiet", "--depth", "1", "--no-recurse-submodules",
-                             "--branch", ref, "--end-of-options", url, tmp])
-        except subprocess.TimeoutExpired:
-            warnings.append(f"{label}: git clone timed out after {int(GIT_TIMEOUT)}s; source skipped")
-            return None
-        if proc.returncode != 0:
-            # tag/branch clone failed -- retry treating ref as a commit sha
-            try:
-                fetched = (
-                    _run_git(["init", "--quiet", tmp]).returncode == 0
-                    and _run_git(["fetch", "--quiet", "--depth", "1", "--end-of-options", url, ref], cwd=tmp).returncode == 0
-                    and _run_git(["checkout", "--quiet", "FETCH_HEAD"], cwd=tmp).returncode == 0
-                )
-                if not fetched:
-                    warnings.append(f"{label}: cannot fetch `{ref}` from {url}; source skipped")
-                    return None
-            except subprocess.TimeoutExpired:
-                warnings.append(f"{label}: git fetch timed out after {int(GIT_TIMEOUT)}s; source skipped")
+            proc = _run_jj(["git", "clone", "--no-colocate", "--remote", "origin",
+                            "--branch", "*", "--tag", "*", "--", url, tmp], cwd=workspace_root)
+            if proc.returncode != 0:
+                warnings.append(f"{label}: cannot fetch `{ref}` from {url}; JJ clone failed, source skipped")
                 return None
+            commit = _pinned_commit(tmp, ref)
+            if commit is None:
+                warnings.append(f"{label}: cannot fetch `{ref}` from {url}; exact ref unavailable or ambiguous, source skipped")
+                return None
+            if _run_jj(["new", f"commit_id({commit})"], cwd=tmp).returncode != 0:
+                warnings.append(f"{label}: cannot materialize `{ref}` from {url}; source skipped")
+                return None
+        except subprocess.TimeoutExpired:
+            warnings.append(f"{label}: JJ transport for `{ref}` from {url} timed out after {int(GIT_TIMEOUT)}s; source skipped")
+            return None
         if not os.path.lexists(dest):
             try:
                 os.replace(tmp, dest)
@@ -484,7 +513,7 @@ def nested_rules_warning(pack_id: str, pack_dir: str, boundary: str) -> str | No
     where = ", ".join(f"`{name}/`" for name in hits)
     return (
         f"pack `{pack_id}` has {total} rule-shaped file(s) under {where} that discovery"
-        " never reads -- move rules to the pack's top level (see https://everyinc.github.io/compound-engineering-plugin/guides/packs/, Pack layout)"
+        " never reads -- move rules to the pack's top level"
     )
 
 
@@ -532,7 +561,7 @@ def resolve_entry(entry: dict, repo_root: str, roots: list, warnings: list, erro
         if ref.startswith("-") or source.startswith("-"):
             errors.append(f"{label}: git source/ref may not begin with `-`")
             return
-        checkout = resolve_git_source(source, ref, warnings, label)
+        checkout = resolve_git_source(source, ref, repo_root, warnings, label)
         if checkout is None:
             if tree:
                 warnings.append(
@@ -542,7 +571,7 @@ def resolve_entry(entry: dict, repo_root: str, roots: list, warnings: list, erro
         git_meta = {"url": source, "ref": ref}
         source_root = os.path.join(checkout, sub_path) if sub_path else checkout
         real_root, real_checkout = os.path.realpath(source_root), os.path.realpath(checkout)
-        if not _within(real_root, real_checkout):
+        if not _within(real_root, real_checkout) or _within(real_root, os.path.join(real_checkout, ".jj")):
             errors.append(f"{label}: path `{sub_path}` escapes the source checkout")
             return
         source_root, boundary = real_root, real_checkout
@@ -564,7 +593,9 @@ def resolve_entry(entry: dict, repo_root: str, roots: list, warnings: list, erro
         else:
             source_root = os.path.realpath(os.path.join(repo_root, expanded))
             repo_real = os.path.realpath(repo_root)
-            if not _within(source_root, repo_real) or _within(source_root, os.path.join(repo_real, ".git")):
+            if not _within(source_root, repo_real) or any(
+                _within(source_root, os.path.join(repo_real, name)) for name in (".jj", ".git")
+            ):
                 errors.append(f"{label}: repo-relative source `{source}` resolves outside the repository")
                 return
             boundary = repo_real
@@ -660,38 +691,25 @@ def _emit(declared_only: bool, entries: list, roots: list, warnings: list, error
 
 
 def _repo_root() -> str | None:
-    """The enclosing checkout's top level: git's answer when git is on PATH,
-    otherwise the nearest ancestor of the working directory holding a `.git`
-    entry (a directory, or the file a worktree or submodule leaves). None when
-    the working directory is not inside a checkout."""
-    if shutil.which("git") is not None:
-        proc = subprocess.run(["git", "rev-parse", "--show-toplevel"],
-                              stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
-        return proc.stdout.strip() if proc.returncode == 0 else None
-    current = os.getcwd()
-    while True:
-        if os.path.lexists(os.path.join(current, ".git")):
-            return current
-        parent = os.path.dirname(current)
-        if parent == current:
-            return None
-        current = parent
+    """Discover the enclosing JJ workspace from the absolute invocation cwd."""
+    proc = _run_jj(["--ignore-working-copy", "workspace", "root"], cwd=os.getcwd())
+    return os.path.realpath(proc.stdout.rstrip("\r\n")) if proc.returncode == 0 else None
 
 
 def _main(argv: list) -> int:
-    parser = argparse.ArgumentParser(description="Resolve the Compound Packs declared in CE config.")
+    parser = argparse.ArgumentParser(description="Resolve the Compound Packs declared in RocketClaw config.")
     parser.add_argument(
         "--declared-only", action="store_true",
-        help="parse and shape-check the packs: entries only; no git or cache work",
+        help="parse and shape-check the packs: entries only; no clone or cache work",
     )
     args = parser.parse_args(argv)
     warnings, errors, roots, entries = [], [], [], []
 
     repo_root = _repo_root()
     if repo_root is None:
-        warnings.append("not inside a git repository; no CE config to read")
+        warnings.append("not inside a JJ workspace; no RocketClaw config to read")
         return _emit(args.declared_only, entries, roots, warnings, errors)
-    cfg_dir = os.path.join(repo_root, ".compound-engineering")
+    cfg_dir = os.path.join(repo_root, ".rocketclaw")
     for name in CONFIG_FILES:
         entries.extend(parse_packs_block(os.path.join(cfg_dir, name), errors))
 

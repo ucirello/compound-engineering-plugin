@@ -8,8 +8,10 @@ LFG is otherwise hands-off and never stops to ask. The single question it may as
 
 Interpret whether the invoking conversation expresses **semantic intent to assign a pipeline stage** — planning or implementation — to a specific model or harness. This is judgment, not keyword or prompt-token matching: an explicit instruction such as "plan with fable" or "use Codex for implementation" creates an assignment, while a plain mention of Codex, Composer, Fable, or another model/harness in feature content, quoted material, comparison text, or a filename does not. Two pipeline stages are routable, each with its own carrier:
 
-- **Planning** routes to `ce-plan` as a `plan_model:<alias>` carrier. This names the **model** that authors the plan (model elevation) and nothing else. Example aliases: `fable`, `opus`. LFG has no way to pass a harness assignment to planning: an assignment that scopes a *harness* to planning ("plan with codex", "plan on cursor") is **not supported**. Stop and report it as a routing-carrier blocker (a stage assignment LFG cannot pass on) rather than encoding a harness name as `plan_model:<harness>`, which `ce-plan` cannot serve and would silently fall back to the session model. Only the implementation stage routes to a different harness.
-- **Implementation** routes to `ce-work` as an `implementation_engine` object (grammar below). This names the harness and model that write the code.
+- **Planning** routes to `ce-plan` as a `plan_model:<alias>` carrier. This names the **model** that authors the plan (model elevation) and nothing else. Example aliases: `fable`, `opus`. LFG has no way to pass a harness assignment to planning: an assignment that scopes a *harness* to planning ("plan with codex", "plan on cursor") is **not supported**. Stop and report it as a routing-carrier blocker rather than encoding a harness name as `plan_model:<harness>`.
+- **Implementation** routes to `ce-work` as an `implementation_engine` object (grammar below). This preserves the requested route and model as intent, not as permission to start an external harness.
+
+The child skill owns execution: resolve configured or explicitly requested model aliases and tiers with `opencode.models`, then use OpenCode-native subagents for delegated execution and shell for workspace or verification operations. Never use shell to run another harness's dispatcher. If a request requires an external harness itself rather than an available model, the route is unavailable; do not claim a matched native model fulfilled the harness requirement. Keep the child's bounded fallback and report its actual route.
 
 ## Resolve each directive by scope
 
@@ -38,7 +40,7 @@ Remove every routing directive from the feature request that enters planning, ke
 
 ## Pass the planning carrier at step 1
 
-When a planning-stage directive resolved, prefix the `ce-plan` invocation with its `plan_model:<alias>` carrier. It is structured routing data beside the request, never woven into it, so `ce-plan`'s model elevation authors the plan on the chosen model even in pipeline mode.
+When a planning-stage directive resolved, prefix the `ce-plan` invocation with its `plan_model:<alias>` carrier. It is structured routing data beside the request, never woven into it. `ce-plan` resolves and attempts the native route even in pipeline mode; disclose any unmet model requirement instead of claiming it ran as requested.
 
 ## Pass the implementation carrier at step 2
 

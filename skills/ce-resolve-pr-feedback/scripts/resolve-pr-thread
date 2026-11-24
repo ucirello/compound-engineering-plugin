@@ -9,6 +9,10 @@ if [ $# -eq 0 ]; then
 fi
 
 THREAD_ID=$1
+workspace_root=$(jj workspace root)
+cd "$workspace_root"
+GIT_DIR=$(jj git root)
+export GIT_DIR
 
 gh api graphql -f threadId="$THREAD_ID" -f query='
 mutation ResolveReviewThread($threadId: ID!) {

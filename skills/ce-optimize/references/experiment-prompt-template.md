@@ -1,6 +1,6 @@
 # Experiment Worker Prompt Template
 
-This template is used by the orchestrator to dispatch each experiment to a subagent or Codex. Variable substitution slots are filled at spawn time.
+This template is used by the orchestrator to dispatch each experiment through native OpenCode. Variable substitution slots are filled at spawn time.
 
 ---
 
@@ -69,7 +69,7 @@ Recent experiments and their outcomes (for context -- avoid re-trying approaches
 4. Do NOT run the measurement harness (the orchestrator handles this)
 5. Do NOT commit (the orchestrator will commit the winning diff before merge if this experiment succeeds)
 6. Do NOT modify files outside the mutable scope
-7. When done, run `git diff --stat` so the orchestrator can see your changes
+7. When done, run `jj diff --stat --from "$verified_base" --to @` from the experiment workspace's absolute root so the orchestrator can see your changes
 8. If you discover you need an unapproved dependency, note it and stop
 
 Focus on implementing the hypothesis well. The orchestrator will measure and evaluate the results.
@@ -78,22 +78,23 @@ Focus on implementing the hypothesis well. The orchestrator will measure and eva
 
 ## Delta for `execution.backend: remote`: measure and report
 
-A remote worker has its own checkout on its own machine, so the orchestrator cannot measure its tree. Append this block to the template above (inside the same prompt) and replace the template's instruction 4 ("Do NOT run the measurement harness") with it. Nothing else in the template changes: scope, constraints, and dependency rules are identical.
+A remote worker has its own checkout on its own machine, so the orchestrator cannot measure its tree. Remove the local-only measurement and commit instructions in the opening paragraph, instructions 4–5 and the closing sentence, and add this block to the prompt. Include the entire `references/change-descriptions.md` guidance; do not assume the remote worker has the skill files. Scope, constraints and dependency rules stay identical.
 
 ```
 <remote-worker>
-You are running detached, on your own checkout. The orchestrator will not see your tree; it sees only the branch you push and the result you report.
+You are running detached, on your own checkout. The orchestrator will not see your tree; it sees only the bookmark you push and the result you report. Run JJ from the absolute root of the intended workspace.
 
-Base: commit {base_sha} on branch {optimization_branch}. Before changing anything, verify your HEAD is exactly {base_sha}. If it is not, check it out; if you cannot, stop and report that.
+Base: exact commit {base_sha} on bookmark {optimization_branch}. Verify an empty working-copy change directly atop that base before implementing. If not aligned, use `jj new` at the exact verified commit only from a clean worker-owned workspace; stop on dirt, conflicts, or inability to resolve that commit. Never move the optimization bookmark.
 
-After implementing the hypothesis, measure PAIRED on this machine, using the immutable harness as-is:
-1. Baseline: check out {base_sha} (stash or branch your change), run `{measurement_command}` {sample_count} time(s), record every sample.
-2. Candidate: restore your change, run the same command the same number of times, record every sample.
+After implementing the hypothesis, use the supplied change-description guidance and commit only verified mutable-scope paths with `jj commit -m "<message composed from the standards above>" <verified-mutable-paths>`. The description records the hypothesis and experiment. Verify the candidate commit ID (`head_sha`), its scope and its ancestry from the exact base.
+
+Measure PAIRED on this machine, using the immutable harness as-is:
+1. Baseline: measure the exact {base_sha} snapshot with `{measurement_command}` {sample_count} time(s), recording every sample.
+2. Candidate: measure the exact `head_sha` snapshot with the same command and count, recording every sample.
+Use empty working-copy changes atop the verified snapshots for measurement. Keep candidate revisions addressable; stop rather than discard unrelated state when changing snapshots. For a requested resample of an existing candidate, measure that exact head again without recomposing it.
 Alternate baseline and candidate runs when {sample_count} > 1. Never edit the measurement command, its working directory, or any file in the immutable scope; a changed harness makes your result unusable.
 
-Commit your mutable-scope changes, and nothing else, with the message `optimize({spec_name}): exp-{iteration} <hypothesis, short>`. That commit is the candidate; its SHA is `head_sha`.
-
-Then write `result.yaml` at the repo root of your checkout with exactly this shape:
+Then write `result.yaml` at the root of a fresh working-copy change directly atop `head_sha`, without overwriting unrelated state, with exactly this shape:
   experiment: {iteration}
   base_sha: {base_sha}
   head_sha: <the candidate commit's SHA>
@@ -103,7 +104,7 @@ Then write `result.yaml` at the repo root of your checkout with exactly this sha
   candidate: { gates: {...}, metrics: { <name>: { aggregate: <n>, samples: [...] } }, diagnostics: {...} }
   correctness: <checks you ran and their results, or "none">
 Include the harness's per-case `cases` object and any cost, tokens, or latency fields in each snapshot only when the harness emits them; do not compute them yourself.
-Commit `result.yaml` alone on top of the candidate commit, so the pushed tip's parent is `head_sha`, and push to `{result_ref}`. Do not push to {optimization_branch} or any other branch.
+Compose the result description from the supplied guidance, describing the evidence this experiment produced. Commit `result.yaml` alone, verify that the result's single parent is `head_sha`, and set the approved result bookmark to that verified commit. Use `jj git push --remote "$verified_remote" --bookmark "{result_ref}"` from this workspace's absolute root after verifying target and authority. Do not push {optimization_branch} or any other bookmark.
 
 Your final message is the structured result: the pushed ref, head_sha, machine, and the two aggregates. Report an unapproved dependency, a base mismatch, or a harness you could not run as a blocker instead of a result.
 </remote-worker>
@@ -128,16 +129,14 @@ The worker's numbers are its own claim. The orchestrator runs `decide.mjs` on th
 | `{source_digest}` | `source-digest.md` in the run's scratch directory | What workers need to know about the target's material and current approach |
 | `{failure_cases}` | `worst_cases` on the current best (kept experiment entry, or baseline) | The cases relevant to this hypothesis, with reasons; "none recorded" when absent |
 | `{recent_experiment_summaries}` | Rolling window (last 10) from experiment log | Compact summaries: hypothesis, outcome, learnings |
-| `{base_sha}` (remote only) | `git rev-parse optimize/<spec-name>` at dispatch | The commit the worker must start from and measure as baseline |
+| `{base_sha}` | Verified full JJ commit ID of `optimize/<spec-name>` at dispatch; pass as `verified_base` for a local worker | The exact commit the worker must start from |
 | `{optimization_branch}` (remote only) | `optimize/<spec-name>` | Named so the worker knows what not to push to |
-| `{result_ref}` (remote only) | `optimize-exp/<spec-name>/exp-<NNN>` | The branch the worker pushes; the orchestrator fetches it to collect |
+| `{result_ref}` (remote only) | `optimize-exp/<spec-name>/exp-<NNN>` | The result bookmark the worker pushes; the orchestrator fetches it to collect |
 | `{measurement_command}` (remote only) | Spec `measurement.command` (+ `working_directory`) | Run verbatim; the harness is immutable |
 | `{sample_count}` (remote only) | `1` for the exploratory pair in `ladder` mode; `repeat_count` for `repeat`; `1` for `stable` | Paired samples per side; `decide.mjs` may ask for more via a follow-up dispatch |
 
 ## Notes
 
-- This template works for subagent, Codex, and remote dispatch. No platform-specific assumptions. Only `remote` appends the measure-and-report delta.
-- For Codex dispatch: write the filled template to a temp file and pipe via stdin (`cat /tmp/optimize-exp-XXXXX.txt | codex exec --skip-git-repo-check - 2>&1`).
-- For subagent dispatch: pass the filled template as the subagent prompt.
+- Pass the filled template as the OpenCode worker prompt along with its verified absolute workspace root and base. Only `remote` includes the measure-and-report delta. If a dispatcher requires a prompt file, write it under the workspace's local `.tmp/`.
 - Keep `{recent_experiment_summaries}` concise -- 2-3 lines per experiment, last 10 only. Do not include the full experiment log.
 - The worker should NOT read the full experiment log or strategy digest. It receives only what the orchestrator provides.

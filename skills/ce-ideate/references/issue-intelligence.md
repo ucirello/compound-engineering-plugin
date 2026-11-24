@@ -6,7 +6,7 @@ The lens works against whichever tracker is reachable — GitHub, Linear, or Jir
 
 ## a. Scan call
 
-Read `references/agents/issue-intelligence-analyst.md` and dispatch a generic subagent seeded with that prompt, the focus hint, the `<scratch-dir>` resolved earlier in Phase 1, and the instruction that it is in **SCAN mode**.
+Read `references/agents/issue-intelligence-analyst.md` and dispatch a generic subagent seeded with that prompt, the focus hint, the verified absolute JJ workspace root, the `<scratch-dir>` resolved earlier in Phase 1, and the instruction that it is in **SCAN mode**.
 
 It probes tracker access, does one bounded fetch, persists that fetched set to `<scratch-dir>/issue-scan.json`, and returns the distribution, a signal count, and an ambiguity assessment. It does **not** cluster.
 
@@ -35,7 +35,7 @@ This is a grounding / subject-scoping question — the same kind as the Phase 0.
 
 ## c. Cluster call
 
-Dispatch the analyst again in **CLUSTER mode**, passing the resolved scope **and the same `<scratch-dir>`** so it reuses the persisted `issue-scan.json` rather than re-fetching. It returns the leverage-ranked themes plus coverage accounting.
+Dispatch the analyst again in **CLUSTER mode**, passing the resolved scope, the same absolute workspace root, **and the same `<scratch-dir>`** so it reuses the persisted `issue-scan.json` rather than re-fetching. It returns the leverage-ranked themes plus coverage accounting.
 
 ## d. What consolidation must carry
 

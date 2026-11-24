@@ -15,7 +15,7 @@ Every refresh judges worth as well as accuracy: a lesson should live in one plac
 
 ## Artifact Root
 
-Resolve `<root>` when you first compose a `<root>/solutions/` path, following the Artifact Root section of `SKILL.md`. Pass the resolved `<root>/solutions/` path to any subagent, not the config. Every subagent spawn omits the `mode` parameter, so the user's permission settings apply.
+Resolve `<root>` when you first compose a `<root>/solutions/` path, following the Artifact Root section of `SKILL.md`. Pass the resolved `<root>/solutions/` path and absolute workspace root to each native OpenCode subagent, not the config. Preserve the user's permission settings and apply the dispatch permission, model-selection and depth rules in `references/research.md`.
 
 ## Scope
 
@@ -59,7 +59,7 @@ Edits apply silently in every mode. The report's `CONCEPTS.md` line records what
 
 ## Commit
 
-Skip if nothing changed. Otherwise stage **only** the files this refresh modified, and commit in the repo's convention. **Read `references/refresh/commit.md`** for the per-mode branch decision and the git-failure fallback.
+Skip if nothing changed. **Read `references/refresh/commit.md`** for exact refresh-path selection, message composition, the per-mode bookmark decision, and the JJ failure fallback.
 
 ## Discoverability Check
 

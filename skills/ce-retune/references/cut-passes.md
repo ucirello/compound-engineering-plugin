@@ -9,10 +9,10 @@ A pass applies **one problem class** across the corpus and stops. The work fails
 1. Pick one class from the Phase 3 findings (`references/corpus-audit.md`), or one regression class from `references/halt-taxonomy.md`. One class per pass, no bundling.
 2. Write the **file-assignment manifest**: unit -> the agent that edits it -> exact paths. Every copy of a shared asset goes to a single named agent (below).
 3. If the rewrite has cross-referencing strings, author the **contract file** first, serially (below).
-4. Dispatch one agent per unit through whatever sub-agent primitive the platform provides. Each prompt carries the class, the contract path if any, its own paths, and the forbidden paths.
+4. Dispatch one native OpenCode subagent per unit under `references/workflow-shapes.md`. Each prompt carries the class, the contract path if any, its own paths, and the forbidden paths.
 5. **Reconcile** every block touched (below). This is the step that gets skipped.
 6. Run the project's own test suite. A pinned string that disappeared is a finding to report with its test path, never a test to edit.
-7. Collect each agent's applied/skipped report. Then measure (Phase 5) and commit the pass alone.
+7. Collect each agent's applied/skipped report. Then measure (Phase 5) and commit the pass alone using the composition instructions under Ship (Phase 6).
 
 Eight passes landed in the engagement that produced this skill. Every one reduced to the same class. Resist widening a pass to "also fix the obvious thing". A pass that changed two classes cannot be attributed by the next measurement.
 
@@ -32,18 +32,18 @@ Fan out by **unit** instead: one agent edits one skill directory and applies the
 
 State the forbidden set in the prompt as paths, not as a rule to infer. An agent told "do not touch shared files" will decide for itself what is shared.
 
-## Isolation: separate worktrees or disjoint paths in one tree
+## Isolation: separate JJ workspaces or disjoint paths in one workspace
 
 Disjoint paths in one tree are enough when nothing an agent runs mutates state outside its own paths. That covers most cut passes: edits are text, the manifest is a partition, and a single tree keeps the diff readable and the commit trivial.
 
-Pay for a worktree (or equivalent per-agent checkout) when any of these is true:
+Use a separate colocated JJ workspace when any of these is true:
 
 - Agents run builds, formatters, generators, or anything that writes outside its unit, such as lockfiles, caches, generated output, or a repo-root config.
-- An agent needs to run the suite or the harness to check its own edit. Concurrent runs in one tree race on scratch and on git index state.
-- Agents commit, stage, or use branch operations. One git index shared by parallel agents corrupts staging.
+- An agent needs to run the suite or the harness to check its own edit. Concurrent runs in one workspace can race on scratch and see each other's in-progress edits.
+- Agents commit, rewrite changes, or use bookmark operations. In one workspace they share `@`, and even separate workspaces share repository bookmarks; reserve shared bookmark changes for the coordinator.
 - A pass may need to be abandoned wholesale, and a clean discard is worth more than a shared diff.
 
-Otherwise the isolation cost is real: N checkouts to create, N results to merge, and merge conflicts reintroduced on exactly the files the manifest was designed to keep apart.
+Follow the colocated creation, verification, and authorized retirement rules in `references/workflow-shapes.md`. Isolate each assignment from the exact verified pass base and keep the coordinator's current workspace intact. Take only the verified assigned diffs into the pass result; resolve overlaps or conflicts before measurement and prove accepted work is integrated before removing its workspace. Otherwise the isolation cost is real: N workspaces to create, N results to integrate, and merge conflicts reintroduced on exactly the files the manifest was designed to keep apart.
 
 ## The shared-asset trap
 
@@ -125,5 +125,46 @@ A failure that moves to a later phase is progress and names the next target. A f
 ## Ship (Phase 6)
 
 Commit each pass separately with its own message so the history says which change was made and why, and so release tooling can classify intent. Keep the measurement artifacts.
+
+**Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `jj log`, compose commit messages adherent to the present standards.**
+
+Before composing, read the full Go guide and sample several recent full descriptions in the task-relevant history. Resolve `$verified_history_head` from the target repository and task (typically the verified base of the pass), not a hardcoded bookmark or a substitute for the exact measured range. Run from the target workspace's absolute root:
+
+```bash
+(cd "$workspace_root" && jj log --no-graph -r "::${verified_history_head}" -n 10 -T 'description ++ "\n"')
+```
+
+Compare subjects and bodies for prefixes or package names, casing, tense, subject/body separation, wrapping, and issue-reference placement. The project's active instructions and observed repository syntax take precedence. Use compatible Go guidance for a short, clear subject, an informative body, and useful issue references within that pattern. If there is no history, apply explicit project/user instructions and compatible Go guidance without inventing a precedent.
+
+Verbatim Go source guidance (the example illustrates Go's conventions; it is not a repository template):
+
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+
+```text
+net/http: handle foo when bar
+
+[longer description here in the body]
+
+Fixes #12345
+```
+
+> Notably, for the subject (the first line of description):
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+
+> For the body (the rest of the description):
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
+
+Compose the message to identify the single problem class changed and why the pass was needed. Verify the current working-copy diff and select only the pass's owned changes; if unrelated edits share a file, isolate the owned hunks before committing. For disjoint paths, the coordinator uses a nonempty Bash array of verified repo-relative filesets:
+
+```bash
+(cd "$workspace_root" && jj commit -m "<message composed from the standards above>" -- "${verified_pass_paths[@]}")
+```
 
 Then write the finding down where the next person will hit it: the mechanism, the before and after, the measured numbers, and the hypotheses that died. **Record the ones that died.** They are what stops the next attempt from re-running a dead end, and they are the part every write-up omits.

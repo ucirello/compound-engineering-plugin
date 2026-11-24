@@ -161,6 +161,8 @@ encode_omp_raw_cwd() {
             printf -- '-%s' "$rel"
             ;;
         *)
+            # Read-only lookup of omp's historical bucket encoding, not a
+            # scratch destination used by this script or the calling workflow.
             canon_tmp="$(cd "${TMPDIR:-/tmp}" 2>/dev/null && pwd -P)" || canon_tmp=""
             case "$cwd" in
                 "$canon_tmp")

@@ -1,14 +1,14 @@
-# Warm the npm cache for cross-model peers
+# Optional npm cache warming for legacy acpx workflows
 
-Cross-model peers resolve acpx within tested version bounds, preserving npm's release-age and date-cutoff policies. Warming downloads an eligible transport and the adapters associated with the newest validated release. An older policy-selected transport may fetch different adapter packages on its first run.
+This maintenance is only for users who also run legacy acpx workflows. Native OpenCode subagents do not need it; their user-level prerequisite is in `references/opencode-setup.md`. Warming downloads an eligible acpx transport and associated adapters while preserving npm's release-age and date-cutoff policies. An older policy-selected transport may fetch different adapters.
 
-Ask once. Say first what it gets the user: skills that consult another model, such as Codex or Claude, usually start without a download on first use. Then say in plain words what it does: it downloads now, into the user's npm cache, the npm packages those skills use to reach the other model, instead of on first use. Say too that npm runs any install scripts those packages declare, as it would on that first use. Name a package such as acpx only alongside that description. Run it only after the user approves; if they decline, fetch nothing.
+Ask once. Explain that this downloads packages into the user's npm cache now so their legacy acpx workflows usually avoid a first-use download. npm can run the packages' install scripts, just as on first use. Run it only after approval; on decline, fetch nothing.
 
-On approval, run the health script with `--warm-acpx` in place of `--version VERSION`, using the same `SKILL_DIR` as Step 2:
+On approval, run the health script with `--warm-acpx` in place of `--version VERSION`, using the same absolute `working_root` and `SKILL_DIR` as Step 2:
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the ce-setup SKILL.md>";
-bash "$SKILL_DIR/scripts/check-health" --warm-acpx
+(cd "$working_root" && bash "$SKILL_DIR/scripts/check-health" --warm-acpx)
 ```
 
-It installs each package into npx's cache, without starting the package itself, and prints one line per package. Show those lines. A failed warm does not disable peers; their normal launch still attempts resolution under the same npm policy. In the summary, say whether every package was cached, or that the user declined, or which package failed to fetch.
+It stages temporary files under the workspace's `.tmp/`, or local `.tmp/` outside JJ, and downloads each package into npx's cache without starting its CLI. Show the line for each package. A failed warm does not affect native delegation; report what cached, what failed, or that the user declined.

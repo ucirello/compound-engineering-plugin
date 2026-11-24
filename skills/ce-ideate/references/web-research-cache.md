@@ -22,12 +22,12 @@ Files live under `<scratch-dir>/web-research-cache.json`, where `<scratch-dir>` 
 
 ## Reuse check
 
-Before dispatching `web-researcher`, resolve the scratch root (the parent of `<scratch-dir>`) in bash and list sibling run-id directories — refinement loops within a session may legitimately reuse another run's cache by topic, not run-id:
+Before dispatching `web-researcher`, resolve the skill's scratch parent (the parent of `<scratch-dir>`) in bash and list sibling run-id directories — refinement loops within a session may legitimately reuse another run's cache by topic, not run-id:
 
 ```bash
 SCRATCH_DIR="<absolute scratch-dir resolved in Phase 1>"
-SCRATCH_ROOT="$(dirname "$SCRATCH_DIR")"
-find "$SCRATCH_ROOT" -maxdepth 2 -name 'web-research-cache.json' -type f 2>/dev/null
+SCRATCH_PARENT="$(dirname "$SCRATCH_DIR")"
+find "$SCRATCH_PARENT" -maxdepth 2 -name 'web-research-cache.json' -type f 2>/dev/null
 ```
 
 `find` exits 0 with empty output when no cache files exist, so the first-run case does not abort the reuse-check step.
@@ -44,10 +44,10 @@ After a fresh dispatch, append the new result to the current run's cache file at
 
 `topic_surface_hash` hashes the user-supplied content the web research is grounded on. That content is:
 - **Elsewhere modes (`elsewhere-software`, `elsewhere-non-software`):** the user's topic prompt plus any Phase 0.4 intake answers (the actual subject the agent is researching). The two sub-modes are keyed separately — a reclassification between software and non-software for the same topic hash must force a fresh dispatch, since the research domain differs.
-- **Repo mode:** the focus hint plus a stable repo discriminator. This keeps the cache key meaningful when focus is empty — two bare-prompt invocations in the same repo legitimately share research, but the key still differentiates repos. Since cache files from every repo's runs now live under the shared OS-temp root, a bare basename like `app` or `frontend` would collide across unrelated repos. Resolve the discriminator with this fallback chain and hash the result (first 8 hex chars of sha256 is sufficient):
-    1. `git remote get-url origin` — stable across machines, correct for collaborators on the same remote.
-    2. `git rev-parse --show-toplevel` — absolute repo path; machine-local but always available in a git checkout.
-    3. The current working directory's absolute path — last resort when not in a git repo.
+- **Repo mode:** the focus hint plus a stable repo discriminator. This keeps the cache key meaningful when focus is empty — two bare-prompt invocations in the same repo legitimately share research, but the key still differentiates repos. Cache files are local to the workspace's scratch parent; a bare basename like `app` or `frontend` is not a repository identity. Resolve the discriminator with this fallback chain and hash the result (first 8 hex chars of sha256 is sufficient):
+    1. The configured fetch URL for the exact `origin` entry from `(cd "$workspace_root" && jj git remote list)` — stable across machines, correct for collaborators on the same remote.
+    2. The absolute root returned by `jj workspace root` — machine-local.
+    3. The current working directory's absolute path — last resort when outside JJ.
 
 Normalize before hashing: lowercase, collapse whitespace. (The repo discriminator hash is computed from the raw command output; only the focus hint and topic text are normalized.)
 

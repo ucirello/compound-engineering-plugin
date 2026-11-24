@@ -14,7 +14,7 @@ Parse the arguments you were invoked with for optional tokens. Strip each recogn
 | `mode:headless` | `mode:headless` | **Deprecated alias** for `mode:agent` |
 | `mode:report-only` | `mode:report-only` | **Deprecated — ignored.** Former no-artifacts mode; default behavior is review-only without checkout |
 | `apply:local` | `apply:local` | Explicitly authorize Stage 5c to apply verified findings to the reviewed local checkout. This is authority, not an output mode; bare review remains report-only. |
-| `base:<sha-or-ref>` | `base:abc1234` or `base:origin/main` | Diff base on the **current checkout** (explicit; skips auto base detection) |
+| `base:<sha-or-ref>` | `base:abc1234` or `base:main@origin` | Exact diff base for the **current workspace** (explicit; skips auto base detection) |
 | `plan:<path>` | `plan:<root>/plans/2026-03-25-001-feat-foo-plan.md` | Plan file for requirements verification (explicit). Supports markdown and HTML unified plans. |
 | `plan_group:<label>` | `plan_group:PR2` | With `plan:`, the PR group of a multi-PR plan this diff builds, named by the label that starts its heading (`PR2` in `PR2: Report headline and summary`). Scopes plan completeness to that group (see `references/intent-and-plan.md`). |
 | `depth:full` | `depth:full` | **Force the full spine** — skip the Review depth gate's lite and focused paths. Use when a deep/thorough review is explicitly requested (the one override the gate cannot infer). Does not change conditional selection, merge, or scope on the full path. |
@@ -25,7 +25,7 @@ Parse the arguments you were invoked with for optional tokens. Strip each recogn
 
 **Grouping is presentation, not a mode.** The `grouping:` tokens change how the finding set is organized for triage — never reviewer selection, merge logic, scope rules, or the Stage 5c apply decision.
 
-**Mode alias:** `mode:headless` normalizes to `mode:agent`. `mode:agent` + `mode:headless` is not a conflict. `mode:non-interactive` is **not** an alias for `mode:agent` — that token means “suppress prompts” in other CE skills; if it appears here, treat it as an unrecognized, conflicting `mode:` token and stop rather than guessing what was meant.
+**Mode alias:** `mode:headless` normalizes to `mode:agent`. `mode:agent` + `mode:headless` is not a conflict. `mode:non-interactive` is **not** an alias for `mode:agent` — that token means “suppress prompts” in other skills; if it appears here, treat it as an unrecognized, conflicting `mode:` token and stop rather than guessing what was meant.
 
 **Conflicting arguments:** Stop without dispatching reviewers when:
 - Multiple incompatible scope selectors appear together (e.g. `base:` **and** a PR number/branch target — `base:` means "review the current checkout against this base")
@@ -44,7 +44,7 @@ Emit a one-line failure reason. In `mode:agent`, return JSON: `{"status":"failed
 |------------|-------------|
 | **Default** | Report-only markdown (pipe-delimited finding tables) + Actionable Findings summary |
 | **Explicit local apply** | The same markdown report plus verified local fixes and an Applied section |
-| **`mode:agent`** | One JSON object (see ## JSON output format below) + the same `/tmp/.../ce-code-review/<run-id>/` artifacts |
+| **`mode:agent`** | One JSON object (see ## JSON output format below) + the same workspace-local `.tmp/rocketclaw/code-review/<run-id>/` artifacts |
 
 Default and `mode:agent` are **report-only**. `mode:agent` changes only the serialization from markdown to JSON for programmatic callers; it does not change reviewer selection, merge logic, or scope rules. `apply:local` is separate mutation authority, not an output mode. The default markdown is the human view; keep it ASCII-safe (pipe tables, `->` not middot `·`, no box-drawing) so it degrades gracefully across terminals.
 
@@ -58,7 +58,7 @@ If the invocation arguments indicate the user wants a quick, fast, or light code
 
 Sequence:
 
-1. **Run the harness's built-in code review.** Forward any review target after stripping tokens. Then stop — do not dispatch the multi-agent pipeline.
+1. **Run OpenCode's built-in code review** only if it can honor the exact requested JJ scope, report-only authority and no-direct-Git rule. Forward the target without skill tokens. Then stop — do not dispatch the multi-agent pipeline.
 2. **Exemption:** If no built-in review exists, continue into the full multi-agent review.
 3. **`mode:agent` bypasses this short-circuit only.** It still self-sizes through the Review depth gate and returns JSON from whichever path that gate selects.
 
@@ -91,8 +91,8 @@ Every run, lite, focused, or full, leaves its receipt (`review.json` in `mode:ag
 ```json
 {
   "run_id": "<run-id>",
-  "branch": "<git branch --show-current at dispatch time>",
-  "head_sha": "<git rev-parse HEAD at dispatch time>",
+  "branch": "<verified reviewed bookmark, if known>",
+  "head_sha": "<captured reviewed head ID, if known>",
   "verdict": "<Ready to merge | Ready with fixes | Not ready>",
   "completed_at": "<ISO 8601 UTC timestamp>"
 }
@@ -117,7 +117,7 @@ Minimum shape:
   "scope": {
     "base": "<merge-base sha, pr:NNN marker, or base: ref>",
     "branch": "<current branch name>",
-    "head_sha": "<git rev-parse HEAD>",
+    "head_sha": "<captured reviewed head ID, if known>",
     "pr_url": "<url or null>",
     "files_changed": 0
   },
@@ -145,7 +145,7 @@ Minimum shape:
 "peer": {"outcome": "folded | in-process-fallback | not-run | no-usable-output | failed", "coverage": "<the Coverage sentence for this outcome>"}
 ```
 
-On the full path, copy `outcome` and `coverage` verbatim from the `peer` record in `finish-input.json`; the focused path fills them from its own fold-in, using the same outcome names and Coverage sentences. `folded` is the only outcome in which a peer artifact was folded into this review. Every other outcome means no peer artifact was folded, and `coverage` says why and what covered the lens instead. An outcome other than `folded` never changes `status`.
+On the full path, copy `outcome` and `coverage` verbatim from the `peer` record in `finish-input.json`; the focused path fills them from its own fold-in. `folded` only means an artifact was folded, not that a different serving model was verified. Other outcomes name the limit and any actual fallback. An optional peer loss alone does not change `status`; a required independent/fixed-model pass that could not run is incomplete coverage, not a fully verified result.
 
 When Stage 1d staged a review policy, every path adds `coverage.review_policy`: `sources` (the policy file paths read), `removed` and `regraded` (counts), and `not_applied` (policy files the change edited, whose new version this review did not apply).
 

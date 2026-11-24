@@ -4,11 +4,12 @@
 Answers "did the base move under this PR's paths since it branched off" from
 freshly fetched refs:
 
-  intake-overlap --repo-dir DIR --remote NAME --base BRANCH --pr N
+  intake-overlap --repo-dir DIR --remote NAME --base BRANCH \
+                 (--head-remote NAME | --head-url URL) --head BRANCH --head-oid OID
 
-Fetches the base branch and refs/pull/<N>/head into refs/ce-babysit/intake/<N>/,
-takes their merge-base, and compares the PR's changed paths with the base's
-changes since then. Overlap kinds:
+Fetches the exact base and head bookmarks from their verified repositories,
+requires the fetched head to match the PR observation, and compares both sides
+with their merge base. Overlap kinds:
 
   same-path       a base change (either rename name) is a PR path (either name)
   directory-gone  a PR path's ancestor directory existed at the merge-base and
@@ -20,37 +21,48 @@ cannot be answered (fetch failure, no merge-base); unknown sets "error" and stil
 exits 0. Only usage errors exit non-zero.
 """
 import argparse
+import hashlib
 import json
 import os
 import posixpath
 import re
 import subprocess
 import sys
+from urllib.parse import urlsplit
 
 FETCH_TIMEOUT_SECONDS = 300
-GIT_TIMEOUT_SECONDS = 120
-
-STATUS_NAMES = {
-    "A": "added",
-    "C": "copied",
-    "D": "deleted",
-    "M": "modified",
-    "R": "renamed",
-    "T": "type-changed",
-}
+JJ_TIMEOUT_SECONDS = 120
 
 _BAD_BRANCH = re.compile(r"[\x00-\x20\x7f~^:?*\[\\]|\.\.|@\{|//|/\.|\.lock$|^/|/$|\.$")
+_OID = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})")
 
 
-class GitError(Exception):
+class JJError(Exception):
     pass
 
 
-def git(repo_dir, *args, timeout=GIT_TIMEOUT_SECONDS, check=True):
-    env = dict(os.environ, GIT_TERMINAL_PROMPT="0")
+def jj(repo_dir, *args, timeout=JJ_TIMEOUT_SECONDS, transport_config=()):
+    env = dict(os.environ, GIT_TERMINAL_PROMPT="0", GCM_INTERACTIVE="never", LC_ALL="C")
+    for key in ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE"):
+        env.pop(key, None)
+    if transport_config:
+        # JJ reads the backend's process-scoped remote configuration. Do not edit the
+        # user's remote table just to assess a contributor fork.
+        try:
+            index = int(env.get("GIT_CONFIG_COUNT", "0"))
+            if index < 0:
+                raise ValueError
+        except ValueError:
+            raise JJError("invalid process transport configuration count") from None
+        for key, value in transport_config:
+            env[f"GIT_CONFIG_KEY_{index}"] = key
+            env[f"GIT_CONFIG_VALUE_{index}"] = value
+            index += 1
+        env["GIT_CONFIG_COUNT"] = str(index)
     try:
         r = subprocess.run(
-            ["git", "-C", repo_dir, *args],
+            ["jj", "--ignore-working-copy", "--no-pager", "--color=never", *args],
+            cwd=repo_dir,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -58,60 +70,62 @@ def git(repo_dir, *args, timeout=GIT_TIMEOUT_SECONDS, check=True):
             timeout=timeout,
         )
     except subprocess.TimeoutExpired:
-        raise GitError(f"git {args[0]} timed out after {timeout}s")
+        raise JJError(f"jj {args[0]} timed out after {timeout}s")
     except OSError as e:
-        raise GitError(f"could not run git: {e}")
+        raise JJError(f"could not run jj: {e}")
     out = r.stdout.decode("utf-8", errors="replace")
-    if check and r.returncode != 0:
-        err = r.stderr.decode("utf-8", errors="replace").strip()
-        raise GitError(f"git {args[0]} failed ({r.returncode}): {err}")
-    return r.returncode, out
+    err = r.stderr.decode("utf-8", errors="replace").strip()
+    if r.returncode != 0 or "No matching branches found" in err:
+        raise JJError(f"jj {args[0]} failed ({r.returncode}): {err}")
+    return out
 
 
-def refs_for(pr):
-    prefix = f"refs/ce-babysit/intake/{pr}"
-    return f"{prefix}/base", f"{prefix}/head"
+def revision_ids(repo_dir, revset):
+    return jj(repo_dir, "log", "--no-graph", "-r", revset,
+              "-T", 'commit_id ++ "\\n"').splitlines()
 
 
-def fetch(repo_dir, remote, base, pr, extra=()):
-    base_ref, head_ref = refs_for(pr)
-    git(
-        repo_dir, "fetch", "--no-tags", "--quiet", *extra, remote,
-        f"+refs/heads/{base}:{base_ref}",
-        f"+refs/pull/{pr}/head:{head_ref}",
-        timeout=FETCH_TIMEOUT_SECONDS,
+def fetch(repo_dir, remote, branch, url=None):
+    transport_config = ()
+    if url:
+        remote = "babysit-intake-" + hashlib.sha256(url.encode()).hexdigest()
+        transport_config = ((f"remote.{remote}.url", url),
+                            (f"credential.{url}.helper", "!gh auth git-credential"))
+    jj(
+        repo_dir, "--config=git.abandon-unreachable-commits=false", "git", "fetch",
+        "--branch", f"exact:{branch}", "--remote", f"exact:{remote}",
+        timeout=FETCH_TIMEOUT_SECONDS, transport_config=transport_config,
     )
-    return git(repo_dir, "rev-parse", "--verify", base_ref)[1].strip(), \
-        git(repo_dir, "rev-parse", "--verify", head_ref)[1].strip()
+    bookmark = f"{json.dumps(branch, ensure_ascii=False)}@{json.dumps(remote, ensure_ascii=False)}"
+    ids = revision_ids(repo_dir, f"present({bookmark})")
+    if len(ids) != 1 or not _OID.fullmatch(ids[0]):
+        raise JJError(f"could not resolve fetched exact bookmark {branch}@{remote}")
+    return ids[0]
 
 
 def merge_base(repo_dir, a, b):
-    code, out = git(repo_dir, "merge-base", a, b, check=False)
-    return out.strip() if code == 0 and out.strip() else None
+    ids = revision_ids(repo_dir, f"heads(::{a} & ::{b}) ~ root()")
+    return ids[0] if len(ids) == 1 else None
 
 
 def changes(repo_dir, a, b):
-    """[(status, old, new)] for `git diff -M a b`; old == new unless renamed/copied."""
-    out = git(repo_dir, "-c", "diff.renameLimit=0", "diff", "--no-ext-diff",
-              "--name-status", "-M", "-z", a, b)[1]
-    tokens = out.split("\0")
+    """[(status, old, new)] from JJ's exact tree diff."""
+    out = jj(repo_dir, "diff", "--from", a, "--to", b, "-T",
+             'status ++ "\\0" ++ source.path() ++ "\\0" ++ target.path() ++ "\\0"'
+             ' ++ source.file_type() ++ "\\0" ++ target.file_type() ++ "\\0"')
+    tokens = out.split("\0")[:-1]
     result = []
-    i = 0
-    while i < len(tokens) and tokens[i]:
-        letter = tokens[i][0]
-        if letter in ("R", "C"):
-            old, new = tokens[i + 1], tokens[i + 2]
-            i += 3
-        else:
-            old = new = tokens[i + 1]
-            i += 2
-        result.append((STATUS_NAMES.get(letter, letter), old, new))
+    for i in range(0, len(tokens), 5):
+        status, old, new, before, after = tokens[i:i + 5]
+        if status == "modified" and before != after:
+            status = "type-changed"
+        result.append((status, old, new))
     return result
 
 
 def directories(repo_dir, commit):
-    out = git(repo_dir, "ls-tree", "-r", "-d", "--name-only", "-z", commit)[1]
-    return {d for d in out.split("\0") if d}
+    out = jj(repo_dir, "file", "list", "-r", commit, "-T", 'path ++ "\\0"')
+    return {directory for path in out.split("\0") for directory in ancestors(path)}
 
 
 def ancestors(path):
@@ -158,7 +172,7 @@ def overlap_reasons(pr_changes, base_changes, dirs_at_mb, dirs_at_base):
     ]
 
 
-def assess(repo_dir, remote, base, pr):
+def assess(repo_dir, remote, base, head_remote, head, expected_head, head_url=None):
     result = {
         "base_oid": None,
         "head_oid": None,
@@ -168,21 +182,17 @@ def assess(repo_dir, remote, base, pr):
         "error": None,
     }
     try:
-        base_oid, head_oid = fetch(repo_dir, remote, base, pr)
-        result.update(base_oid=base_oid, head_oid=head_oid)
+        base_oid = fetch(repo_dir, remote, base)
+        result["base_oid"] = base_oid
+        head_oid = fetch(repo_dir, head_remote, head, head_url)
+        result["head_oid"] = head_oid
+        if head_oid != expected_head:
+            raise JJError(f"PR head moved: expected {expected_head}, fetched {head_oid}")
 
         mb = merge_base(repo_dir, base_oid, head_oid)
         if mb is None:
-            shallow = git(repo_dir, "rev-parse", "--is-shallow-repository")[1].strip() == "true"
-            if not shallow:
-                result["error"] = "no merge-base between base and PR head (unrelated histories)"
-                return result
-            base_oid, head_oid = fetch(repo_dir, remote, base, pr, extra=("--unshallow",))
-            result.update(base_oid=base_oid, head_oid=head_oid)
-            mb = merge_base(repo_dir, base_oid, head_oid)
-            if mb is None:
-                result["error"] = "no merge-base between base and PR head after unshallowing"
-                return result
+            result["error"] = "no unique merge-base between base and PR head"
+            return result
         result["merge_base"] = mb
 
         if mb == base_oid:
@@ -198,7 +208,7 @@ def assess(repo_dir, remote, base, pr):
         result["reasons"] = reasons
         result["overlap"] = bool(reasons)
         return result
-    except GitError as e:
+    except JJError as e:
         result["error"] = str(e)
         return result
 
@@ -208,19 +218,39 @@ def main():
     p.add_argument("--repo-dir", required=True)
     p.add_argument("--remote", required=True)
     p.add_argument("--base", required=True)
-    p.add_argument("--pr", type=int, required=True)
+    head_source = p.add_mutually_exclusive_group(required=True)
+    head_source.add_argument("--head-remote")
+    head_source.add_argument("--head-url")
+    p.add_argument("--head", required=True)
+    p.add_argument("--head-oid", required=True)
     args = p.parse_args()
 
-    if args.pr <= 0:
-        p.error("--pr must be a positive integer")
-    if not args.remote or args.remote.startswith("-"):
-        p.error("--remote must be a remote name or URL")
-    if not args.base or args.base.startswith("-") or _BAD_BRANCH.search(args.base):
-        p.error("--base must be a valid branch name")
-    if not os.path.isdir(args.repo_dir):
-        p.error("--repo-dir must be an existing directory")
+    remotes = [("--remote", args.remote)]
+    if args.head_remote is not None:
+        remotes.append(("--head-remote", args.head_remote))
+    for name, value in remotes:
+        if not value or value.startswith("-") or any(ord(c) < 32 for c in value):
+            p.error(f"{name} must be an exact named JJ remote")
+    for name, value in (("--base", args.base), ("--head", args.head)):
+        if not value or value.startswith("-") or _BAD_BRANCH.search(value):
+            p.error(f"{name} must be a valid branch name")
+    if not _OID.fullmatch(args.head_oid):
+        p.error("--head-oid must be a full commit ID")
+    if args.head_url is not None:
+        try:
+            url = urlsplit(args.head_url)
+            valid = (url.scheme == "https" and url.hostname and url.username is None
+                     and url.password is None and not url.query and not url.fragment
+                     and re.fullmatch(r"/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\.git", url.path))
+        except ValueError:
+            valid = False
+        if not valid:
+            p.error("--head-url must be the verified HTTPS clone URL without credentials")
+    if not os.path.isabs(args.repo_dir) or not os.path.isdir(args.repo_dir):
+        p.error("--repo-dir must be an existing absolute workspace root")
 
-    print(json.dumps(assess(args.repo_dir, args.remote, args.base, args.pr)))
+    print(json.dumps(assess(args.repo_dir, args.remote, args.base, args.head_remote,
+                            args.head, args.head_oid, args.head_url)))
 
 
 if __name__ == "__main__":

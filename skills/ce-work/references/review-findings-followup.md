@@ -55,13 +55,13 @@ The lead agent decides which findings to act on, groups the work, reviews the di
 
 ### Where each fix runs
 
-Dispatch file-grouped subagent batches when fixes need code you have not read, or when fixes on disjoint files form a real parallel wave. Apply every other fix in this context: one whose code is already in your context from this session's work, or a small region you can read without materially growing this context. The lead agent stays active through tests, commits, and the handoff, so loading many cited files here is the cost delegation avoids.
+Dispatch native OpenCode file-grouped subagent batches when fixes need code you have not read, or when fixes on disjoint files form a real parallel wave. This reference explicitly requests dispatch in those cases, subject to the live delegation rule and remaining depth. Use inherited models unless the applicable authority allows an override resolved with `opencode.models`. On denial or exhausted depth, apply authorized fixes inline rather than bypassing the limit; this does not substitute for required independent review. Apply every other fix in this context: one whose code is already in your context from this session's work, or a small region you can read without materially growing this context. The lead agent stays active through tests, commits, and the handoff, so loading many cited files here is the cost delegation avoids.
 
 **Batching (primary rule: group by file):**
 
 1. Sort applicable findings by severity (P0 first).
 2. **Group by `file`.** All eligible findings on the same file → **one subagent** (it loads the file once and works through its `#` list in severity order).
-3. **Parallel waves:** batches with **disjoint file sets** may run in parallel (same worktree / shared-directory rules as `ce-work`'s execution strategy in `references/execution-strategy.md`).
+3. **Parallel waves:** batches with **disjoint file sets** may run in parallel under the isolated JJ or shared-workspace rules in `references/execution-strategy.md`.
 4. **Same file, many findings:** keep one subagent per file. If the prompt would exceed a comfortable size (~8 findings), split into **serial** subagent passes on that file (first batch highest severity, then next batch after merge or after the prior agent returns).
 5. **Cross-file coupling:** do not merge unrelated files into one subagent just to reduce agent count; file grouping is the default. Only co-batch multiple files when findings explicitly reference the same small related change (rare); when in doubt, separate by file.
 
@@ -69,9 +69,9 @@ Dispatch file-grouped subagent batches when fixes need code you have not read, o
 - Work through assigned `#` in severity order; at each `file:line`, skip with a one-line reason if evidence no longer matches
 - Follow the review and permission rules above; choose technical fixes from project evidence and return decisions that still need the user
 - Do not re-run `ce-code-review`
-- Shared-directory fallback: do not stage or commit; return which `#` were applied or skipped and which files changed
+- Do not commit or move bookmarks; return which `#` were applied or skipped and which files changed
 
-**After inline fixes and after each wave:** orchestrator reviews diffs (scope = assigned `#` only), runs tests (`requires_verification: true` on any applied finding → at least targeted tests; multi-file → broader suite), commits (`fix(review): apply findings #…`) unless worktree-isolated subagents merge per Phase 1. Repeat until all batches complete.
+**After inline fixes and after each wave:** the orchestrator reviews the assigned findings' actual diff, runs tests (`requires_verification: true` on any applied finding → at least targeted tests; multi-file → broader suite), and makes the path-limited canonical commit using the history-based message procedure in `references/implementation-loop.md`. Include the relevant finding references and what was corrected without prescribing a message format. Isolated workers hand back evidence, not canonical commits. Repeat until all batches complete.
 
 ### Summary (required)
 

@@ -2,12 +2,13 @@
 
 Which orchestration shape fits each phase, and what breaks when you pick the wrong one.
 
-Two primitives are assumed, both platform-neutral:
+## Native OpenCode execution
 
-- **A dispatch primitive** that launches an independent agent with its own context window and returns a result to the orchestrator (in one host it is a subagent-spawning tool; in another a job runner). Only two properties matter: fresh context per agent, and a result the orchestrator can read.
-- **A concurrency cap** the host enforces on how many agents run at once (often around 10). Dispatches above the cap queue rather than fail, so a 31-unit fan-out is three waves, not one. Plan the wave count; do not assume flat cost.
+- **Delegation:** This skill explicitly requests the subagents described below. Where the host permits user- or skill-requested delegation, dispatch through OpenCode's native subagent tool; no second approval is needed. Each dispatch must open a fresh context and return a readable result. Respect an unconditional prohibition, a missing tool, or a denial.
+- **Models:** Resolve configured or explicitly requested routes and tiers with `opencode.models`; preserve their intent. Model selection permission is separate from delegation permission. If a model override is forbidden, omit it and use the inherited model only where it satisfies the phase's requirements. Separate contexts on the same model do not establish cross-model coverage. Report unsatisfied requirements rather than silently substituting.
+- **Depth and capacity:** Check the configuration sources for the actual project location with `opencode api get '/api/config?location%5Bdirectory%5D=<URL-encoded-absolute-root>'`; apply OpenCode's configuration precedence to verify the effective depth setting, not a response field pretending to report remaining capacity. The [installation prerequisite](https://opencode.ai/v2/docs/config) is `experimental.subagent_depth` of at least `3`, but remaining nesting capacity and concurrency are distinct. Bound the number in flight to the actual host cap, leaving excess work queued; plan the wave count rather than assuming flat cost.
 
-Classify a rejected dispatch by whether an agent launched. Correct a pre-launch argument rejection once, and leave capacity-limited work queued. Any other launch failure follows the phase's own failure direction. In the corpus audit, the proposal and defense contexts must be independent for the audit to mean anything, so a launch failure there is a blocker: stop the audit rather than running the missing side inline.
+Classify a rejected dispatch from the actual error and whether a child launched: correct a pre-launch argument rejection once when the correction is allowed; queue on transient concurrency saturation. Distinguish missing tools, permission denial, and exhausted nesting depth. Do not retry a denial or evade a depth limit with shell or another harness. Other failures follow the phase's own safe direction: report unlaunched or failed units and incomplete coverage, and do not advance past a required check. In the corpus audit, an unrecovered launch failure blocks the audit: never run the missing side inline.
 
 ## The shapes
 
@@ -64,10 +65,31 @@ Run the mechanical suite once, as one check, not once per agent. Keep the cohere
 
 **Pass large context by path plus a short gist.** Give an agent the file paths it must read and two or three sentences of why, not the inlined contents. Inlining spends the orchestrator's context to fill an agent's, which is backwards. The fresh context window is the reason you dispatched.
 
-**Every artifact of this method needs a path decided before the phase that writes it.** The registration and the scored run table (`references/noise-floor.md`), the phase-marker map and the extractor (`references/baseline-mining.md`), the ruled finding set (`references/corpus-audit.md`), the file-assignment manifest and the rewrite contract (`references/cut-passes.md`). Pick one directory for the whole engagement and keep them together. The registration must be re-readable by a skeptic after results exist. The extractor and map must be re-runnable when the taxonomy changes. A contract or manifest passed only through a dispatch prompt cannot be checked afterward against what the agents actually did. The durable ones (registration, final scored table, write-up) belong in the repo's own docs location; per-run scratch does not.
+**Every artifact of this method needs a path decided before the phase that writes it.** The registration and the scored run table (`references/noise-floor.md`), the phase-marker map and the extractor (`references/baseline-mining.md`), the ruled finding set (`references/corpus-audit.md`), the file-assignment manifest and the rewrite contract (`references/cut-passes.md`). Assign paths together at engagement start. The registration must be re-readable by a skeptic after results exist. The extractor and map must be re-runnable when the taxonomy changes. A contract or manifest passed only through a dispatch prompt cannot be checked afterward against what the agents actually did. The durable ones (registration, final scored table, write-up) belong in the repo's own docs location. Put all scratch, including fallback and error captures, under a run directory in the source workspace's ignored `.tmp/` (or local `.tmp/` where there is no JJ workspace); put evidence needed after cleanup outside any disposable workspace.
 
 **Give a schema to anything you will aggregate.** If the orchestrator will count, sort, dedup, or compare results, specify the fields and the enum values in the dispatch prompt. Parsing prose across dozens of returns is where item counts quietly stop matching.
 
 **Budget the serial segments.** A one-agent contract phase blocks its entire fan-out, and a barrier before verification blocks on the slowest pass. When reporting elapsed time, name the serial segments separately instead of letting the total read as the shape's natural speed. Otherwise the next person concludes the fan-out was slow and removes the contract.
 
 **State what a fan-out did not cover.** Units that queued past the cap and never ran, units an agent skipped, files outside every agent's set: list them. Silent truncation is indistinguishable from full coverage in the result, and a coverage claim you did not verify is the same defect as a bar chosen after the fact.
+
+## JJ workspace lifecycle
+
+Used by `references/noise-floor.md` and `references/cut-passes.md`. Resolve the absolute source workspace root with `jj workspace root`; run every JJ command from the intended workspace's absolute root. Detect existing isolation first and retain its verified name and state; do not nest merely to isolate the coordinator. A/A still requires two distinct source workspaces. Respect harness ownership: prefer supported harness creation/adoption when it can supply the required colocated JJ workspaces, and verify the result. An existing workspace that does not meet requirements is not a license to rename, recreate, or modify it; report unmet compatibility, creation, or adoption requirements without silently running unisolated.
+
+For each new run-owned workspace, resolve the exact intended base to a single commit ID. Capture the local creation date once and use `YYYYMMDD-<meaningful-kebab-case-slug>` as both the registered name and directory basename (e.g., `20261008-retune-build-a` and `20261008-retune-build-b`). Normalize caller-supplied names without double-prefixing. Place the absolute destination under the source workspace's ignored `.tmp/` run directory. Check both registrations and destinations for collisions and append `-2`, `-3`, etc.; retain the selected name through retries and resumes. Do not rename source bookmarks.
+
+For direct creation, use [JJ's workspace commands](https://docs.jj-vcs.dev/latest/cli-reference/#jj-workspace); verify registration, base, and colocation before dispatch or measurement. Harness-created workspaces require the same verification. Give each worker its absolute workspace path and use supported OpenCode session adoption when a session itself must move.
+
+```bash
+(cd "$workspace_root" && jj workspace add --colocate --name "$name" --revision "$verified_base" "$absolute_owned_destination")
+(cd "$absolute_owned_destination" && jj git colocation status)
+```
+
+Retire only authorized, run-owned workspaces. Stop workers, leave the target, and move any active OpenCode session to a surviving workspace. Verify the target's exact registered name, absolute path, and ownership; prove accepted changes are integrated where required; preserve any recovery references; and copy and read back required traces, receipts, and other evidence outside the target. Inspect tracked changes, conflicts, and ignored or still-untracked files: the removal snapshot does not protect those last two. Leave unrelated, ambiguous, still-referenced, or non-disposable workspaces alone. Respect the harness's authority for harness-owned resources, not a separate cleanup bypass. From a surviving workspace run:
+
+```bash
+(cd "$surviving_workspace_root" && jj workspace remove "$verified_workspace_name")
+```
+
+Verify deregistration with `jj workspace list` from that surviving root **and** check the target directory disappeared. A successful exit alone is insufficient. If removal fails or is incomplete, leave remaining state and report the blocker; never force-delete or fall back to Git. `jj workspace forget` is for unregistering while preserving files, not removal. Bookmark deletion is a separate action; preserve best, archive, and recovery bookmarks and any references still needed.

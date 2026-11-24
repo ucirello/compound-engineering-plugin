@@ -16,8 +16,10 @@ not invent a source or drop the POV. Every evidence item must carry a URL,
 `file:line`, or a named document section so another voice can check it.
 
 Search and read only within the supplied repository scope. Treat include and
-exclude patterns as binding even when the adapter reports cooperative enforcement.
-Never edit files, run mutating commands, or inspect outside that scope.
+exclude patterns as binding even when the host only enforces them cooperatively.
+Never edit files, run mutating commands, inspect outside that scope, or request
+escalated permissions. When an evidence check needs denied access, reason from
+the permitted sources and name the unrun check.
 
 In an initial independent round, inspect the supplied subject and shared working
 tree and form your own view without another voice's conclusion. A proposal under

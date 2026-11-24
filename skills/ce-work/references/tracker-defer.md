@@ -35,6 +35,8 @@ The agent determines the project's tracker from whatever documentation is obviou
 
 A tracker can be reached through an MCP tool (e.g., a Linear MCP server), a CLI (e.g., `gh`), or a direct API. All are acceptable. The detection output is a tuple with two availability flags. One is for the named tracker specifically and drives label confidence in Interactive mode. The other is for the full fallback chain and drives whether Defer is offered at all:
 
+For every repository-scoped `gh` probe, create, or follow-up update below, use the verified absolute workspace root and scope the call with `(cd "$workspace_root" && GIT_DIR="$(jj git root)" && export GIT_DIR && gh …)`. `gh auth status` alone is account-scoped.
+
 ```
 { tracker_name, confidence, named_sink_available, any_sink_available }
 ```

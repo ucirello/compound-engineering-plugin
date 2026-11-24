@@ -16,7 +16,7 @@ required_fields:
   name:
     type: string
     pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
-    description: "Unique identifier for this optimization run (lowercase kebab-case, safe for git refs and worktree paths)"
+    description: "Unique identifier for this optimization run (lowercase kebab-case, safe for JJ bookmarks and workspace paths)"
     example: "improve-issue-clustering"
 
   description:
@@ -414,16 +414,16 @@ optional_fields:
       backend:
         type: enum
         values:
-          - worktree  # git worktrees for isolation (default)
-          - codex     # Codex sandboxes for isolation
+          - worktree  # colocated JJ workspaces with native OpenCode delegation (default)
+          - codex     # legacy spec token for a configured OpenCode worker route and posture
           - remote    # detached workers with their own checkout; results arrive as a pushed ref or store file
         default: worktree
-        description: "Where experiments run. remote needs a detached-worker capability (SKILL.md Execution Surface); without one the run falls back to worktree. remote workers measure paired on their own machine, so it requires a relative or paired comparison."
+        description: "Where experiments run. Both local routes use OpenCode and colocated JJ isolation. remote needs a detached-worker capability (SKILL.md Execution Surface); without one the run falls back to worktree. remote workers measure paired on their own machine, so it requires a relative or paired comparison."
       max_concurrent:
         type: integer
         default: 4
         minimum: 1
-        description: "Maximum experiments to run in parallel. Capped at 6 for worktree backend. 8+ only valid for Codex or remote backends. For remote this caps dispatched workers, not local worktrees."
+        description: "Maximum experiments to run in parallel. Capped at 6 for worktree backend. 8+ only valid for the configured worker route (codex token) or remote backend, subject to actual host capacity. For remote this caps dispatched workers, not local workspaces."
       max_experiments_per_tick:
         type: integer
         default: null
@@ -432,10 +432,10 @@ optional_fields:
       codex_security:
         type: enum
         values:
-          - full-auto                                # --full-auto (workspace write)
-          - yolo                                     # --dangerously-bypass-approvals-and-sandbox
+          - full-auto  # request workspace-write posture within native permissions
+          - yolo       # legacy unrestricted-posture intent; never bypass OpenCode policy
         default: null
-        description: "Codex security posture. If null, user is asked once per session."
+        description: "Legacy worker posture intent for the codex token. If null, ask once per session. Apply only a permitted OpenCode equivalent; otherwise log the unmet intent and use independently permitted workspace delegation when available."
 
   parallel:
     type: object

@@ -4,7 +4,13 @@ Use this path when the input is a short recording (under ~60 seconds), the user 
 
 ## Workflow
 
-1. Create `OUTPUT_DIR` with `mktemp -d "${TMPDIR:-/tmp}/riffrec-quick-XXXXXX"`, set `INPUT_PATH` to the supplied capture, and use the invocation in `references/analyzer.md`. Capture the analyzer's printed output directory; later steps read from it.
+1. Set `workspace_root` to the verified absolute root of the target JJ workspace, or to the absolute working directory for the analysis outside JJ. Allocate `OUTPUT_DIR` under that root's local `.tmp/`:
+
+   ```bash
+   OUTPUT_DIR="$(cd "$workspace_root" && mkdir -p .tmp && mktemp -d "$workspace_root/.tmp/riffrec-quick-XXXXXX")" || exit 1
+   ```
+
+   If allocation fails, report the error and stop; do not fall back to a system temporary directory. Set `INPUT_PATH` to the supplied capture and use the invocation in `references/analyzer.md`. Capture the analyzer's printed output directory; later steps read from it.
 
 2. Read only `analysis.md` from the temp output. Skip `problem-analysis.md`, `review-prompt.md`, `requirements-kickoff.md`, and `source-materials.md` — they are designed for the extensive path.
 

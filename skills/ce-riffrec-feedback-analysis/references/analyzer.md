@@ -4,6 +4,8 @@ All non-setup paths use the bundled analyzer through this one invocation shape. 
 
 Set `SKILL_DIR` to the absolute directory containing the loaded `ce-riffrec-feedback-analysis` `SKILL.md`. Resolve Python by executing each candidate so a Windows Store stub is not mistaken for a working interpreter:
 
+Run from the absolute root of the target workspace (or the absolute working directory for the analysis outside JJ), so default destinations and repo-relative evidence paths use the intended root.
+
 ```bash
 SKILL_DIR="<absolute path of the directory containing this SKILL.md>";
 INPUT_PATH="<absolute input path>";

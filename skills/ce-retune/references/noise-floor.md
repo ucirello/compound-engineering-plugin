@@ -10,13 +10,22 @@ The A/A also tests the instrument. Identical builds that differ significantly ar
 
 ## Setup
 
-Required capability: a harness that can point a run at a specific source checkout of the corpus (Phase 0's build selector) and writes a per-run artifact you can parse. Both arms must go through the *same* runner, task, and model configuration.
+Required capability: an OpenCode runner with a verified build selector (Phase 0) that writes a per-run artifact you can parse. Use `opencode.models` to resolve the requested route and variant. With the required execution and model permissions, launch each evaluation as a fresh native OpenCode run through shell from the selected absolute workspace root; do not resume a session, bypass a denial, or use a different harness. Both arms must go through the *same* runner, task, and model configuration. Use supported project configuration to select the corpus from within each workspace; do not change global installs or assume changing directory alone selects it.
 
-1. Materialize two checkouts of the corpus at the same commit. Record the commit for each arm.
-2. Hash both trees and assert equality before the first run (`find <dir> -type f | sort` then a checksum over the file list and contents). An accidental difference between arms gets read as noise and poisons the floor silently.
-3. Label the arms concretely by path, not by intent (`build-a`, `build-b`). Nothing downstream should be able to guess an arm from a filename that also encodes a hypothesis.
-4. **Prove the selector is honored, in one run, before planning any.** Point a single run at `build-a`, then open the finished artifact and confirm it names `build-a` in the durable field below. Two failures both look like a normal run: a harness that silently falls back to its installed copy of the corpus, and one that records the arm nowhere. Either makes all 12 runs unlabeled and unusable, and both are invisible until you try to score. If you want a positive control, put a harmless unique string in a **third**, throwaway checkout and confirm it reaches that run's trace. Never put it in either arm, which step 2 requires to stay byte-identical, and re-assert the hashes before the counted runs begin.
+1. Materialize two colocated JJ workspaces at the same verified commit. Follow the creation, colocation verification, and authorized retirement rules in `references/workflow-shapes.md` for both arms and any throwaway control. Record each arm's absolute path and exact commit ID; JJ creates a working-copy change above the base, so check that it is empty before measurement.
+2. Hash both corpus trees by relative file paths and contents and assert equality before the first run (exclude workspace metadata and local run scratch). An accidental difference between arms gets read as noise and poisons the floor silently.
+3. Label the arms by their actual workspace paths (`20261008-retune-build-a`, `20261008-retune-build-b`), not by intent. Nothing downstream should be able to guess an arm from a filename that also encodes a hypothesis.
+4. **Prove the selector is honored, in one run, before planning any.** Point a single run at `build-a`, then open the finished artifact and confirm it identifies the source at that arm's absolute path in the durable field below. Two failures both look like a normal run: a runner that silently falls back to its installed copy of the corpus, and one that records the arm nowhere. Either makes all 12 runs unlabeled and unusable. If you want a positive control, put a harmless unique string in a **third**, throwaway workspace and confirm it reaches that run's trace. Never put it in either arm, which step 2 requires to stay byte-identical, and re-assert the hashes before the counted runs begin.
 5. Plan 12 or more runs total, split evenly. Below about 10 the floor estimate is itself noise; the spread ratio in particular needs the tails.
+
+For example, with an absolute local `.tmp/` run directory and unique output paths:
+
+```bash
+(cd "$absolute_build_root" && opencode run --model "$model_route" --format json "$probe_prompt") \
+  >"$absolute_trace_path" 2>"$absolute_error_path"
+```
+
+Record exit status and the session ID from the output. If the event stream lacks required fields, capture supported OpenCode session export or API results for that exact session into local `.tmp/`; do not read internal storage. Preserve actual runner-emitted source evidence, tool calls, final message, terminal marker, and token counts. Do not fill missing source metadata with the command's intended path. If the selector or archive contract cannot be verified, stop at the measurement gate. For A/B, use the same native launch and evidence contract and verify the exact baseline and candidate revisions.
 
 ## Interleave, never batch
 
@@ -95,7 +104,7 @@ For one pre-specified attempt under the fixed `p = 0.58` null:
 | 5 | 0.066 | 1 in 15 |
 | 8 | 0.0128 | 1 in 78 |
 
-**Keep the search history when interpreting the result.** Across 20 independent attempts under that same null, the probability of at least one eight-run success is `1 - (1 - 0.58^8)^20`, about 0.2272, not 0.0128. This is an illustrative calculation, not a measured CE error rate; adaptive candidates need not be independent. A search-wide significance claim must account for candidate selection and the stopping rule. Changing a candidate resets its streak, not the search history.
+**Keep the search history when interpreting the result.** Across 20 independent attempts under that same null, the probability of at least one eight-run success is `1 - (1 - 0.58^8)^20`, about 0.2272, not 0.0128. This is an illustrative calculation, not a measured error rate for the corpus; adaptive candidates need not be independent. A search-wide significance claim must account for candidate selection and the stopping rule. Changing a candidate resets its streak, not the search history.
 
 **Stop an attempt at the first behavioral failure.** A failed streak is a finding to diagnose before changing the candidate, not permission to repeat it until it passes. Keep every attempt and classify infrastructure retries under the registered broken-run rule. Never pool successes across builds. A cleared operational bar without a supported statistical analysis remains descriptive confirmation. A streak probability is not an effect-size estimate or a percentage improvement.
 

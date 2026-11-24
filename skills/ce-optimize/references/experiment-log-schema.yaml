@@ -5,7 +5,7 @@
 # Location: <state-root>/experiment-log.yaml, where <state-root> is the durable
 # state root resolved in Phase 0 (references/persistence.md): the harness's
 # durable store when it names one, otherwise
-# .context/compound-engineering/ce-optimize/<spec-name>/
+# .context/ce-optimize/<spec-name>/
 #
 # PERSISTENCE MODEL:
 # The experiment log on disk is the SINGLE SOURCE OF TRUTH. The agent's
@@ -54,6 +54,9 @@ structure:
     required: true
     description: "Metrics measured on the original code before any optimization"
     children:
+      revision:
+        type: string
+        description: "Full verified JJ commit ID of the original baseline; absent in legacy logs without recorded revision evidence."
       timestamp:
         type: string
         format: "ISO 8601 timestamp"
@@ -194,6 +197,23 @@ structure:
       active_seconds:
         type: number
         description: "Time spent inside ticks since Phase 3 started, summed across ticks; the clock stopping.max_hours reads"
+      workspace_allocations:
+        type: array
+        description: "Run-owned local workspace identities, recorded before worker handoff and retained until verified retirement. Absence in a legacy log does not prove ownership."
+        items:
+          type: object
+          children:
+            experiment:
+              type: integer
+            name:
+              type: string
+            absolute_path:
+              type: string
+            base_revision:
+              type: string
+            status:
+              type: string
+              enum: [planned, verified]
       pending_waits:
         type: array
         description: "Work outstanding across the turn boundary. Empty when nothing is outstanding. Turn-end conditions, including the deadline timer and manual-resume handback, are defined in persistence.md (The Wait Record and Ticks)."
@@ -286,7 +306,7 @@ experiment_entry:
       values:
         - measured                # measurement finished and metrics were persisted, awaiting batch evaluation / integration
         - promising               # eligible on current samples but the ladder still needs confirmation before keep
-        - kept                    # eligible, confirmed, and integrated onto the optimization branch
+        - kept                    # eligible, confirmed, and integrated at the optimization bookmark
         - not_selected            # eligible after comparison but not integrated (not the winner, overlapping, or past the runner-up cap)
         - reverted                # compared and not eligible (regressed a required objective, or none improved), or eligible but its gain did not come from doing the work the metric stands for (loop 3.4)
         - inconclusive            # delta inside the comparison threshold; not a keep and not a demonstrated regression
@@ -302,7 +322,7 @@ experiment_entry:
         'measured' and 'promising' are non-terminal: CP-3 persists raw metrics
         before batch-level comparison, and 'promising' means the ladder still
         needs confirmation samples. An eligible decide `keep` stays `measured`
-        until its diff is on the optimization branch. 'kept' and 'runner_up_kept'
+        until its diff is integrated at the optimization bookmark. 'kept' and 'runner_up_kept'
         mean that integration happened. 'not_selected' is terminal for an
         eligible candidate that was not integrated. 'deferred_needs_approval'
         items are re-presented at wrap-up. All other states are terminal for
@@ -326,10 +346,10 @@ experiment_entry:
             description: "holdout pairings are scored on the held-out set before a keep and at final confirmation; they never feed selection or hypothesis generation"
           reference_revision:
             type: string
-            description: "Identity that uniquely identifies the measured reference bytes. A revision is enough when it names those bytes; a HEAD shared by different uncommitted trees is not."
+            description: "Identity that uniquely identifies the measured reference bytes. A revision is enough when it names those bytes; a shared parent of different working-copy changes is not."
           candidate_revision:
             type: string
-            description: "Identity that uniquely identifies the measured candidate bytes. A revision is enough when it names those bytes; a HEAD shared by different uncommitted trees is not."
+            description: "Identity that uniquely identifies the measured candidate bytes. A revision is enough when it names those bytes; a shared parent of different working-copy changes is not."
           workload:
             type: string
           machine:
@@ -453,7 +473,7 @@ experiment_entry:
 
     commit:
       type: string
-      description: "Git commit SHA on the optimization branch (only for 'kept' and 'runner_up_kept' outcomes)"
+      description: "Full JJ commit ID integrated at the optimization bookmark (only for 'kept' and 'runner_up_kept' outcomes)"
 
     deferred_reason:
       type: string
@@ -472,7 +492,7 @@ experiment_entry:
 # ============================================================================
 #
 # Written by the measuring party immediately after measurement, before CP-3.
-# Local backends write it at the experiment worktree root with metrics only.
+# Local backends write it under the experiment workspace's local .tmp/ with metrics only.
 # A remote worker writes it at its checkout root, commits it on the result ref,
 # and the orchestrator copies it to <state-root>/exp-<NNN>-result.yaml.
 
@@ -519,7 +539,7 @@ result_marker:
 #           -> persist raw metrics   -> outcome: measured or promising
 #           -> judge evaluated (if type: judge)
 #             -> decide.mjs eligible, next_measurement none -> stay measured until integration
-#               -> diff on optimization branch -> outcome: kept
+#               -> diff integrated at optimization bookmark -> outcome: kept
 #               -> eligible leftover             -> outcome: not_selected
 #             -> runner-up, file-disjoint -> cherry-pick + re-measure
 #               -> combined eligible and integrated -> outcome: runner_up_kept
@@ -528,7 +548,7 @@ result_marker:
 #             -> not eligible             -> outcome: reverted
 #       -> needs unapproved dep    -> outcome: deferred_needs_approval
 #
-# Only 'kept' and 'runner_up_kept' produce a commit on the optimization branch.
+# Only 'kept' and 'runner_up_kept' integrate a candidate at the optimization bookmark.
 # Only 'deferred_needs_approval' items are re-presented at wrap-up for approval.
 
 # ============================================================================

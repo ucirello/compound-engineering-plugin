@@ -6,19 +6,19 @@ Phase 1 of `ce-plan`. Read this before dispatching any research subagent.
 
 All specialist research and deepening prompts used in this phase are skill-local prompt assets under `references/agents/`. When dispatching one, read the matching file and seed a generic subagent with that prompt content plus the task-specific context below. Do not dispatch standalone agents by type/name.
 
-A generic subagent is one whose whole brief is the prompt you send it. When the host's subagent tool makes you name an agent, use only a name you have seen the host list, and list its agents before the first dispatch if you have not. Pick the plain one that adds no role of its own, which still counts as a generic subagent. Never pick a specialist, such as a reviewer or worker agent, whose own role prompt, output format, or tool limits would replace or narrow your prompt.
+A generic subagent is one whose whole brief is the prompt you send it. Use OpenCode's native `subagent` with an advertised generic agent ID. A specialist's own role or tool limits must not replace the prompt. Batch independent calls and use their native session IDs to collect results.
 
-This skill, not the prompt assets, decides which model tier each subagent uses. Local prompt files have no frontmatter. Use the platform's mid-tier model for external/organizational research prompts such as `slack-researcher` and `web-researcher` when the current harness exposes a known override; otherwise omit the override and inherit. Use inherited model for high-judgment architecture, migration, and planning-deepening prompts unless the harness has an established cheaper capable tier.
+This skill, not the prompt assets, decides which model tier each subagent uses. Local prompt files have no frontmatter. Use a mid-tier model for external/organizational research prompts such as `slack-researcher` and `web-researcher`. Inherit for high-judgment architecture, migration, and planning-deepening prompts unless there is an established cheaper capable tier. Resolve authorized overrides through `opencode.models`; when an override is unavailable or forbidden, omit it and inherit if suitable, and disclose any unmet requirement.
 
 If the user's or project's active instructions or the live prompt name a model for this subagent, use that model instead of the default tier above. They can name it by the subagent's tier, by its prompt-asset name, or for the subagents being dispatched. Without such an instruction, a model configured for this subagent's role takes precedence over the default tier.
 
 #### 1.1 Local Research
 
-At every native subagent boundary in this phase, classify a rejected dispatch by whether an agent launched: correct a pre-launch argument rejection once, leave capacity-limited work queued, and otherwise follow that boundary's stated fallback or failed-pass handling.
+This skill explicitly requests the specified delegates where a user-or-skill permission rule permits it. Delegation does not authorize model overrides or guarantee remaining nesting depth. Distinguish a permission denial, missing tool, depth or capacity limit, and pre-launch argument rejection using the actual evidence. Correct an allowed argument error once, queue only transiently capacity-limited work, and use the stated fallback otherwise; never retry a denial or use a different harness to bypass it.
 
 A **Lightweight** Durable plan does not dispatch the research agents below. Ground it from bounded inline reads of the files the request names and their tests, note any `<root>/solutions/` entry whose title matches the topic and, after running **Pack discovery** below, any resolved pack file whose `applies_when` matches the work, and continue to 1.1b; 1.4b's reclassification still applies when those reads surface an external contract surface.
 
-**Pack discovery.** For every Durable plan — before composing the `learnings-researcher` dispatch, or inline on the Lightweight path — resolve the packs declared in CE config by running this skill's resolver as one command:
+**Pack discovery.** For every Durable plan — before composing the `learnings-researcher` dispatch, or inline on the Lightweight path — resolve the packs declared in RocketClaw config by running this skill's resolver as one command from the absolute workspace root:
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
@@ -39,17 +39,7 @@ Pass the project's active instructions and the planning context summary to `repo
 
 When this phase dispatches a researcher, create one scratch directory first and reuse that absolute path for every researcher this run. Pass each researcher the absolute path of its own file. It writes its document there and returns a gist plus that path. Read a dossier when its gist can change a decision. Do not load every dossier into context. Later dispatches in this phase reuse the directory. If a later dispatch is the first one, create the directory then.
 
-```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
-if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
-(umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
-if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
-chmod 700 "$SCRATCH_ROOT" || exit 1;
-SCRATCH_DIR="$SCRATCH_ROOT/ce-plan-research/$(openssl rand -hex 4)";
-(umask 077; mkdir -p "$SCRATCH_DIR") || exit 1; chmod 700 "$SCRATCH_DIR" || exit 1;
-echo "$SCRATCH_DIR";
-```
+Use `references/scratch.md` to create this directory under local `.tmp/`.
 
 Run these agents in parallel:
 
@@ -145,7 +135,7 @@ Announce the decision and the intent briefly before continuing. Examples:
 
 #### 1.3 External Research (Conditional)
 
-If Step 1.2 indicates external research is useful, dispatch by the **intent** classified in Stage 2, using the platform's subagent primitive (`Agent`/`Task` in Claude Code, `spawn_agent` in Codex) where available; otherwise run the work inline or serially. Read the selected prompt asset from `references/agents/` and seed a generic subagent with it. For `web-researcher.md`, pass a focus hint plus the planning context summary and do **not** pass codebase content — it operates externally.
+If Step 1.2 indicates external research is useful, dispatch by the **intent** classified in Stage 2 through the native research dispatch above; otherwise run the work inline or serially. Read the selected prompt asset from `references/agents/` and seed a generic subagent with it. For `web-researcher.md`, pass a focus hint plus the planning context summary and do **not** pass codebase content — it operates externally.
 
 - **Implementation-guidance** — run in parallel:
   - `references/agents/best-practices-researcher.md` with the planning context summary and `$SCRATCH_DIR/best-practices.md`.

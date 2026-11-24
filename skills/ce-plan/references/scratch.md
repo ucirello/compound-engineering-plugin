@@ -1,0 +1,3 @@
+# Local scratch
+
+Resolve the absolute [JJ workspace root](https://docs.jj-vcs.dev/latest/cli-reference/#jj-workspace-root) from the active workspace. Outside JJ, use the current absolute project directory. Create transient files under that root's `.tmp/`, never an OS-global temp directory. Verify `.tmp/` is ignored when working in a repository; do not silently edit the user's ignore rules. Use a private, non-symlinked run directory under `.tmp/` and pass resolved absolute paths to workers. If safe storage is unavailable, report the blocker and use a permitted inline path; do not write elsewhere.

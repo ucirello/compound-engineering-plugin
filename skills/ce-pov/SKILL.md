@@ -17,7 +17,7 @@ Produce a decisive, project-grounded point of view in the subject's own shape: a
 
 Deliver a supported position in the form the intended consumer can use. Lead with the decision and preserve the evidence, material tradeoffs, uncertainty, and conditions that determine it. Make identifiers understandable without requiring the reader to reopen the subject. In progress updates, say in plain words what you are checking and which model or helper is checking it. Never name this skill's machinery there (payloads, scouts, dossiers, tiers, round numbers, scratch files).
 
-When contributing to an ongoing workflow, return the result and leave continuation to its owner, the calling workflow. Do not add follow-up or panel offers to that return. An explicit oracle or named-peer request still runs the panel, including when it comes from a calling workflow.
+When contributing to an ongoing workflow, return the result and leave continuation to its owner, the calling workflow. Do not add follow-up or panel offers to that return. Honor an explicit oracle or named-peer request from a calling workflow under the same dispatch and coverage rules as a direct request.
 
 ## Identify the question and return the result
 
@@ -25,13 +25,13 @@ Identify the question from the request and conversation, then look up facts you 
 
 ## Artifact Root
 
-Resolve `<root>` the first time you compose a `<root>/` path; a read of `<root>/solutions/` counts as composing one. Pass the resolved path to scouts, never the config. A non-git project has no `<root>`, so its prior-decision scan uses local ADRs and design docs instead.
+Resolve `<root>` the first time you compose a `<root>/` path; a read of `<root>/solutions/` counts as composing one. Pass the resolved path to scouts, never the config. A project outside JJ has no `<root>`, so its prior-decision scan uses local ADRs and design docs instead.
 
 <!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only. Discover the absolute containing root with `jj workspace root` from the active absolute project directory; run subsequent workspace commands with that root as CWD. Do not read `docs_root` from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither its root nor inside `.jj/` or `.git/` metadata. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
 
@@ -43,7 +43,7 @@ Resolve `<root>` the first time you compose a `<root>/` path; a read of `<root>/
 
 **Read `references/grounding.md` now, before grounding by either path.** It defines the model tiers (the POV reasoning itself is never dispatched), where scratch files may go, what scouts receive and how many run, which capabilities gate which steps, and how grounded facts are kept apart from unconfirmed ones.
 
-Send scouts directly to candidate-specific current evidence, never a generic repo profile. They search in their own context and return a dossier path plus a gist, which you read on demand. Where the facts the verdict depends on are already located, confirm them with bounded reads of the authoritative source instead of dispatching scouts; unscoped or noisy grounding still dispatches. A claim made in the conversation is a pointer to check, never self-verifying. The prior-decision scan (`<root>/solutions/`, ADRs, design docs) stays mandatory on either path.
+Dispatch native OpenCode scout subagents for unscoped or noisy grounding where permitted and available. Send them directly to candidate-specific current evidence, never a generic repo profile. They search in their own context and return a dossier path plus a gist, which you read on demand. Where the facts are already located, confirm them with bounded reads of the authoritative source instead; if dispatch is blocked, follow the grounding reference's evidence fallback. A claim made in the conversation is a pointer to check, never self-verifying. The prior-decision scan (`<root>/solutions/` where applicable, ADRs, design docs) stays mandatory on either path.
 
 When the judgment requires an explanation of unresolved behavior or design rationale, invoke `ce-explain`. Pass the question, its scope, and the decision it informs. Use adequate current evidence instead of repeating an investigation. Treat its cited findings as evidence to assess under the same grounding standard, not as authority for the recommendation. Keep ownership of the judgment here. If `ce-explain` is unavailable, gather the evidence directly or report what is missing.
 

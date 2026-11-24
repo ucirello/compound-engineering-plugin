@@ -25,23 +25,24 @@ If no relevant entries are found, proceed to Phase 1 without memory context.
 
 ### Phase 1: Research
 
-You classify the learning and draft its body in this context, because both depend on the conversation, which only this context holds. A fresh subagent sees only what you paste into its prompt. The Related Docs Finder runs as a subagent alongside, because its corpus search reads many docs this context does not need to keep. Each Phase 1 subagent writes its full output to a per-run scratch artifact and returns only the artifact path to the orchestrator.
+You classify the learning and draft its body in the capture orchestrator's context, from this conversation in ordinary Full or the reduced source session in delegated Full. The Related Docs Finder runs alongside as a subagent because its corpus search reads many docs this context does not need to keep. Each Phase 1 subagent writes its full output to a per-run scratch artifact and returns only the artifact path to the orchestrator.
 
-**Run ID and run dir (before dispatching the finder):** generate a unique run identifier and create the run directory. This scopes every Phase 1 artifact file to the same directory so the orchestrator can Read them back in Phase 2.
+**Run ID and run dir (before dispatching the finder):** reuse the private run directory already established for a delegated source export; otherwise create it below. Resolve the absolute `workspace_root` with `jj workspace root` or the local absolute working directory outside JJ. Use only workspace-local `.tmp/` (ensure it is ignored by project policy), never global temp, including on failure.
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
-if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
-(umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
-if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
-chmod 700 "$SCRATCH_ROOT" || exit 1;
-RUN_ID=$(date +%Y%m%d-%H%M%S)-$(head -c4 /dev/urandom | od -An -tx1 | tr -d ' ');
-RUN_DIR="$SCRATCH_ROOT/ce-compound/$RUN_ID";
-(umask 077; mkdir -p "$RUN_DIR") || exit 1; chmod 700 "$RUN_DIR" || exit 1;
-echo "$RUN_DIR";
+(
+  umask 077
+  for dir in "$workspace_root/.tmp" "$workspace_root/.tmp/rocketclaw" "$workspace_root/.tmp/rocketclaw/ce-compound"; do
+    if [ ! -e "$dir" ] && [ ! -L "$dir" ]; then mkdir "$dir" 2>/dev/null || [ -d "$dir" ] || exit 1; fi
+    if [ -L "$dir" ] || [ ! -d "$dir" ] || [ ! -O "$dir" ]; then
+      printf 'Unsafe workspace scratch directory: %s\n' "$dir" >&2; exit 1
+    fi
+  done
+  mktemp -d "$dir/run-XXXXXX"
+)
 ```
 
+Use the printed absolute path as `RUN_DIR` and its basename as `run_id`.
 **Resolve current vocabulary and conventions before dispatching subagents.** Use the project's active instructions and conventions already in your context. If `CONCEPTS.md` exists, read its relevant terms before you classify.
 
 **CRITICAL: glob `<root>/solutions/` fresh every run.** The current vocabulary and conventions above do not substitute for the live-tree search in step 3.
@@ -58,16 +59,16 @@ Pass `{run_id}` and the resolved absolute `{run_dir}` into every Phase 1 subagen
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
 PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c '' >/dev/null 2>&1 && { echo "$c"; break; }; done)"; [ -n "$PY" ] || { echo "no working Python 3 interpreter on PATH" >&2; exit 1; };
-"$PY" "$SKILL_DIR/scripts/packs-resolve.py"
+(cd "$workspace_root" && "$PY" "$SKILL_DIR/scripts/packs-resolve.py")
 ```
 
 Pass the JSON's `roots` (pack `id` + absolute `dir`, plus `url`/`ref` when git-sourced) into the Related Docs Finder's prompt; report `errors`/`warnings` once in the completion report and nowhere else. With no `packs:` key the result is empty and nothing changes. When the command yields no JSON (no interpreter, script not found, non-zero exit), packs are unresolved for this run: the finder searches `<root>/solutions/` alone, say so once in the completion report, and never stop the run for it.
 
-A generic subagent is one whose whole brief is the prompt you send it. When the host's subagent tool makes you name an agent, use only a name you have seen the host list, and list its agents before the first dispatch if you have not. Pick the plain one that adds no role of its own, which still counts as a generic subagent. Never pick a specialist, such as a reviewer or worker agent, whose own role prompt, output format, or tool limits would replace or narrow your prompt.
+A generic subagent is one whose whole brief is the prompt you send it. Use the native OpenCode subagent tool and the exposed general-purpose agent, with the target absolute workspace as its working directory. Never pick a specialist whose own prompt, output format, or tool limits would replace or narrow your prompt.
 
 **Dispatch.** Launch the `Related Docs Finder` in the background and do not wait on it here. Its prompt states the problem in a few lines: what broke or what was learned, the module and file names, any error text, and the fix. Its keyword search starts from that, and it cannot see this conversation. Then start session history (the body's next step), and classify and draft while the finder and any session-history synthesis run, so the wall-clock cost is the longest of the three rather than their sum.
 
-Classify a rejected dispatch by whether an agent launched: correct a pre-launch argument rejection once, leave capacity-limited work queued, and if another launch failure survives correction, run that role in the parent context with the same contract and artifact path rather than dropping it.
+These Full-mode steps expressly request subagents where policy allows a user or skill request. Model choice is separate: consult `opencode.models` for a requested tier/configured route only where an override is permitted; otherwise use a suitable inherited model and report any unmet requirement. Correct an ordinary pre-launch argument rejection once, wait for capacity-limited work that can run after active peers, and distinguish actual prohibition/denial, unavailable tools and nesting exhaustion. Never retry a denial or bypass policy or depth through another harness. Where this reference allows inline research, run the role in the orchestrator with the same contract and artifact path and report the substitution.
 
 **Every subagent gets its contracts inline.** A fresh subagent resolves a relative path against the user's project, not this skill, so a task prompt that names `references/schema.yaml` or `references/yaml-schema.md` hands it a path that does not exist. Paste the contents of every skill-local file a subagent's task depends on into that task prompt.
 
@@ -139,6 +140,6 @@ Classify a rejected dispatch by whether an agent launched: correct a pre-launch 
 
    **GitHub issue search:**
 
-   Prefer the `gh` CLI for searching related issues: `gh issue list --search "<keywords>" --state all --limit 5`. If `gh` is not installed, fall back to the GitHub MCP tools (e.g., `unblocked` data_retrieval) if available. If neither is available, skip GitHub issue search and note it was skipped in the output.
+   Prefer the `gh` CLI for searching related issues: `(cd "$workspace_root" && GIT_DIR="$(jj git root)" && export GIT_DIR && gh issue list --search "<keywords>" --state all --limit 5)`. If that route is unavailable, fall back to the GitHub MCP tools (e.g., `unblocked` data_retrieval) if available. If neither is available, skip GitHub issue search and note it in the output.
 
 </parallel_tasks>

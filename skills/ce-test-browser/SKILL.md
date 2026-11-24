@@ -6,7 +6,7 @@ argument-hint: "[PR number, branch name, 'current', or --port PORT]"
 
 # Browser Test Skill
 
-Run end-to-end browser tests on pages affected by a PR or branch using the best approved browser driver available in the active harness.
+Run end-to-end browser tests on pages affected by a PR or branch using the best approved browser driver available in OpenCode.
 
 **Done:** the run ends by reporting what it found — either the summary, with every affected route marked Pass, Fail, or Skip and each Skip carrying its reason, or, when a preflight blocker stops testing before any route can be exercised, the blocker and what would clear it. Reaching neither, or dropping a route from the summary because nobody could reach it, is the failure this done condition exists to prevent.
 
@@ -29,8 +29,24 @@ Use one driver for the entire run. A selected host-native driver may fall back t
 
 Read `references/route-and-report.md` from this skill's directory before step 3 (Map changed files to routes). It carries the route-mapping patterns, the port and server commands, the per-page checks, the two human-facing prompts, and the summary format.
 
-1. **Select the driver** per the policy above and record it. This also requires a git repository with changes to test.
-2. **Determine test scope** from the argument: a PR number → `gh pr view [number] --json files -q '.files[].path'`; `current` or empty → `git diff --name-only main...HEAD`; a branch name → `git diff --name-only main...[branch]`.
+1. **Select the driver** per the policy above and record it. Identify the intended JJ workspace's absolute root as `workspace_root` (run `jj workspace root` from the known absolute checkout directory if needed). Use that workspace for scope, port configuration, server startup, and local evidence. Do not switch or modify another workspace. If the target cannot be verified, report a preflight blocker.
+2. **Determine test scope** from the argument. Run all JJ commands from the absolute `workspace_root`, not via `jj -R` from another directory:
+   - **PR number:** retrieve the PR's file list in repository context:
+     ```bash
+     (cd "$workspace_root" && GIT_DIR="$(jj git root)" && export GIT_DIR &&
+       gh pr view "$pr_number" --json files -q '.files[].path')
+     ```
+     In the same repository context, also resolve the PR's `headRefOid` and verify that the server serves the intended workspace and that its working copy matches that head. A PR file list alone does not switch the workspace.
+   - **`current` or empty:** resolve `@` as the current change, including its working-copy edits. If `@` is empty with exactly one parent, its parent is the effective tip; an empty `@` does not mean there are no branch changes.
+   - **Bookmark name (branch):** resolve the requested bookmark as the exact tip and verify that the workspace will serve that code. For a PR or bookmark, compare the verified head to `@` with `jj diff --from "$head_id" --to @ --summary` from `workspace_root`; an empty `@` on top of the head is acceptable. Do not silently test the active workspace in place of another bookmark.
+   - **Current change or bookmark:** resolve the repository's verified integration bookmark (typically `main`) and the selected tip to commit IDs. Preserve the comparison from their common ancestor to the selected tip, not from the latest integration tip and not just the tip's parent diff:
+     ```bash
+     (cd "$workspace_root" &&
+       jj log --no-graph -r "heads(::$integration_id & ::$tip_id)" -T 'commit_id ++ "\n"')
+     (cd "$workspace_root" &&
+       jj diff --from "$base_id" --to "$tip_id" --name-only)
+     ```
+     Use the verified unique common ancestor as `base_id`. If scope resolution fails, is ambiguous, or the server would serve different code, report a preflight blocker rather than guessing or falling back to Git. See the [JJ command table](https://docs.jj-vcs.dev/latest/git-command-table/).
 3. **Map changed files to routes** and build the list of URLs to test.
 4. **Determine the dev server port.** `scripts/resolve-port.sh` resolves it and prints the port alone on stdout: an explicit port argument; else a `--port` flag in a `package.json` dev/start script; else `PORT=` in `.env`, `.env.local`, or `.env.development`; else `3000`. Pass an explicit port when the user gave `--port N`, or when your active project instructions already in context state the dev-server port. Do not grep instruction files for one: prose mentions in docs, examples, and troubleshooting are unreliable and false-positive-prone, while config files and `.env` are trustworthy. Each mode runs the script in the shell call that needs the port, so no port value has to survive between shell calls or be transcribed out of prose; the reference gives the command. Manual mode uses that port as-is: the user controls their own server, so do not scan for alternatives.
 5. **Verify the dev server is running** before asking the headed/headless question — a manual run with no server stops here, so asking first would waste the question.

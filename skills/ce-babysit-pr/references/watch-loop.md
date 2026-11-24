@@ -28,20 +28,13 @@ At the fixed deadline, the final refresh preserves `terminal` and already-settle
 
 Watcher ownership is **latest-valid-watcher-wins**: the newest invocation that completes a valid first snapshot takes over. A newer invocation cancels an older invocation whose first fetch is still in flight, so network completion order cannot hand ownership back to the older one. That reservation does not displace the watcher that is already active. Only a successful first snapshot supersedes the active watcher and terminates it gracefully; a failed preflight leaves the active watcher healthy. Every wake and snapshot carries `watch_generation`. When a wake arrives, compare its generation with a fresh snapshot. A stale wake is discarded and coalesced into that current read. If the generation matches but the attention set (the items the snapshot says still need action) has already cleared, do no work. An `invocation-superseded` wake means a later explicit invocation now owns the state: end the old loop without a tick or a re-arm. A replacement watcher keeps `last_change_at`, `invocation_started_at`, and `invocation_budget_seconds`, so it polls immediately without adding a new settle delay or renewing the budget.
 
-Use the harness's tools to run the detector and wait for its output. A skill drives tool calls; it does not type slash commands the way a user would. The rows below are examples, not a required tool list:
-
-| Harness | Run and wait tools | Durable beyond the session? |
-|---------|--------------------|-----------------------------|
-| Claude Code (CLI) | background `Bash` + a `Monitor`/wait; or `ScheduleWakeup` under `/loop` | No (session-bound) — cron for durable |
-| Grok (CLI/TUI) | background `run_terminal_command` + `get_command_or_subagent_output`; `scheduler_create --durable` for a cross-session schedule | Yes via `scheduler_create --durable` (60s min, 7d) |
-| Cursor (CLI) | `Shell` background + `notify_on_output` sentinel (its `/loop` is user-typed, **not** skill-invocable) | No (session-bound) |
-| Codex (CLI) | `exec_command` to start the detector, then `write_stdin` to wait on the returned process session | No (session-bound) |
+Use OpenCode's native background shell to run the detector and its completion notification to wake this session. Set the shell working directory to the verified absolute JJ workspace root. The shell only runs the deterministic detector; the OpenCode session interprets each wake and owns the tick. If the host requires its own PR-wake mechanism, follow the choice below. Do not dispatch another harness or background an unmanaged process.
 
 **User-runnable resume syntax.** Whenever this reference tells the skill to print or copy a resume invocation, default to `/ce-babysit-pr <url>` and, when the run posture is not `target`, append the same `posture:stack-ready` or `posture:stack-land` token so checkpoint / durable / session re-entry keeps stack scope. Use `$ce-babysit-pr <url> [posture:…]` only when the active host is Codex or explicitly documents dollar-prefixed skill invocation. Render only the invocation as inline code and output one form only.
 
 **Checkpoint:** Use checkpoint mode only when the user requests it or nothing can wake this agent. Run one tick, persist state, report, and print the exact host-rendered resume invocation. Say monitoring is paused. Never fake a loop with a foreground `sleep` or an unmanaged detached process.
 
-**Durability:** the in-session watch dies with the session. Re-invoking the skill resumes from disk, because `/tmp` persists across ticks. For an unattended multi-day watch, escalate to a durable scheduler: Grok's `scheduler_create --durable`, or cron running `<cli> exec '<host-rendered resume invocation>'`. A fresh headless run has no memory of this conversation, so persist consequential decisions to disk.
+**Durability:** the in-session watch dies with the session. Re-invoking in the same workspace resumes from workspace-local `.tmp/` state. Only with authorization for unattended monitoring, use a supported OpenCode scheduler or an existing authorized scheduler running `opencode run` from the verified absolute workspace root with the existing resume target, posture and invocation context. Keep consequential decisions on disk; a fresh headless run has no conversation memory. Without an authorized durable wake source, report a checkpoint rather than promising durability.
 
 ## Choosing the wake source
 
@@ -53,7 +46,7 @@ One wake source brings this agent back for each tick. Choose it once, before the
 | Nothing, or it only offers an optional PR-watch tool | The detector, which sees more states than a host's event feed. Do not add the host's tool. |
 | Its instructions or tools leave this run no way to be woken, such as a delegated run that must not wait | Checkpoint, or in `mode:pipeline` one tick and return. |
 
-Host instructions outrank this skill's default here. Never run both sources to satisfy both rules: that breaks the one-watcher boundary and produces duplicate wakes. Ending the turn is correct when an armed wake source will bring this agent back, and wrong when nothing will.
+Host instructions and standing monitoring opt-outs outrank this skill's default. Starting and re-arming the authorized watch needs no second approval. Never run both sources to satisfy both rules: that breaks the one-watcher boundary and produces duplicate wakes. Ending the turn is correct when an armed wake source will bring this agent back, and wrong when nothing will.
 
 The wake source decides only how control returns. Every tick still starts from a fresh snapshot and still runs `ce-resolve-pr-feedback` and `ce-debug` as usual. Marks, posture, and true stops do not change. The report adds only which PR activity may go unnoticed.
 
@@ -79,7 +72,7 @@ When the host's mechanism is the wake source:
 
 ## Pipeline mode bound (`mode:pipeline`)
 
-An orchestrator (`lfg`) drives ticks in-line and needs the loop to terminate. Run ticks back-to-back until one of the stops below. **To wait for CI to progress between ticks, use the harness's native non-blocking wait — never a bare foreground `sleep`** (blocked on Claude Code, discouraged elsewhere). Examples: Claude Code's `Monitor` until-loop; Grok's `get_command_or_subagent_output(timeout_ms=…)` or a `monitor`; Cursor's `Await` on a backgrounded `gh pr checks --watch`. When the host's instructions dictate PR waits and its wake returns to this session, arm that wake and end the turn; the wake resumes these ticks. If nothing can wake the run, do one tick and return control to the orchestrator rather than busy-spinning. Loop until:
+An orchestrator (`lfg`) drives ticks in-line and needs the loop to terminate. Run ticks back-to-back until one of the stops below. **To wait for CI to progress between ticks, use OpenCode's native background shell completion notification — never a bare foreground `sleep`.** When the host's instructions dictate PR waits and its wake returns to this session, arm that wake and end the turn; the wake resumes these ticks. If nothing can wake the run, do one tick and return control to the orchestrator rather than busy-spinning. Loop until:
 
 - the pipeline stop in `references/pipeline.md` returns success or `needs-human`; it owns both gates. Anything short of them keeps ticking until it clears or the time budget expires; or
 - a **budget** is hit. The default is **3 CI fix rounds** per head-lineage and an overall time cap of about 30-45 minutes. When the budget runs out, the still-red checks and any `needs-human` items become residuals.
@@ -108,7 +101,7 @@ A loop can churn without finishing. Three shapes: CI **ping-pong** (fix A surfac
 
 ## On-disk state contract
 
-State lives at `<scratch-root>/ce-babysit-pr/<host>-<owner>-<repo>-<pr>/state.json`. That path is stable and reusable across invocations, so any later tick (scheduled or hand-run) finds it. The `<host>` segment (from the PR URL; `github.com` on the public host) is required for GitHub Enterprise: without it, two PRs sharing `owner/repo#N` on different hosts would reuse one `state.json` and cross-contaminate dispositions. The `pr-snapshot` script performs all reads and writes under a file lock. Shape:
+State lives at `$workspace_root/.tmp/rocketclaw/ce-babysit-pr/<host>-<owner>-<repo>-<pr>/state.json`. That path is stable and reusable across invocations in the same workspace, so any later tick there (scheduled or hand-run) finds it. The `<host>` segment (from the PR URL; `github.com` on the public host) is required for GitHub Enterprise: without it, two PRs sharing `owner/repo#N` on different hosts would reuse one `state.json` and cross-contaminate dispositions. The `pr-snapshot` script performs all reads and writes under a file lock. Shape:
 
 ```json
 {
@@ -157,7 +150,7 @@ State lives at `<scratch-root>/ce-babysit-pr/<host>-<owner>-<repo>-<pr>/state.js
   },
   "pr_chain": {
     "manager_status": "confirmed|absent|probe-error",
-    "manager_source": "gh-stack|graphql|null",
+    "manager_source": "stacks-rest|null",
     "relationship_status": "dependent|independent|probe-error",
     "target_position": 2,
     "target_needs_rebase": false,
@@ -220,7 +213,7 @@ Do not re-derive "required checks" or required reviews; GitHub already computes 
 
 ## Edge cases
 
-- **Managed stack:** trunk movement alone is not a reason to restack. The manager's `needsRebase` flag turns on for plain trunk drift, and GitHub already prices that into the target's mergeability against its parent base, so `stack_blocker` is null and the target may be ready whenever GitHub reports a certain `MERGEABLE`/`CLEAN`. `stack_blocker` is `target-needs-rebase` / `managed-freshness-unknown` only when the target is stale or of unknown freshness **and** GitHub does not clear it; that becomes `stack-blocked`. Never use `gh pr update-branch` or a local base merge on a managed target. The pre-push baseline and post-push upstack maintenance are in `references/stack.md`.
+- **Managed stack:** Stacks REST supplies exact membership/order, not ancestry or a per-layer freshness verdict. Trunk movement alone is not a reason to restack. A certain GitHub `MERGEABLE`/`CLEAN` verdict against the target's own base can clear the target's readiness blocker without proving freshness of its dependents. If certainty is missing, retain the `target-needs-rebase`/`managed-freshness-unknown` residual as applicable; never use a generic branch update or local base merge on a managed target. `references/stack.md` owns ancestry checks and transaction receipts.
 - **Manual dependency chain:** keep the requested PR as the target, qualify readiness relative to its parent, and report downstream impact. An eligible emitted `normal-base` item may still be repaired target-locally (`references/branch-currency.md`), but never rebase, rewrite, restack, or otherwise mutate its dependent branches. A target push may make open children stale; that is a residual only.
 - **External head change / force-push:** the head SHA moved under the loop. The snapshot clears SHA-scoped CI state automatically; just re-snapshot. Never clobber unrelated pushed work.
 - **PR closed or merged externally:** detected as `pr_state != "OPEN"` on any tick, which is a clean exit with a final status. The exception is a just-landed MERGED from this run's authorized `stack-land` land step, which is a layer transition (see Managed-stack continuation above), not a Terminal exit.

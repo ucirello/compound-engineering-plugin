@@ -46,6 +46,8 @@ Refresh recommendation: <none | /ce-compound refresh <scope>>
 Documentation complete
 ```
 
+For delegated Full, also report the source evidence status and any incomplete research or validation coverage. Include the pending discoverability proposal (if any), whether a pack destination qualified and its writable options (if any), and the learning path. If a pack offer qualified, prepare a rule-shaped proposal in private run scratch using the assembly contract; do not write to the pack or change its configuration.
+
 `Documentation complete` means the run wrote something, including when the only file written is a test or a standard. Track, Category, Overlap, and Grounding then read `n/a`.
 
 When the run wrote nothing (e.g., non-interactive invoked on a session where the problem is not yet solved), emit a structured failure instead and end with `Documentation skipped` so callers can distinguish success from no-op:
@@ -93,9 +95,13 @@ Refresh recommendation: none
 
 `Files written:` lists everything the run wrote: any test, lint rule, or standard with how it was proven, and the destination the assembly step settled on. That destination is a pack rule's path (`<pack dir>/<file>.md`) when the user routed the capture into a writable pack, and the `<root>/solutions/` path otherwise. Add a `Recommended form:` line when a check or owner consolidation was reported rather than written.
 
+### Delegated Full handoff
+
+Relay the child's actual report and learning path (or no-write reason) before offering only the interactive steps it reported as pending. For discoverability, show the proposed edit and use the usual consent procedure in `references/refresh-and-discoverability.md`. For a qualifying pack proposal, follow the writable destination and consent contract in `references/assembly.md`: keep the learning where it is by default; only materialize the proposed rule at a user-selected pack destination, and only append configuration if they choose to scaffold. Do not run a second Full pass or re-edit the written learning. If the child could not recover the source or complete Full, report that rather than implying coverage.
+
 When the lesson met the standard form but the repo has no `CODING_STANDARDS.md`, add this one line and ask nothing: `This could be a coding standard if you adopt them.` Only an attended report carries it. Non-interactive reports read `Recommended form: none` for this case, so it never reaches a pull request.
 
-**The summary is the last thing this skill writes. When a caller invoked this skill, its next step follows the summary in the same session; otherwise end the turn. `ce-compound` does not present a "What's next?" menu.** The lesson is written and any cross-references the workflow found are already in it. Cross-doc maintenance (fixing references in *other* docs, consolidation) is left to a refresh, through the `Refresh recommendation` line above. It is not applied here, because that would edit tracked docs beyond this run's deliverable. If the user wants to view the file or take a follow-up action, they will ask. (Interactive mode only.)
+**After any delegated consent step above, the summary is the last thing this skill writes. When a caller invoked this skill, its next step follows the summary in the same session; otherwise end the turn. `ce-compound` does not present a general "What's next?" menu.** The lesson is written and any cross-references the workflow found are already in it. Cross-doc maintenance (fixing references in *other* docs, consolidation) is left to a refresh, through the `Refresh recommendation` line above. It is not applied here, because that would edit tracked docs beyond this run's deliverable. (Interactive mode only.)
 
 **Alternate interactive output (when updating an existing doc due to high overlap):** in non-interactive mode, this case is communicated via the `Overlap: high — existing doc updated` line of the non-interactive terminal report above, not as a separate output block.
 

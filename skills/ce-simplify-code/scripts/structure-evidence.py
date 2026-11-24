@@ -40,10 +40,10 @@ JS_IMPORT = re.compile(
 PY_IMPORT = re.compile(r"^\s*(?:from\s+([.\w]+)\s+import\s+(\([^)]*\)|[^\n]*)|import\s+([\w.]+))", re.M)
 
 
-def git(root: Path, *args: str) -> str:
+def jj(root: Path, *args: str) -> str:
     return subprocess.run(
-        ["git", "-C", str(root), *args],
-        check=True, capture_output=True, text=True,
+        ["jj", "--color=never", *args],
+        cwd=root, check=True, capture_output=True, text=True,
     ).stdout
 
 
@@ -124,10 +124,31 @@ def resolve_py_import(m: re.Match, importer: str, files: set[str], roots: list[s
     return found if found and len(found) == len(names) else [*found, resolve_py(spec, importer, files, roots)]
 
 
-def log_changes(root: Path, max_commits: int, paths: list[str], *extra: str) -> list[tuple[int, list[str]]]:
-    log = git(root, "log", "--no-merges", "--no-renames", f"-n{max_commits}", *extra,
-              "--format=%x00%ct", "--name-only", "--", *paths)
-    return [(int(b.splitlines()[0]), b.splitlines()[1:]) for b in log.split("\0")[1:]]
+def log_changes(
+    root: Path, max_commits: int, paths: list[str], *, since: str | None = None, exact: bool = False,
+) -> list[tuple[str, list[str]]]:
+    # Start at the working-copy parents: current edits are not historical co-changes.
+    revset = '..(@-) ~ merges()'
+    if paths and "." not in paths:
+        kind = "file" if exact else "cwd"
+        revset += " & files(" + " | ".join(f"{kind}:{json.dumps(p, ensure_ascii=False)}" for p in paths) + ")"
+    if since is not None:
+        revset += f' & committer_date(after:"{since}")'
+    # Filter the revision selection by scope, but report all paths per selected commit.
+    # Treat renames as deletion plus addition, and do not count an unchanged copy source.
+    template = r'''"{\"time\":" ++ json(committer.timestamp().utc().format("%Y-%m-%dT%H:%M:%SZ"))
+        ++ ",\"files\":[" ++ diff.files().map(|entry|
+            "[" ++ json(entry.path()) ++ "," ++ json(entry.status())
+            ++ "," ++ json(entry.source().path()) ++ "]"
+        ).join(",") ++ "]}\n"'''
+    log = jj(root, "log", "--no-graph", "-r", revset, "-n", str(max_commits), "-T", template)
+    records = (json.loads(line) for line in log.split("\n") if line)
+    history = []
+    for record in records:
+        touched = [path for path, _, _ in record["files"]]
+        touched.extend(source for _, status, source in record["files"] if status == "renamed")
+        history.append((record["time"], touched))
+    return history
 
 
 def main() -> int:
@@ -138,11 +159,17 @@ def main() -> int:
     ap.add_argument("scope", nargs="*", default=["."])
     a = ap.parse_args()
 
-    root = Path(git(Path(a.repo), "rev-parse", "--show-toplevel").strip())
-    scopes = [os.path.relpath((Path(a.repo) / s).resolve(), root) for s in a.scope]
+    start = Path(a.repo).resolve()
+    root = next((p for p in (start, *start.parents) if (p / ".jj").is_dir()), None)
+    if root is None:
+        ap.error(f"no JJ workspace found for {start}")
+    scopes = [os.path.relpath((start / s).resolve(), root) for s in a.scope]
+    if any(s == ".." or s.startswith(".." + os.sep) for s in scopes):
+        ap.error("scope paths must be inside the JJ workspace")
     scopes = ["" if s == "." else s for s in scopes]
 
-    tracked = set(git(root, "ls-files").splitlines())
+    listing = jj(root, "file", "list", "-r", "@", "-T", r'json(path) ++ "\n"')
+    tracked = {json.loads(line) for line in listing.split("\n") if line}
     files = sorted(f for f in tracked if f.endswith(CODE_EXT) and in_scope(f, scopes))
     # A test counts as part of the file it tests, so the pair or import between them is not reported.
     subject_of = {unit_key(f): f for f in sorted(tracked) if f.endswith(CODE_EXT) and not TEST_MARKER.search(os.path.basename(f))}
@@ -150,8 +177,7 @@ def main() -> int:
     def unit(f: str) -> str:
         return subject_of.get(unit_key(f), f) if TEST_MARKER.search(os.path.basename(f)) else f
 
-    # --full-diff lists every file a commit touched, so a repo-wide commit counts as bulk in any scope.
-    history = log_changes(root, a.max_commits, [s or "." for s in scopes], "--full-diff")
+    history = log_changes(root, a.max_commits, [s or "." for s in scopes])
     churn: Counter[str] = Counter()
     pairs: Counter[tuple[str, str]] = Counter()
     commits = bulk = 0
@@ -190,8 +216,8 @@ def main() -> int:
     outside = sorted({t for _, t in edges if not in_scope(t, scopes)})
     if outside:
         # Count an out-of-scope import target over the same window the scope's history covered.
-        window = [f"--since=@{history[-1][0]}"] if len(history) >= a.max_commits else []
-        for _, changed in log_changes(root, a.max_commits, outside, *window):
+        since = history[-1][0] if history and len(history) >= a.max_commits else None
+        for _, changed in log_changes(root, a.max_commits, outside, since=since, exact=True):
             churn.update({unit(l) for l in changed if l in outside})
 
     co_change = [
@@ -224,5 +250,5 @@ if __name__ == "__main__":
     try:
         sys.exit(main())
     except subprocess.CalledProcessError as e:
-        print(f"git failed: {e.stderr.strip()}", file=sys.stderr)
+        print(f"jj failed: {e.stderr.strip()}", file=sys.stderr)
         sys.exit(2)

@@ -15,21 +15,27 @@ Unattended execution does not mean hidden execution. Do not ask a visibility que
 
 Multiple agents may run on the same machine, so never assume the resolved port is free: `scripts/resolve-port.sh --free` in this skill's directory resolves the port and scans upward to the first port with no listener, printing it alone on stdout.
 
-Run the whole thing as **one** command. Shell variables do not survive between separate Bash calls, so the port resolution, the free scan, and the startup all happen inside this block — it seeds `PORT` by capturing the script's output, not from anything an earlier step printed. Add the explicit port as a second argument when the user gave `--port N` or your in-context project instructions state the dev-server port.
+Run the whole thing as **one** OpenCode shell call. Shell variables do not survive between calls, so port resolution, the free scan, and startup all happen inside this block. Fill in the verified absolute workspace root and skill directory. Keep the startup log, including on failure, under the workspace's ignored `.tmp/`. Add the explicit port as a second argument when the user gave `--port N` or your in-context project instructions state the dev-server port.
 
 ```bash
-SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
-PORT=$(bash "$SKILL_DIR/scripts/resolve-port.sh" --free);   # append the explicit port as a further argument when you have one
+workspace_root="<verified absolute workspace root>"
+SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>"
+cd "$workspace_root" || exit 1
+PORT=$(bash "$SKILL_DIR/scripts/resolve-port.sh" --free) || exit 1
+mkdir -p "$workspace_root/.tmp" || exit 1
+run_dir=$(mktemp -d "$workspace_root/.tmp/browser-test.XXXXXXXX") || exit 1
+server_log="$run_dir/dev-server-${PORT}.log"
 echo "Using dev server port: $PORT"
+echo "Using evidence directory: $run_dir"
 
-# start in the background (the scan guarantees this port is free), then wait up to 30s
+# Start in the background on the scanned port, then wait up to 30s.
 echo "Starting dev server on port ${PORT}..."
 if [ -f "bin/dev" ]; then
-  PORT=${PORT} bin/dev > /tmp/dev-server-${PORT}.log 2>&1 &
+  PORT=${PORT} bin/dev > "$server_log" 2>&1 &
 elif [ -f "bin/rails" ]; then
-  bin/rails server -p ${PORT} > /tmp/dev-server-${PORT}.log 2>&1 &
+  bin/rails server -p ${PORT} > "$server_log" 2>&1 &
 elif [ -f "package.json" ]; then
-  PORT=${PORT} npm run dev > /tmp/dev-server-${PORT}.log 2>&1 &
+  PORT=${PORT} npm run dev > "$server_log" 2>&1 &
 fi
 for i in $(seq 1 30); do
   lsof -i ":${PORT}" -sTCP:LISTEN -t >/dev/null 2>&1 && break
@@ -37,7 +43,7 @@ for i in $(seq 1 30); do
 done
 if ! lsof -i ":${PORT}" -sTCP:LISTEN -t >/dev/null 2>&1; then
   echo "Server did not start in 30s. Last output:"
-  tail -20 /tmp/dev-server-${PORT}.log 2>/dev/null
+  tail -20 "$server_log" 2>/dev/null
   exit 1
 fi
 ```

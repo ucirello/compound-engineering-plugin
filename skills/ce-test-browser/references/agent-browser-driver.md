@@ -35,9 +35,10 @@ agent-browser fill @e1 "text"
 agent-browser type @e1 "text"
 agent-browser press Enter
 
-# Capture evidence
-agent-browser screenshot out.png
-agent-browser screenshot --full out-full.png
+# Capture evidence (`run_dir` is the absolute run-owned workspace .tmp directory
+# for this run; supply it in this shell call, not an earlier one).
+agent-browser screenshot "$run_dir/out.png"
+agent-browser screenshot --full "$run_dir/out-full.png"
 
 # Navigation and waits
 agent-browser back

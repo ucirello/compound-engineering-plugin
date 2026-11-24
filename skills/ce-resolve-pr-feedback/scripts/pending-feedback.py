@@ -204,9 +204,20 @@ def write_record(path: Path, raw: bytes, *, checkpoint: bool) -> None:
     read_record(path)
 
 
-def github_json(host: str, endpoint: str) -> dict:
+def workspace_root(*, allow_local: bool = False) -> Path:
+    result = subprocess.run(["jj", "workspace", "root"], cwd=Path.cwd(),
+                            capture_output=True, text=True, check=False)
+    if result.returncode == 0:
+        return Path(result.stdout.strip())
+    if allow_local:
+        return Path.cwd()
+    raise ValueError(result.stderr.strip() or "Unable to locate the target JJ workspace")
+
+
+def github_json(root: Path, git_dir: str, host: str, endpoint: str) -> dict:
     result = subprocess.run(
         ["gh", "api", "--hostname", host, "--method", "GET", endpoint],
+        cwd=root, env={**os.environ, "GIT_DIR": git_dir},
         capture_output=True, text=True, check=False,
     )
     require(result.returncode == 0, result.stderr.strip() or f"GitHub GET failed: {endpoint}")
@@ -218,7 +229,13 @@ def inspect_publication(record: dict) -> dict:
              "head_repo": None, "head_ref": None, "comparison_status": None}
     pr = record["pr"]
     try:
-        fresh = github_json(pr["host"], f"repos/{pr['base_repo']}/pulls/{pr['number']}")
+        root = workspace_root()
+        result = subprocess.run(["jj", "git", "root"], cwd=root,
+                                capture_output=True, text=True, check=False)
+        require(result.returncode == 0 and bool(result.stdout.strip()),
+                result.stderr.strip() or "Unable to locate the workspace's Git backend")
+        git_dir = result.stdout.strip()
+        fresh = github_json(root, git_dir, pr["host"], f"repos/{pr['base_repo']}/pulls/{pr['number']}")
         require(fresh.get("number") == pr["number"] and fresh.get("html_url") == pr["url"],
                 "fresh PR host/number/URL differs from the saved PR")
         base = object_value(fresh.get("base"), "fresh base")
@@ -234,7 +251,7 @@ def inspect_publication(record: dict) -> dict:
         if commit is None:
             proof.update(verified=True, reason="saved batch created no fix commit")
             return proof
-        comparison = github_json(pr["host"], f"repos/{proof['head_repo']}/compare/{commit}...{proof['head_sha']}")
+        comparison = github_json(root, git_dir, pr["host"], f"repos/{proof['head_repo']}/compare/{commit}...{proof['head_sha']}")
         proof["comparison_status"] = comparison.get("status")
         merge_base = object_value(comparison.get("merge_base_commit"), "comparison merge base")
         require(proof["comparison_status"] in {"ahead", "identical"} and merge_base.get("sha") == commit,
@@ -256,15 +273,25 @@ def main() -> None:
         if command in {"create", "checkpoint"}:
             command_parser.add_argument("--input", required=True)
     args = parser.parse_args()
+    if args.command in {"preflight", "create", "checkpoint"}:
+        scratch = workspace_root(allow_local=True) / ".tmp"
+        require(not scratch.is_symlink(), "local .tmp must not be a symlink")
+        if args.path:
+            path = Path(args.path).absolute()
+            require(scratch.resolve() in path.parent.resolve().parents or path.parent.resolve() == scratch.resolve(),
+                    "handoff destination must be under the target workspace's local .tmp")
+        else:
+            scratch.mkdir(exist_ok=True)
+            path = Path(tempfile.mkdtemp(dir=scratch, prefix="pending-feedback-")) / "pending.json"
+    else:
+        path = Path(args.path).absolute()
     if args.command == "preflight":
-        path = Path(args.path).absolute() if args.path else Path(tempfile.mkdtemp(prefix="ce-pending-feedback-")) / "pending.json"
         require(not os.path.lexists(path), "handoff destination already exists")
         require(path.parent.is_dir(), "handoff parent directory does not exist")
         with tempfile.TemporaryFile(dir=path.parent):
             pass
         print(json.dumps({"handoff": str(path)}))
         return
-    path = Path(args.path).absolute()
     if args.command in {"validate", "inspect-publication"}:
         record, _ = read_record(path)
     else:

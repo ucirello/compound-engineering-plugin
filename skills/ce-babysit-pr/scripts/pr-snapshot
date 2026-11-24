@@ -33,6 +33,7 @@ Subcommands:
 so the diff logic is testable without a live PR.
 """
 import argparse
+from functools import lru_cache
 import errno
 import hashlib
 import json
@@ -289,25 +290,36 @@ def _iso(dt):
     return dt.isoformat()
 
 
-def _run(cmd):
+@lru_cache(maxsize=1)
+def _workspace_context():
+    env = os.environ.copy()
+    for key in ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE"):
+        env.pop(key, None)
+    try:
+        root = subprocess.check_output(["jj", "workspace", "root"], env=env, text=True).strip()
+        if not os.path.isabs(root):
+            raise ValueError("JJ workspace root is not absolute")
+        git_dir = subprocess.check_output(["jj", "git", "root"], cwd=root, env=env,
+                                          text=True).strip()
+        scoped_git_dir = os.path.abspath(os.path.join(root, git_dir))
+        if not git_dir or not os.path.isdir(scoped_git_dir):
+            raise ValueError("JJ did not return a usable Git backing directory")
+        env["GIT_DIR"] = scoped_git_dir
+    except (OSError, ValueError, subprocess.CalledProcessError) as exc:
+        raise SystemExit(f"could not scope GitHub CLI to the JJ workspace: {exc}")
+    return root, env
+
+
+def _run(cmd, *, timeout=None):
     # gh honors CLICOLOR_FORCE / GH_FORCE_TTY even for --json output, and a host that exports them
     # (observed under orca) makes every JSON read unparsable. Pin plain output regardless of caller env.
-    env = os.environ.copy()
+    root, workspace_env = _workspace_context()
+    env = workspace_env.copy()
     env["NO_COLOR"] = "1"
     env.pop("CLICOLOR_FORCE", None)
     env.pop("GH_FORCE_TTY", None)
-    return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", env=env)
-
-
-def _run_git(cmd):
-    env = os.environ.copy()
-    env["GIT_TERMINAL_PROMPT"] = "0"
-    env["GCM_INTERACTIVE"] = "never"
-    env["GIT_ASKPASS"] = ""
-    env["SSH_ASKPASS"] = ""
-    return subprocess.run(
-        cmd, capture_output=True, text=True, encoding="utf-8", env=env, timeout=30,
-    )
+    return subprocess.run(cmd, cwd=root, capture_output=True, text=True, encoding="utf-8",
+                          env=env, timeout=timeout)
 
 
 def _run_checked(cmd, label):
@@ -359,9 +371,9 @@ def _host_args(host):
     return ["--hostname", host] if host else []
 
 
-def _api_json(path, host=None):
+def _api_json(path, host=None, *, timeout=None):
     """Best-effort JSON API read. An incomplete corroboration must stay pending."""
-    result = _run(["gh", "api", *_host_args(host), path])
+    result = _run(["gh", "api", *_host_args(host), path], timeout=timeout)
     if result.returncode != 0:
         return None
     try:
@@ -479,8 +491,8 @@ def fetch_base_ref(owner, name, ref, merge_identity, host=None):
     `baseRefOid` is retained only as historical PR metadata. Current identity comes from both the
     PR's `baseRef.target.oid` and an exact Git-ref read; a usable generated test merge must then
     name that base and the observed PR head as its two parents. Some valid private-repository OAuth
-    sessions return 404 from the REST Git-ref endpoint, so that response falls back to the Git
-    transport while preserving exact-ref matching and non-interactive failure behavior.
+    sessions return 404 from the REST Git-ref endpoint, so that response falls back to a separate
+    GraphQL lookup of the exact fully-qualified repository ref (not the PR's nested baseRef).
     """
     historical_oid = (merge_identity or {}).get("baseRefOid")
     head_oid = (merge_identity or {}).get("headRefOid")
@@ -518,29 +530,22 @@ def fetch_base_ref(owner, name, ref, merge_identity, host=None):
     current_oid = (r.stdout or "").strip()
     if r.returncode != 0 and re.search(r"\bHTTP\s+404\b", r.stderr or "", re.IGNORECASE):
         exact_ref = f"refs/heads/{ref}"
-        remote_url = (f"https://{host or 'github.com'}/"
-                      f"{quote(owner, safe='')}/{quote(name, safe='')}.git")
+        query = """
+query($owner:String!,$repo:String!,$ref:String!){
+  repository(owner:$owner,name:$repo){ ref(qualifiedName:$ref){ prefix name target{ oid } } }
+}"""
         try:
-            # Reuse the gh session (GH_TOKEN or keyring) as git's credential source so a
-            # headless host with no configured Git credential helper is not anonymous here.
-            git_result = _run_git([
-                "git", "-c", "core.askPass=",
-                "-c", "credential.helper=",
-                "-c", "credential.helper=!gh auth git-credential",
-                "ls-remote", "--exit-code", "--refs",
-                remote_url, exact_ref,
-            ])
-        except (subprocess.TimeoutExpired, OSError):
-            git_result = None
-        if git_result is not None and git_result.returncode == 0:
-            matches = []
-            for line in (git_result.stdout or "").splitlines():
-                fields = line.split()
-                if len(fields) == 2 and fields[1] == exact_ref and _valid_oid(fields[0]):
-                    matches.append(fields[0])
-            if len(matches) == 1:
-                current_oid = matches[0]
-                r = git_result
+            fallback = _run(["gh", "api", "graphql", *_host_args(host), "-f", f"owner={owner}",
+                             "-f", f"repo={name}", "-f", f"ref={exact_ref}",
+                             "-f", f"query={query}"], timeout=30)
+            payload = json.loads(fallback.stdout)
+            found = payload["data"]["repository"]["ref"]
+            if (fallback.returncode == 0 and not payload.get("errors")
+                    and found["prefix"] == "refs/heads/" and found["name"] == ref):
+                current_oid = found["target"]["oid"]
+                r = fallback
+        except (KeyError, TypeError, json.JSONDecodeError, subprocess.TimeoutExpired, OSError):
+            pass
     if r.returncode != 0 or not _valid_oid(current_oid):
         return base
     base["oid"] = current_oid
@@ -587,23 +592,10 @@ def _base_ref_blocker(base):
     return BASE_REF_PROBE_ERROR
 
 
-def _stack_schema_unavailable(stderr):
-    """Recognize only GraphQL schema errors for the private-preview PullRequest stack fields."""
-    unavailable_markers = ("doesn't exist on type", "does not exist on type",
-                           "cannot query field", "unknown field")
-    for line in (stderr or "").splitlines():
-        lowered = line.lower()
-        if ("pullrequest" in lowered
-                and re.search(r"\bstack(?:entry)?\b", lowered)
-                and any(marker in lowered for marker in unavailable_markers)):
-            return True
-    return False
-
-
 def _fetch_default_branch(owner, name, host=None):
-    """Read the default branch without relying on private-preview GraphQL fields."""
+    """Read the default branch without relying on Stacks preview availability."""
     result = _run(["gh", "api", *_host_args(host), f"repos/{owner}/{name}",
-                   "--jq", ".default_branch"])
+                   "--jq", ".default_branch"], timeout=30)
     if result.returncode != 0:
         return None
     branch = result.stdout.strip()
@@ -630,13 +622,14 @@ def _default_pr_chain():
     return {
         "manager_status": MANAGER_ABSENT,
         "manager_source": None,
+        "manager_repository": None,
         "relationship_status": RELATIONSHIP_INDEPENDENT,
         "trunk": None,
         "default_branch": None,
-        "current_branch": None,
         "target_position": None,
         "target_needs_rebase": None,
         "upstack_needs_rebase": [],
+        "upstack_freshness_unknown": [],
         "entries": [],
         "parent_prs": [],
         "dependent_prs": [],
@@ -666,111 +659,116 @@ def _pr_url_identity(url):
     return (parsed.netloc.lower(), parts[-4].lower(), parts[-3].lower(), number)
 
 
-def _chain_from_entries(entries, pr, source, trunk=None, current_branch=None,
-                        manager_id=None, manager_number=None, target_url=None):
-    """Normalize an ordered manager-owned chain and locate the requested PR within it."""
-    target_identity = _pr_url_identity(target_url) if target_url is not None else None
-    target_index = next((i for i, e in enumerate(entries)
-                         if (e.get("number") == pr or str(e.get("number")) == str(pr))
-                         and (target_url is None
-                              or (target_identity is not None
-                                  and _pr_url_identity(e.get("url")) == target_identity))), None)
-    if target_index is None:
-        return None
-    target = entries[target_index]
-    upstack_stale = [
-        {k: e.get(k) for k in ("number", "position", "name", "url") if e.get(k) is not None}
-        for e in entries[target_index + 1:] if e.get("needs_rebase") is True
-    ]
-    chain = _default_pr_chain()
-    chain.update({
-        "manager_status": MANAGER_CONFIRMED,
-        "manager_source": source,
-        "manager_id": manager_id,
-        "manager_number": manager_number,
-        "relationship_status": RELATIONSHIP_DEPENDENT if len(entries) > 1 else RELATIONSHIP_INDEPENDENT,
-        "trunk": trunk,
-        "current_branch": current_branch,
-        "target_position": target.get("position") or target_index + 1,
-        "target_needs_rebase": target.get("needs_rebase"),
-        "upstack_needs_rebase": upstack_stale,
-        "entries": entries,
-        "parent_prs": [_pr_summary(entries[target_index - 1])] if target_index > 0 else [],
-        "dependent_prs": [_pr_summary(e) for e in entries[target_index + 1:]],
-    })
-    return chain
+def _positive_int(value):
+    return type(value) is int and value > 0
 
 
-def _chain_from_stack_view(raw, pr, target_url):
-    entries = []
-    for index, branch in enumerate((raw or {}).get("branches") or []):
-        remote_pr = branch.get("pr") or {}
-        entries.append({
-            "position": index + 1,
-            "name": branch.get("name"),
-            "head": branch.get("head"),
-            "base": branch.get("base"),
-            "is_current": bool(branch.get("isCurrent")),
-            "is_merged": bool(branch.get("isMerged")),
-            "is_queued": bool(branch.get("isQueued")),
-            "needs_rebase": branch.get("needsRebase"),
-            "number": remote_pr.get("number"),
-            "url": remote_pr.get("url"),
-            "state": remote_pr.get("state"),
-            "isDraft": remote_pr.get("isDraft"),
-        })
-    return _chain_from_entries(entries, pr, "gh-stack", (raw or {}).get("trunk"),
-                               (raw or {}).get("currentBranch"), target_url=target_url)
-
-
-def _fetch_graphql_stack(pr, owner, name, host=None):
-    """Read-only remote membership fallback. A successful null stack is distinct from failure."""
-    query = """
-query($owner:String!,$repo:String!,$pr:Int!){
-  repository(owner:$owner,name:$repo){
-    defaultBranchRef{ name }
-    pullRequest(number:$pr){
-    stackEntry{ position }
-    stack{ id number size baseRefName
-      entries(first:100){ nodes{ position pullRequest{
-        number url state isDraft baseRefName headRefName headRefOid
-      } } }
+def _stack_entry(raw, position, pr_url_prefix):
+    number, state, draft, merged_at = (raw[key] for key in ("number", "state", "draft", "merged_at"))
+    head_ref, head_oid = raw["head"]["ref"], raw["head"]["sha"]
+    if (not _positive_int(number) or state not in ("open", "closed") or type(draft) is not bool
+            or (merged_at is not None and (state != "closed" or not isinstance(merged_at, str)
+                                          or not merged_at))
+            or not isinstance(head_ref, str) or not head_ref or not _valid_oid(head_oid)):
+        raise ValueError("invalid Stacks REST layer")
+    return {
+        "number": number, "position": position, "name": head_ref, "headRefName": head_ref,
+        "head": head_oid, "url": f"{pr_url_prefix}/{number}", "isDraft": draft,
+        "is_merged": merged_at is not None, "needs_rebase": None,
+        "state": "MERGED" if merged_at is not None else state.upper(),
     }
-  } }
-}"""
-    args = ["gh", "api", "graphql", *_host_args(host), "-f", f"owner={owner}", "-f", f"repo={name}",
-            "-F", f"pr={pr}", "-f", f"query={query}"]
-    r = _run(args)
-    if r.returncode != 0:
-        if _stack_schema_unavailable(r.stderr):
-            default_branch = _fetch_default_branch(owner, name, host)
-            if default_branch:
-                return MANAGER_ABSENT, None, default_branch
-        return MANAGER_PROBE_ERROR, None, None
+
+
+def _fetch_rest_stack(pr, owner, name, host, url, head_ref, head_oid, base_ref):
+    """Bind the exact ordered REST stack to an independently observed PR head and repository."""
+    repo_path = f"repos/{owner}/{name}"
+    default_branch = None
+
+    def error():
+        return MANAGER_PROBE_ERROR, None, default_branch
+
     try:
-        repository = json.loads(r.stdout)["data"]["repository"]
-        default_branch = (repository.get("defaultBranchRef") or {}).get("name")
-        node = repository["pullRequest"]
-        stack = node.get("stack")
-    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
-        return MANAGER_PROBE_ERROR, None, None
-    if stack is None:
-        return MANAGER_ABSENT, None, default_branch
-    entries = []
-    for raw in (stack.get("entries") or {}).get("nodes") or []:
-        remote_pr = raw.get("pullRequest") or {}
-        entries.append({
-            "position": raw.get("position"),
-            "name": remote_pr.get("headRefName"),
-            "head": remote_pr.get("headRefOid"),
-            "base_ref_name": remote_pr.get("baseRefName"),
-            "needs_rebase": None,
-            **(_pr_summary(remote_pr) or {}),
+        target_identity = ((host or "github.com").lower(), owner.lower(), name.lower(), int(pr))
+        pull = _api_json(f"{repo_path}/pulls/{pr}", host, timeout=30)
+        if pull is None:
+            return error()
+        rest_base, rest_head = pull["base"], pull["head"]
+        if (not _positive_int(pull["number"]) or pull["number"] != int(pr)
+                or _pr_url_identity(url) != target_identity
+                or _pr_url_identity(pull["html_url"]) != target_identity
+                or rest_base["repo"]["full_name"].lower() != f"{owner}/{name}".lower()
+                or rest_base["ref"] != base_ref or rest_head["ref"] != head_ref
+                or not _valid_oid(rest_head["sha"]) or not _same_head(rest_head["sha"], head_oid)):
+            return error()
+        default_branch = rest_base["repo"].get("default_branch")
+        if not isinstance(default_branch, str) or not default_branch:
+            default_branch = _fetch_default_branch(owner, name, host)
+        if "stack" in pull and pull["stack"] is None:
+            return MANAGER_ABSENT, None, default_branch
+        membership = pull.get("stack")
+        summary = membership
+        if "stack" not in pull:
+            # Some repositories do not expose the preview field at all. Prove no match or
+            # retrieve the singleton candidate; never infer a stack from branch topology.
+            listed = _run(["gh", "api", *_host_args(host),
+                           f"{repo_path}/stacks?pull_request={pr}&per_page=2"], timeout=30)
+            if listed.returncode != 0:
+                if re.search(r"\bHTTP\s+404\b", listed.stderr or "", re.I):
+                    verified_default = _fetch_default_branch(owner, name, host)
+                    if verified_default and (not default_branch or verified_default == default_branch):
+                        return MANAGER_ABSENT, None, verified_default
+                return error()
+            matches = json.loads(listed.stdout)
+            if matches == []:
+                return MANAGER_ABSENT, None, default_branch
+            if not isinstance(matches, list) or len(matches) != 1:
+                return error()
+            summary = matches[0]
+        if not _positive_int(summary["id"]) or not _positive_int(summary["number"]):
+            return error()
+        stack = _api_json(f"{repo_path}/stacks/{summary['number']}", host, timeout=30)
+        if (stack["id"] != summary["id"] or stack["number"] != summary["number"]
+                or not _positive_int(stack["id"]) or not _positive_int(stack["number"])):
+            return error()
+        trunk = stack["base"]["ref"]
+        raw_entries = stack["pull_requests"]
+        if not isinstance(trunk, str) or not trunk or not isinstance(raw_entries, list) or not raw_entries:
+            return error()
+        pr_url_prefix = pull["html_url"].rstrip("/").rsplit("/", 1)[0]
+        entries = [_stack_entry(raw, index, pr_url_prefix) for index, raw in enumerate(raw_entries, 1)]
+        if len({e["number"] for e in entries}) != len(entries):
+            return error()
+        if type(stack["open"]) is not bool or stack["open"] != any(e["state"] == "OPEN" for e in entries):
+            return error()
+        target = next((e for e in entries if e["number"] == int(pr)), None)
+        if (target is None or target["name"] != head_ref or not _same_head(target["head"], head_oid)
+                or pull["state"] != ("open" if target["state"] == "OPEN" else "closed")
+                or type(pull["draft"]) is not bool or pull["draft"] != target["isDraft"]
+                or pull["merged_at"] != raw_entries[target["position"] - 1]["merged_at"]):
+            return error()
+        pos = target["position"]
+        if membership is not None and (
+                not _positive_int(membership["position"]) or membership["position"] != pos
+                or not _positive_int(membership["size"]) or membership["size"] != len(entries)
+                or membership["base"]["ref"] != trunk or not _valid_oid(membership["base"]["sha"])):
+            return error()
+        target["baseRefName"] = base_ref
+        above = entries[pos:]
+        chain = _default_pr_chain()
+        chain.update({
+            "manager_status": MANAGER_CONFIRMED, "manager_source": "stacks-rest",
+            "manager_id": stack["id"], "manager_number": stack["number"],
+            "manager_repository": f"{host or 'github.com'}/{owner}/{name}",
+            "relationship_status": RELATIONSHIP_DEPENDENT if len(entries) > 1 else RELATIONSHIP_INDEPENDENT,
+            "trunk": trunk, "default_branch": default_branch, "target_position": pos,
+            "entries": entries, "parent_prs": [_pr_summary(entries[pos - 2])] if pos > 1 else [],
+            "dependent_prs": [_pr_summary(e) for e in above],
+            # REST supplies the order and OIDs, not per-layer ancestry or merge queue status.
+            "upstack_freshness_unknown": [_pr_summary(e) for e in above if e["state"] == "OPEN"],
         })
-    chain = _chain_from_entries(entries, pr, "graphql", stack.get("baseRefName"),
-                                manager_id=stack.get("id"), manager_number=stack.get("number"))
-    return ((MANAGER_CONFIRMED, chain, default_branch) if chain
-            else (MANAGER_PROBE_ERROR, None, default_branch))
+        return MANAGER_CONFIRMED, chain, default_branch
+    except (AttributeError, KeyError, TypeError, ValueError, OSError, subprocess.TimeoutExpired):
+        return error()
 
 
 def _manual_relationships(pr, repo, base_ref_name, head_ref_name, owner, name,
@@ -810,24 +808,11 @@ def _manual_relationships(pr, repo, base_ref_name, head_ref_name, owner, name,
 
 
 def fetch_pr_chain(pr, repo, url, base_ref_name, head_ref_name, owner, name, host=None,
-                   cross_repository=False):
-    """Classify manager membership and ordinary dependency relationships without mutation.
-
-    The local manager is the fast/rich path, but its output is accepted only when it contains the
-    requested PR. `gh stack view` has no target argument and may describe a different current stack.
-    """
-    local = _run(["gh", "stack", "view", "--json"])
-    if local.returncode == 0:
-        try:
-            chain = _chain_from_stack_view(json.loads(local.stdout), pr, url)
-        except (TypeError, ValueError, json.JSONDecodeError):
-            chain = None
-        if chain:
-            return chain
-
-    manager_status, chain, default_branch = _fetch_graphql_stack(pr, owner, name, host)
+                   cross_repository=False, head_oid=None):
+    """Classify remote stack membership and ordinary dependency relationships read-only."""
+    manager_status, chain, default_branch = _fetch_rest_stack(
+        pr, owner, name, host, url, head_ref_name, head_oid, base_ref_name)
     if manager_status == MANAGER_CONFIRMED:
-        chain["default_branch"] = default_branch
         return chain
 
     relationship, parents, dependents = _manual_relationships(
@@ -918,7 +903,7 @@ def fetch(pr, repo, light=False):
         checks = [c for c in checks if c["conclusion"] not in FAILING]
     pr_chain = fetch_pr_chain(v.get("number") or pr, repo, v.get("url"),
                               v.get("baseRefName"), v.get("headRefName"), owner, name, host,
-                              bool(v.get("isCrossRepository")))
+                              bool(v.get("isCrossRepository")), head_oid=head)
     currency_probe = {
         "mergeable": mergeable,
         "merge_state_status": merge_state_status,
@@ -1394,7 +1379,7 @@ def _empty_trajectory():
 
 def _load_trajectory(state):
     """Load the trajectory, tolerating a partial or non-dict value from an older on-disk
-    state.json (persisted in /tmp across script versions) — backfill missing keys so a new
+    state.json (persisted in workspace-local .tmp/ across script versions) — backfill missing keys so a new
     field never KeyErrors an old state, and a null/garbage value never crashes."""
     tj = state.get("trajectory")
     if not isinstance(tj, dict):
@@ -2395,9 +2380,8 @@ def _change_sig(state):
 
 def _stack_blocker(chain, cur=None):
     """Return the manager-currency residual that blocks target readiness, if any.
-    Manager freshness (`needsRebase`) fires on plain trunk drift, which GitHub already prices into
-    the target's own mergeability against its parent base; so a certain MERGEABLE/CLEAN read defers
-    to GitHub and only a stale-or-unknown target that GitHub does not clear blocks."""
+    Stacks REST confirms membership, not ancestry. A certain GitHub MERGEABLE/CLEAN observation
+    is sufficient for target-local readiness; it does not establish any dependent's freshness."""
     status = (chain or {}).get("manager_status")
     if status == MANAGER_PROBE_ERROR:
         return "manager-probe-error"
@@ -2933,7 +2917,11 @@ def _downstack_sig(args):
         if status in ("DIRTY", "BEHIND"):
             sig.add((pr, "currency", status, head))
         chain = cur.get("pr_chain") if isinstance(cur.get("pr_chain"), dict) else {}
-        sig.add((pr, "manager", chain.get("manager_status"), chain.get("target_needs_rebase")))
+        order = tuple((e.get("number"), e.get("state"), e.get("isDraft"), e.get("head"))
+                      for e in (chain.get("entries") or []) if isinstance(e, dict))
+        sig.add((pr, "manager", chain.get("manager_status"), chain.get("manager_repository"),
+                 chain.get("manager_id"), chain.get("manager_number"), chain.get("target_position"),
+                 chain.get("target_needs_rebase"), order))
     return frozenset(sig)
 
 

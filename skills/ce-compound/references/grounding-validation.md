@@ -6,10 +6,10 @@ Read this when Phase 2.45 runs. The doc just written becomes permanent, trusted 
 
 Two claim categories verify against different trees:
 
-- **Code-behavior claims** (enum values, status semantics, limits, defaults) verify against **the code the learning will merge with**: the branch it ships on, including this session's work. On an ordinary branch that is the local working tree. When the working tree also holds changes that will not merge with the learning, such as other unmerged branches applied in a GitButler workspace, read from that branch's ref instead (`git show <ref>:<path>`), and name the tree used in the run report.
-- **Merge-state claims** ("fixed in #1608", "landed", "shipped") verify against **remote truth**. The checkout may predate a merge, so `gh pr view` (or the tracker equivalent) is primary and local git reachability is only the fallback. The script's `INFO: worktree is N commits behind …` line tells you how much to distrust the local tree for this category.
+- **Code-behavior claims** (enum values, status semantics, limits, defaults) verify against **the code the learning will merge with**, including this session's work. Ordinarily that is the local working tree. When it also holds changes that will not ship with the learning, inspect the specific verified shipping revision with `(cd "$workspace_root" && jj file show -r "$revision" -- "$path")`, and name the tree used in the run report.
+- **Merge-state claims** ("fixed in #1608", "landed", "shipped") verify against **remote truth**. The checkout may predate a merge, so a repository-scoped `gh pr view` (or the tracker equivalent) is primary and local JJ reachability is only the fallback. The script's `INFO: workspace is N commits behind …` line tells you how much to distrust the local tree for this category.
 
-Before running the script, optionally run `git fetch --quiet` (best-effort; skip silently on failure or offline, because the network is never a correctness dependency). When remote state cannot be checked at all, keep the claim, add an as-of qualifier ("as of this writing"), and record degraded verification in the run report.
+The optional, best-effort remote refresh is in `references/assembly.md`. When remote state cannot be checked at all, keep the claim, add an as-of qualifier ("as of this writing"), and record degraded verification in the run report.
 
 ## Step 1: Adjudicate the mechanical flags
 
@@ -23,7 +23,7 @@ The script reports in two tiers and you decide each item. A **FLAG** is a claim 
 | path deliberately gone (doc says removed/renamed) | Historical citation | Confirm the surrounding prose marks it as historical ("removed by this fix", "pre-fix state"); add that marker if absent |
 | SHA does not resolve, cited as a commit | Fabricated or from another repo | Replace with the PR number, or drop |
 | NOTE: unresolved hex, no commit context | The script cannot tell a session id or content hash from a commit; it is reporting, not accusing | Read the line: if it was never a commit citation, nothing to do; if it was, verify it |
-| SHA reachable from HEAD only | Local-only commit; SHA will change on rebase/squash merge | Replace with the PR number |
+| SHA reachable from the local history anchor only | Local-only commit; SHA will change on rebase/squash merge | Replace with the PR number |
 | SHA reachable from upstream only | Checkout predates the merge | Keep, with a temporal qualifier; verify the landed claim via `gh` |
 | SHA exists but unreachable | Rebased-away commit | Replace with the PR number |
 | scaffold ("Learning 3", `{{…}}`) | Drafting-context leak | Always fix; rewrite as a real path or link |
@@ -37,19 +37,20 @@ After any body edit from this step or Step 2, re-run the script until it reports
 
 Dispatch **one generic read-only subagent** covering the written solution doc plus any `CONCEPTS.md` entries added or edited this run. Phase 2.4's entries are claims too; a glossary entry written from a session-level summary is exactly how wrong semantics enter the vocabulary. Use the same mid-tier model class as other reviewer subagents when the platform exposes one.
 
-If the user's or project's active instructions or the live prompt name a model for this subagent, use that model instead of the default tier above. They can name it by the subagent's tier, by its prompt-asset name, or for the subagents being dispatched. Without such an instruction, a model configured for this subagent's role takes precedence over the default tier.
+Apply the dispatch permission, model selection and depth rules in `references/research.md`. An authorized user or project route takes precedence over the configured role route, which takes precedence over the default tier. If overrides are forbidden, use a suitable inherited model and disclose an unmet route. If the validator cannot launch or complete, report semantic coverage as incomplete; an inline adjudication or mechanical pass is not the missing independent check.
 
 Build its prompt from this template:
 
 ```
 You are a grounding validator for documentation about to enter a permanent
 knowledge store. You are read-only: never edit files. Inspect with Read,
-Grep, Glob, git (non-mutating), and gh when available.
+Grep, Glob, read-only JJ from the supplied absolute workspace root, and
+repository-scoped gh when available.
 
 Inputs: the doc content below, the CONCEPTS.md entries below (if any), and
 this staleness context: <INFO line from the mechanical script, or "none">,
-and the tree to verify code against: <"working tree", or a git ref to
-read with git show <ref>:<path>>.
+the absolute workspace root, and the tree to verify code against:
+<"working tree", or a verified JJ revision to read with jj file show -r>.
 
 Check every factual claim in three categories:
 
@@ -61,9 +62,10 @@ Check every factual claim in three categories:
    (defining source not found).
 
 2. MERGE-STATE CLAIMS — assertions that a change landed ("fixed in",
-   "merged", "shipped in", "resolved by #N"). Primary check: gh pr view
-   <n> --json state,mergedAt,baseRefName (remote truth). Fallback: git
-   reachability from the upstream default branch. Verdict: verified,
+   "merged", "shipped in", "resolved by #N"). Primary check:
+   (cd "$workspace_root" && GIT_DIR="$(jj git root)" && export GIT_DIR &&
+    gh pr view "$n" --json state,mergedAt,baseRefName).
+   Fallback: JJ reachability from the verified upstream default bookmark. Verdict: verified,
    contradicted (e.g. PR open, not merged), or unverifiable (offline / no
    gh) — mark unverifiable as "degraded", do not guess.
 

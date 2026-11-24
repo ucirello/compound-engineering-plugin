@@ -6,7 +6,7 @@ Before dispatching, make sure the `pulse_*` values in hand are current: if the i
 
 ## Dispatch
 
-Run these in **parallel** (different tools, no shared load):
+Run these in **parallel** using native parallel tool calls (different tools, no shared load):
 
 - Product analytics query (primary event count, value-realization count, completions, conversion ratios) over the window
 - Application tracing query (error counts by category, latency distribution, top error signatures) over the window

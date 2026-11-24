@@ -4,7 +4,7 @@ Complete only the conversation actions preserved in the handoff, then return the
 
 ## Validate the original record and prove publication
 
-Pass the supplied path directly to the bundled helper. It reads and validates the original JSON bytes; do not reconstruct a received record from chat or normalize it into another file first. Set the skill directory in each shell call because shell state does not persist:
+From the target workspace's absolute root, pass the supplied path directly to the bundled helper. It reads and validates the original JSON bytes; do not reconstruct a received record from chat or normalize it into another file first. Set the skill directory in each shell call because shell state does not persist:
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the ce-resolve-pr-feedback SKILL.md>";

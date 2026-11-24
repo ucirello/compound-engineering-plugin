@@ -6,7 +6,7 @@ Full and targeted feedback scopes keep their existing judgment and fix flow. A c
 
 ## Prepare the destination before editing
 
-Run the bundled helper from the absolute directory containing this skill's `SKILL.md`; set the anchor in each shell call because shell state does not persist. Preflight happens before edits, not after the commit:
+Run the bundled helper from the target workspace's absolute root. Set its script path using the absolute directory containing this skill's `SKILL.md`; set the anchor in each shell call because shell state does not persist. Preflight happens before edits, not after the commit:
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the ce-resolve-pr-feedback SKILL.md>";
@@ -14,7 +14,7 @@ PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c 
 "$PY" "$SKILL_DIR/scripts/pending-feedback.py" preflight
 ```
 
-When the invocation supplies `handoff:<path>`, append `--path '<caller path>'` to that command, preserving the actual argument. Preflight refuses an existing destination, including a dangling symlink, and probes exclusive temporary-file creation in its parent directory. Without a supplied path it allocates a private OS scratch directory and returns an unused `pending.json` path. Retain the returned absolute `handoff` path. Do not clean it up at skill completion; the caller owns retention.
+When the invocation supplies `handoff:<path>`, append `--path '<caller path>'` to that command, preserving the actual argument. Its parent must already exist under the target workspace's `.tmp/`. Preflight refuses an existing destination, including a dangling symlink, and probes exclusive temporary-file creation in its parent directory. Without a supplied path it allocates a private directory under `.tmp/` and returns an unused `pending.json` path. Retain the returned absolute `handoff` path. Do not clean it up at skill completion; the caller owns retention.
 
 If preflight fails, stop before editing and return the blocker. Do not substitute another destination for a rejected caller path. Creation also refuses overwrite, so a destination that appears during preparation cannot be replaced.
 
@@ -26,7 +26,7 @@ For a batch creating changes, validate the combined fix and commit only its owne
 
 For a no-change batch, set `fix_commit` to `null` and save the prepared actions before entering the existing remote tail. Checkpoint observed progress after successful writes and at return. If a later write fails, retain earlier verified progress and return `pending` with the blocker; do not claim the whole batch completed. Existing `resolution-pending` threads carry their visible submitted reply IDs and body, so their saved action requires only the missing resolution.
 
-Build the versioned JSON record in a separate private input file. Source fingerprints are lowercase SHA-256 of the original fetched body encoded as UTF-8, computed from that decoded body by a tool rather than invented or calculated from a paraphrase. The helper must read the original file bytes; do not retype or normalize a received record before validating it.
+Build the versioned JSON record in a separate private input file under the workspace's `.tmp/`. Source fingerprints are lowercase SHA-256 of the original fetched body encoded as UTF-8, computed from that decoded body by a tool rather than invented or calculated from a paraphrase. The helper must read the original file bytes; do not retype or normalize a received record before validating it.
 
 ```json
 {
